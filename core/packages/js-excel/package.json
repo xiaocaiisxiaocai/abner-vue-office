@@ -4,7 +4,19 @@
   "version": "1.0.0",
   "description": "",
   "main": "lib/index.js",
+  "module": "lib/index.js",
   "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js",
+      "default": "./lib/index.js"
+    },
+    "./umd": "./lib/index.umd.js",
+    "./lib/index.css": "./lib/index.css",
+    "./lib/*": "./lib/*",
+    "./package.json": "./package.json"
+  },
   "files": [
     "lib/"
   ],

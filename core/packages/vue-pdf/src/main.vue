@@ -54,10 +54,10 @@ export default defineComponent({
         let renderId = 0;
 
         const containerRef = ref(null); //最外层容器
-        const wrapperRef = ref(null);   //canvas渲染外层容器
+        const wrapperRef = ref(null); //canvas渲染外层容器
 
         let totalItems = 0; //pdf总页数
-        let pageWidth = 0;  //每个canvas dom宽度
+        let pageWidth = 0; //每个canvas dom宽度
         let pageHeight = 0; //每个canvas dom高度
         let containerHeight = 0; //外层容器高度
         let visibleItems = 6; //可视区域内的页面数量，根据pdf高度重新计算
@@ -173,7 +173,14 @@ export default defineComponent({
                 wrapperRef.value.style.height = height + 'px';
 
                 clearCanvas();
-                renderList(1, Math.min(totalItems, visibleItems), true);
+                const scrollTop = containerRef.value.scrollTop || 0;
+                const paddingTop = parseInt(getComputedStyle(wrapperRef.value).paddingTop, 10) || 0;
+                const startIndex = Math.min(
+                    Math.max(Math.floor(Math.max(scrollTop - paddingTop, 0) / Math.max(pageHeight + gap, 1)), 1),
+                    Math.max(totalItems, 1)
+                );
+                const endIndex = Math.min(startIndex + visibleItems - 1, totalItems);
+                renderList(startIndex, endIndex, true);
             });
         }
 
@@ -214,6 +221,9 @@ export default defineComponent({
                     return;
                 }
                 pdfDocument = pdf;
+                if (containerRef.value) {
+                    containerRef.value.scrollTop = 0;
+                }
                 await layoutAndRender(currentId);
             } catch (e) {
                 if (!isUnmounted && currentId === renderId) {
@@ -364,8 +374,8 @@ export default defineComponent({
                     const height = Math.floor(viewport.height * outputScale);
                     const scale = canvasHeight / height;
                     outputScale = outputScale * scale;
-                    canvas.width = width * scale;
-                    canvas.style.width = parseInt(canvas.style.width, 10) * scale + 'px';
+                    canvas.width = Math.floor(width * scale);
+                    canvas.style.width = Math.floor(viewport.width * scale) + 'px';
                 }
 
                 const ctx = canvas.getContext('2d');

@@ -5,7 +5,7 @@ layout: home
 hero:
   name: "abner-vue-office"
   text: "更易用的文件预览"
-  tagline: 支持docx、xlsx、pdf文件预览
+  tagline: 支持docx、xlsx、xls、pdf、pptx文件预览
   actions:
     - theme: brand
       text: 指南
@@ -16,7 +16,7 @@ hero:
 
 features:
   - title: 一站式
-    details: 提供docx、xlsx、pdf 3种文档的在线预览方案
+    details: 提供docx、xlsx、xls、pdf、pptx多种文档的在线预览方案
   - title: 使用简单
     details: 只需提供文档的src即可完成文档预览，支持远程地址、ArrayBuffer、Blob多种格式
   - title: 支持样式

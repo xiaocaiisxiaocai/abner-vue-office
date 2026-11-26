@@ -7,7 +7,7 @@ function onRendered(){
     useLoading.hideLoading();
 }
 function onError(e){
-    console.log('出差',e);
+    console.log('出错', e);
     useLoading.hideLoading();
 }
 const defaultSrc = location.origin + 
@@ -15,7 +15,7 @@ const defaultSrc = location.origin +
     + 'static/test-files/test.pptx';
 const docxRef = ref();
 
-const pptxWidth = Math.min(960, window.innerWidth)
+const pptxWidth = Math.min(960, window.innerWidth);
 const requestOptions = {
     headers: {
     }

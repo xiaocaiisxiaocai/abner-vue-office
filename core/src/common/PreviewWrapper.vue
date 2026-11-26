@@ -1,21 +1,21 @@
 <script setup>
-import {defineProps, watch} from 'vue';
-import usePreview from '../hooks/usePreview.js';
+import { watch } from 'vue';
+import usePreview, { isXlsName } from '../hooks/usePreview.js';
 import useLoading from '../hooks/useLoading.js';
-import {isTest} from '../../utils/test.js';
+import { isTest } from '../../utils/test.js';
+
 const props = defineProps({
   accept: String,
   placeholder: String,
   defaultSrc: String
 });
 
-const {type, inputSrc, src, xls, fileList, beforeUpload} = usePreview(props.defaultSrc);
-watch(src,()=>{
+const { type, inputSrc, src, xls, beforeUpload } = usePreview(props.defaultSrc);
+watch(src, () => {
     useLoading.showLoading();
-},{
+}, {
     immediate: true
 });
-
 </script>
 
 <template>
@@ -35,7 +35,7 @@ watch(src,()=>{
           v-if="type==='url'"
           type="primary"
           style="margin-left: 10px"
-          @click="src=inputSrc; xls=inputSrc.endsWith('xls')"
+          @click="src = inputSrc; xls = isXlsName(inputSrc)"
       >
         预览
       </a-button>
@@ -46,7 +46,7 @@ watch(src,()=>{
           :beforeUpload="beforeUpload"
           :file-list="[]"
       >
-        <a-button  style="margin-left: 10px">
+        <a-button style="margin-left: 10px">
           <upload-outlined></upload-outlined>
           选择文件
         </a-button>

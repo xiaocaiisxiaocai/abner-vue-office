@@ -5,13 +5,16 @@ import omit from 'lodash/omit';
 import debounce from 'lodash/debounce';
 
 let pdfLibLoadPromise = null;
+let pdfJsLibUrl = null;
+let pdfJsWorkerUrl = null;
 
-function getPdfJsLibUrl() {
-    return `data:text/javascript;base64,${pdfLibJsStr}`;
-}
-
-function getPdfJsWorkerUrl() {
-    return `data:text/javascript;base64,${workerStr}`;
+function ensureWorkerSrc() {
+    if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        if (!pdfJsWorkerUrl) {
+            pdfJsWorkerUrl = `data:text/javascript;base64,${workerStr}`;
+        }
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = pdfJsWorkerUrl;
+    }
 }
 
 class AbnerJsPdfPreview {
@@ -26,7 +29,7 @@ class AbnerJsPdfPreview {
     renderId = 0;
     isDestroyed = false;
     totalItems = 0; //pdf总页数
-    pageWidth = 0;  //每个canvas dom宽度
+    pageWidth = 0; //每个canvas dom宽度
     pageHeight = 0; //每个canvas dom高度
     containerHeight = 0; //外层容器高度
     visibleItems = 6; //可视区域内的页面数量，根据pdf高度重新计算
@@ -78,16 +81,17 @@ class AbnerJsPdfPreview {
 
     checkPdfLib() {
         if (window.pdfjsLib) {
-            if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
-                window.pdfjsLib.GlobalWorkerOptions.workerSrc = getPdfJsWorkerUrl();
-            }
+            ensureWorkerSrc();
             return Promise.resolve();
         }
         if (!pdfLibLoadPromise) {
-            pdfLibLoadPromise = loadScript(getPdfJsLibUrl())
+            if (!pdfJsLibUrl) {
+                pdfJsLibUrl = `data:text/javascript;base64,${pdfLibJsStr}`;
+            }
+            pdfLibLoadPromise = loadScript(pdfJsLibUrl)
                 .then(() => {
                     if (window.pdfjsLib) {
-                        window.pdfjsLib.GlobalWorkerOptions.workerSrc = getPdfJsWorkerUrl();
+                        ensureWorkerSrc();
                     } else {
                         throw new Error('window.pdfjsLib未找到');
                     }
@@ -163,8 +167,8 @@ class AbnerJsPdfPreview {
                 const height = Math.floor(viewport.height * outputScale);
                 const scale = this.canvasHeight / height;
                 outputScale = outputScale * scale;
-                canvas.width = width * scale;
-                canvas.style.width = parseInt(canvas.style.width, 10) * scale + 'px';
+                canvas.width = Math.floor(width * scale);
+                canvas.style.width = Math.floor(viewport.width * scale) + 'px';
             }
             const ctx = canvas.getContext('2d');
             const transform = outputScale !== 1

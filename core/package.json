@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node script/bak-vue.js && vite",
     "build": "node script/bak-vue.js && vite build",
-    "lib": "node script/bak-vue.js bak && lerna run build",
+    "lib": "node script/bak-vue.js bak && lerna run build --concurrency=1",
     "lib:js-excel": "node script/bak-vue.js bak && lerna run build --scope @abner-vue-office/js-excel",
     "lib:js-docx": "node script/bak-vue.js bak && lerna run build --scope @abner-vue-office/js-docx",
     "lib:vue-excel": "node script/bak-vue.js bak && lerna run build --scope @abner-vue-office/excel",
@@ -31,10 +31,8 @@
     "pptx-preview": "^0.0.19",
     "rimraf": "^4.1.2",
     "rollup": "^3.26.0",
-    "rollup-plugin-postcss": "^4.0.2",
     "tinycolor2": "^1.6.0",
     "vue-demi": "^0.14.6",
-    "x-data-spreadsheet": "^1.1.9",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -47,13 +45,8 @@
     "eslint-plugin-vue": "^9.9.0",
     "lerna": "^6.4.1",
     "less": "^4.1.3",
-    "less-loader": "^11.1.0",
-    "rollup-plugin-commonjs": "^10.1.0",
-    "rollup-plugin-less": "^1.1.3",
-    "rollup-plugin-node-resolve": "^5.2.0",
     "terser": "^5.31.0",
     "vite": "^4.0.0",
-    "vite-plugin-require-transform": "^1.0.9",
     "vite-plugin-vue2": "^2.0.3",
     "vue": "3.2.45",
     "vue-router": "^4.1.6",

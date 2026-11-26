@@ -7,7 +7,7 @@ function onRendered(){
     useLoading.hideLoading();
 }
 function onError(e){
-    console.log('出差',e);
+    console.log('出错', e);
     useLoading.hideLoading();
 }
 

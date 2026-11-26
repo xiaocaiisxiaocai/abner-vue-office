@@ -1,16 +1,20 @@
-import {ref} from 'vue';
-export default function (defaultSrc){
+import { ref } from 'vue';
+
+export function isXlsName(name) {
+    return typeof name === 'string' && /\.xls(\?|#|$)/i.test(name);
+}
+
+export default function (defaultSrc) {
     const type = ref('url');
     const inputSrc = ref(defaultSrc);
     const src = ref(defaultSrc);
-    const xls = ref(typeof defaultSrc === 'string' ? defaultSrc.endsWith('.xls') : false);
-    const fileList = ref([]);
-    function beforeUpload(file){
-        xls.value = file.name.endsWith('xls');
-        let reader = new FileReader();
+    const xls = ref(isXlsName(defaultSrc));
+
+    function beforeUpload(file) {
+        xls.value = isXlsName(file && file.name);
+        const reader = new FileReader();
         reader.onload = (loadEvent) => {
-            let arrayBuffer = loadEvent.target.result;
-            src.value = arrayBuffer;
+            src.value = loadEvent.target.result;
         };
         reader.readAsArrayBuffer(file);
         return false;
@@ -21,7 +25,6 @@ export default function (defaultSrc){
         inputSrc,
         src,
         xls,
-        fileList,
         beforeUpload
     };
 }

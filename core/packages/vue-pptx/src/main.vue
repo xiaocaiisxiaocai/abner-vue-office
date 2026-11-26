@@ -110,6 +110,9 @@ export default defineComponent({
             if (pptxViewer && typeof pptxViewer.destroy === 'function') {
                 pptxViewer.destroy();
             }
+            if (rootRef.value) {
+                rootRef.value.innerHTML = '';
+            }
             pptxViewer = null;
             fileData = null;
         });

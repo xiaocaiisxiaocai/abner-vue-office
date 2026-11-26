@@ -163,6 +163,13 @@ function transferColumns(excelSheet, spreadSheet, options){
     spreadSheet.cols.len = Math.max(Object.keys(spreadSheet.cols).length, options.minColLength || 0);
 }
 
+function formatExcelDate(val, fmt) {
+    if (val instanceof Date) {
+        return dayjs(val).add(val.getTimezoneOffset(), 'minute').format(fmt);
+    }
+    return dayjs(val).format(fmt);
+}
+
 function getCellText(cell){
     //console.log(cell);
     let {numFmt, value, type} = cell;
@@ -228,12 +235,6 @@ function getCellText(cell){
         case 3: //字符串
             return value;
         case 4: { //日期
-            const formatExcelDate = (val, fmt) => {
-                if (val instanceof Date) {
-                    return dayjs(val).add(val.getTimezoneOffset(), 'minute').format(fmt);
-                }
-                return dayjs(val).format(fmt);
-            };
             switch (numFmt) {
                 case 'yyyy-mm-dd;@':
                     return formatExcelDate(value, 'YYYY-MM-DD');
@@ -254,13 +255,28 @@ function getCellText(cell){
         }
 
         case 5: //超链接
-            return value.text;
+            if (!value) {
+                return '';
+            }
+            if (value.text && typeof value.text === 'object' && Array.isArray(value.text.richText)) {
+                return value.text.richText.map(item => item.text || '').join('');
+            }
+            return value.text || value.hyperlink || '';
         case 6: //公式
-            return get(value, 'result.error') || value.result;
+            if (!value) {
+                return '';
+            }
+            if (get(value, 'result.error')) {
+                return get(value, 'result.error');
+            }
+            if (value.result instanceof Date) {
+                return formatExcelDate(value.result, numFmt === 'h:mm;@' ? 'HH:mm' : 'YYYY-MM-DD');
+            }
+            return value.result ?? '';
         case 8: //富文本
             return cell.text;
         case 9: //Boolean
-            return cell.text.toUpperCase();
+            return String(cell.text ?? value ?? '').toUpperCase();
         default:
             return value;
     }
@@ -276,6 +292,9 @@ function transferArgbColor(originColor){
     let color = {};
     try {
         let argb = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(originColor);
+        if (!argb) {
+            return null;
+        }
         color.r = parseInt(argb[2], 16);
         color.g = parseInt(argb[3], 16);
         color.b = parseInt(argb[4], 16);
@@ -283,6 +302,7 @@ function transferArgbColor(originColor){
         return tinycolor(`rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`).toHexString();
     } catch (e) {
         console.warn(e);
+        return null;
     }
 }
 function transferThemeColor(themeIndex, tint){
@@ -305,7 +325,7 @@ function getStyle(cell){
         // 8位字符颜色先转rgb再转16进制颜色
         if(cell.style.fill.fgColor.argb){
             backGroundColor = transferArgbColor(cell.style.fill.fgColor.argb);
-        }else if(cell.style.fill.fgColor.hasOwnProperty('theme')){
+        }else if(Object.prototype.hasOwnProperty.call(cell.style.fill.fgColor, 'theme')){
             backGroundColor = transferThemeColor(cell.style.fill.fgColor.theme, cell.style.fill.fgColor.tint);
         }else if(cell.style.fill.fgColor.indexed){
             backGroundColor = indexedColor[cell.style.fill.fgColor.indexed] || '#C7C9CC';
@@ -326,7 +346,7 @@ function getStyle(cell){
     if(cell.style.font && cell.style.font.color ) {
         if(cell.style.font.color.argb){
             fontColor = transferArgbColor(cell.style.font.color.argb);
-        }else if(cell.style.font.color.hasOwnProperty('theme')){
+        }else if(Object.prototype.hasOwnProperty.call(cell.style.font.color, 'theme')){
             fontColor = transferThemeColor(cell.style.font.color.theme, cell.style.font.color.tint);
         }else if(cell.style.font.color.indexed){
             fontColor = indexedColor[cell.style.font.color.indexed] || '#000000';
@@ -363,7 +383,7 @@ function getStyle(cell){
             }else if(originBorder.color){
                 if(originBorder.color.argb){
                     bordColor = transferArgbColor(originBorder.color.argb);
-                }else if(originBorder.color.hasOwnProperty('theme')){
+                }else if(Object.prototype.hasOwnProperty.call(originBorder.color, 'theme')){
                     bordColor = transferThemeColor(originBorder.color.theme, originBorder.color.tint);
                 }else if(originBorder.color.indexed){
                     bordColor = indexedColor[originBorder.color.indexed];
@@ -446,7 +466,7 @@ export function transferExcelToSpreadSheet(workbook, options){
             Object.prototype.hasOwnProperty.call(options, 'minRowLength') ? options.minRowLength : 100);
 
         if(sheet._columns && sheet._columns.length > effectiveMaxColLen + 1){
-            sheet._columns = sheet._columns.slice(0, effectiveMaxColLen + 1)
+            sheet._columns = sheet._columns.slice(0, effectiveMaxColLen + 1);
         }
         transferColumns(sheet,sheetData, options);
         workbookData.push(sheetData);

@@ -8,7 +8,7 @@ function onRendered(){
     useLoading.hideLoading();
 }
 function onError(e){
-    console.log('出差',e);
+    console.log('出错', e);
     useLoading.hideLoading();
 }
 
@@ -40,16 +40,17 @@ function beforeTransformData(data){
                         style: {
                             bgcolor: '#00ff00'
                         }
-                    }
+                    };
                 }else{
                     cell.style = {
                         bgcolor: '#00ff00'
-                    }
+                    };
                 }
             }
+
         }
 
-    })
+    });
     return data;
 }
 
@@ -58,11 +59,11 @@ function switchSheet(sheetIndex){
 }
 
 function cellSelected(event){
-    console.log('点击了单元格', event)
+    console.log('点击了单元格', event);
 }
 
 function cellsSelected(event){
-    console.log('选择了单元格', event)
+    console.log('选择了单元格', event);
 }
 // setTimeout(()=>{
 //     console.log( docxRef.value.download());

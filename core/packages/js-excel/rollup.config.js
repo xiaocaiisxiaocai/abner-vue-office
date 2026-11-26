@@ -1,12 +1,11 @@
 import { getBabelOutputPlugin } from '@rollup/plugin-babel';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
-import postcss from 'rollup-plugin-postcss';
 import terser from '@rollup/plugin-terser';
 
 export default {
     input: 'index.js',
-    output:[
+    output: [
         {
             file: 'lib/index.js',
             name: 'abnerJsExcel',
@@ -20,9 +19,8 @@ export default {
         }
     ],
     plugins: [
-        nodeResolve(),
+        nodeResolve({ browser: true, preferBuiltins: false }),
         commonjs(),
-        postcss(),
         terser()
     ]
 };

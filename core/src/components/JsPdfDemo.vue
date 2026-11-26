@@ -1,6 +1,6 @@
 <template>
 <div ref="dom" style="height: calc(100vh - 50px);">
-    
+
 </div>
 </template>
 
@@ -9,6 +9,8 @@ import { onMounted, onBeforeUnmount, ref } from 'vue';
 import jsPdf from '../../packages/js-pdf/index';
 
 const dom = ref(null);
+const baseUrl = location.origin + (location.pathname + '/').replace('//', '/');
+
 onMounted(() => {
     window.myPdfPreview = jsPdf.init(dom.value, {
         onError: (e) => {
@@ -18,7 +20,7 @@ onMounted(() => {
             console.log('渲染完成');
         }
     });
-    window.myPdfPreview.preview('/abner-vue-office/examples/dist/static/test-files/test.pdf');
+    window.myPdfPreview.preview(`${baseUrl}static/test-files/test.pdf`);
 });
 
 onBeforeUnmount(() => {

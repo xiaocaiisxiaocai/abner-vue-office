@@ -1,2 +1,10 @@
 packages:
   - 'packages/*'
+
+shamefullyHoist: true
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - core-js
+  - esbuild
+  - nx
+  - vue-demi

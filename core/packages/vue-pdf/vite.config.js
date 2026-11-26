@@ -19,7 +19,8 @@ export default defineConfig({
     lib: {
       entry: resolve(__dirname, 'index.js'), //指定组件编译入口文件
       name: 'abner-vue-office-pdf',
-      fileName: 'abner-vue-office-pdf',
+      formats: ['umd'],
+      fileName: () => 'index.js',
     },
     optimizeDeps: {
       exclude: ['vue-demi']
