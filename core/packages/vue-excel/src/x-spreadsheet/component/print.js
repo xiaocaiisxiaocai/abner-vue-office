@@ -1,4 +1,3 @@
-/* global window document */
 import { h } from './element';
 import { cssPrefix } from '../config';
 import Button from './button';
@@ -66,6 +65,7 @@ export default class Print {
       },
     };
     this.data = data;
+    this._printIframe = null;
     this.el = h('div', `${cssPrefix}-print`)
       .children(
         h('div', `${cssPrefix}-print-bar`)
@@ -103,6 +103,7 @@ export default class Print {
 
   resetData(data) {
     this.data = data;
+    this._printIframe = null;
   }
 
   preview() {
@@ -111,8 +112,8 @@ export default class Print {
     const iwidth = width - padding * 2;
     const iheight = height - padding * 2;
     const cr = data.contentRange();
-    const pages = parseInt(cr.h / iheight, 10) + 1;
-    const scale = iwidth / cr.w;
+    const scale = cr.w > 0 ? iwidth / cr.w : 1;
+    const effHeight = scale < 1 ? iheight / scale : iheight;
     let left = padding;
     const top = padding;
     if (scale > 1) {
@@ -128,9 +129,11 @@ export default class Print {
       eri: 0,
       eci: 0,
     };
-    for (let i = 0; i < pages; i += 1) {
+    const maxPages = cr.eri - cr.sri + 2;
+    for (let i = 0; i < maxPages && (ri <= cr.eri || i === 0); i += 1) {
       let th = 0;
       let yo = 0;
+      const startRi = ri;
       const wrap = h('div', `${cssPrefix}-canvas-card`);
       const canvas = h('canvas', `${cssPrefix}-canvas`);
       this.canvases.push(canvas.el);
@@ -139,21 +142,25 @@ export default class Print {
       draw.save();
       draw.translate(left, top);
       if (scale < 1) draw.scale(scale, scale);
-      // console.log('ri:', ri, cr.eri, yoffset);
       for (; ri <= cr.eri; ri += 1) {
         const rh = data.rows.getHeight(ri);
         th += rh;
-        if (th < iheight) {
+        if (th < effHeight || ri === startRi) {
           for (let ci = 0; ci <= cr.eci; ci += 1) {
             renderCell(draw, data, ri, ci, yoffset);
             mViewRange.eci = ci;
+          }
+          if (th >= effHeight) {
+            yo = -th;
+            ri += 1;
+            break;
           }
         } else {
           yo = -(th - rh);
           break;
         }
       }
-      mViewRange.eri = ri;
+      mViewRange.eri = Math.max(mViewRange.sri, ri - 1);
       draw.restore();
       // merge-cell
       draw.save();
@@ -165,19 +172,28 @@ export default class Print {
       });
       draw.restore();
 
-      mViewRange.sri = mViewRange.eri;
-      mViewRange.sci = mViewRange.eci;
+      mViewRange.sri = ri;
+      mViewRange.sci = 0;
       yoffset += yo;
       this.contentEl.child(h('div', `${cssPrefix}-canvas-card-wraper`).child(wrap.child(canvas)));
     }
     this.el.show();
   }
 
+  removePrintIframe() {
+    if (this._printIframe && this._printIframe.parentNode) {
+      this._printIframe.parentNode.removeChild(this._printIframe);
+    }
+    this._printIframe = null;
+  }
+
   toPrint() {
     this.el.hide();
+    this.removePrintIframe();
     const { paper } = this;
     const iframe = h('iframe', '').hide();
     const { el } = iframe;
+    this._printIframe = el;
     window.document.body.appendChild(el);
     const { contentWindow } = el;
     const idoc = contentWindow.document;
@@ -198,6 +214,14 @@ export default class Print {
       ctx.drawImage(it, 0, 0);
       idoc.body.appendChild(cn);
     });
+    contentWindow.onafterprint = () => {
+      this.removePrintIframe();
+    };
     contentWindow.print();
+  }
+
+  destroy() {
+    this.el.hide();
+    this.removePrintIframe();
   }
 }

@@ -1,15 +1,16 @@
 export function revokeUrl(url) {
-    if (typeof url === 'string' && url.startsWith('blob:')) {
+    if (typeof url === 'string' && url.startsWith('blob:') && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
         URL.revokeObjectURL(url);
     }
 }
 
 export function getUrl(src, options) {
+    const canCreateObjectUrl = typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function';
     if (typeof src === 'string') {
         return src;
-    } else if (typeof Blob !== 'undefined' && src instanceof Blob) {
+    } else if (canCreateObjectUrl && src instanceof Blob) {
         return URL.createObjectURL(src);
-    } else if (typeof Blob !== 'undefined' && (src instanceof ArrayBuffer || ArrayBuffer.isView(src))) {
+    } else if (canCreateObjectUrl && (src instanceof ArrayBuffer || ArrayBuffer.isView(src))) {
         return URL.createObjectURL(new Blob([src], options));
     } else {
         return src;
@@ -17,13 +18,14 @@ export function getUrl(src, options) {
 }
 
 export async function getUrlAsync(src, options) {
+    const canCreateObjectUrl = typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function';
     if (typeof src === 'string') {
         return src;
-    } else if (typeof Blob !== 'undefined' && src instanceof Blob) {
+    } else if (canCreateObjectUrl && src instanceof Blob) {
         return URL.createObjectURL(src);
-    } else if (typeof Blob !== 'undefined' && (src instanceof ArrayBuffer || ArrayBuffer.isView(src))) {
+    } else if (canCreateObjectUrl && (src instanceof ArrayBuffer || ArrayBuffer.isView(src))) {
         return URL.createObjectURL(new Blob([src], options));
-    } else if (typeof Response !== 'undefined' && src instanceof Response) {
+    } else if (canCreateObjectUrl && typeof Response !== 'undefined' && src instanceof Response) {
         return URL.createObjectURL(await src.blob());
     } else {
         return src;
@@ -48,6 +50,10 @@ export function normalizeFetchOptions(options) {
 
 export function loadScript(src) {
     return new Promise((resolve, reject) => {
+        if (typeof document === 'undefined') {
+            reject(new Error(`Failed to load script: ${src}`));
+            return;
+        }
         const script = document.createElement('script');
         script.src = src;
         script.onload = function () {
@@ -69,11 +75,11 @@ export function loadScript(src) {
 }
 
 export async function download(filename, data) {
-    if (!data || typeof document === 'undefined') {
+    if (!data || typeof document === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
         return;
     }
     const blob = (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) ? new Blob([data]) : data;
-    if (typeof Blob === 'undefined' || !(blob instanceof Blob)) {
+    if (!(blob instanceof Blob)) {
         return;
     }
     const objectUrl = URL.createObjectURL(blob);
@@ -96,8 +102,11 @@ export function downloadFile(filename, href) {
     eleLink.style.display = 'none';
     eleLink.href = href;
     target.appendChild(eleLink);
-    eleLink.click();
-    if (eleLink.parentNode) {
-        eleLink.parentNode.removeChild(eleLink);
+    try {
+        eleLink.click();
+    } finally {
+        if (eleLink.parentNode) {
+            eleLink.parentNode.removeChild(eleLink);
+        }
     }
 }

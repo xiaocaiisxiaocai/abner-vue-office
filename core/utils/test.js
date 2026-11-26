@@ -1,3 +1,3 @@
 export function isTest(){
-    return location.href.includes('test');
+    return typeof location !== 'undefined' && typeof location.href === 'string' && location.href.includes('test');
 }

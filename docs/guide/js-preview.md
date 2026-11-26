@@ -118,6 +118,7 @@ export interface Options {
     useBase64URL?: boolean;
     useMathMLPolyfill?: boolean;
     renderChanges?: boolean;
+    showChanges?: boolean;
 }
 ```
 

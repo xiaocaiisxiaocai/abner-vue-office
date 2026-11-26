@@ -7,7 +7,7 @@ export default class Dropdown extends Element {
     super('div', `${cssPrefix}-dropdown ${placement}`);
     this.title = title;
     this.change = () => {};
-    this.headerClick = () => {};
+    this._clickoutsideEl = null;
     if (typeof title === 'string') {
       this.title = h('div', `${cssPrefix}-dropdown-title`).child(title);
     } else if (showArrow) {
@@ -53,6 +53,7 @@ export default class Dropdown extends Element {
     if (this.el && this.el.parentNode) {
       const parentEl = this.parent();
       parentEl.active();
+      this._clickoutsideEl = parentEl;
       bindClickoutside(parentEl, () => {
         this.hide();
       });
@@ -65,6 +66,11 @@ export default class Dropdown extends Element {
       const parentEl = this.parent();
       parentEl.active(false);
       unbindClickoutside(parentEl);
+    }
+    if (this._clickoutsideEl) {
+      this._clickoutsideEl.active(false);
+      unbindClickoutside(this._clickoutsideEl);
+      this._clickoutsideEl = null;
     }
   }
 }

@@ -100,70 +100,21 @@ class CellRange {
   // difference
   difference(other) {
     const ret = [];
-    const addRet = (sri, sci, eri, eci) => {
-      ret.push(new CellRange(sri, sci, eri, eci));
-    };
+    if (this.disjoint(other)) {
+      ret.push(this.clone());
+      return ret;
+    }
     const {
       sri, sci, eri, eci,
     } = this;
-    const dsr = other.sri - sri;
-    const dsc = other.sci - sci;
-    const der = eri - other.eri;
-    const dec = eci - other.eci;
-    if (dsr > 0) {
-      addRet(sri, sci, other.sri - 1, eci);
-      if (der > 0) {
-        addRet(other.eri + 1, sci, eri, eci);
-        if (dsc > 0) {
-          addRet(other.sri, sci, other.eri, other.sci - 1);
-        }
-        if (dec > 0) {
-          addRet(other.sri, other.eci + 1, other.eri, eci);
-        }
-      } else {
-        if (dsc > 0) {
-          addRet(other.sri, sci, eri, other.sci - 1);
-        }
-        if (dec > 0) {
-          addRet(other.sri, other.eci + 1, eri, eci);
-        }
-      }
-    } else if (der > 0) {
-      addRet(other.eri + 1, sci, eri, eci);
-      if (dsc > 0) {
-        addRet(sri, sci, other.eri, other.sci - 1);
-      }
-      if (dec > 0) {
-        addRet(sri, other.eci + 1, other.eri, eci);
-      }
-    }
-    if (dsc > 0) {
-      addRet(sri, sci, eri, other.sci - 1);
-      if (dec > 0) {
-        addRet(sri, other.eri + 1, eri, eci);
-        if (dsr > 0) {
-          addRet(sri, other.sci, other.sri - 1, other.eci);
-        }
-        if (der > 0) {
-          addRet(other.sri + 1, other.sci, eri, other.eci);
-        }
-      } else {
-        if (dsr > 0) {
-          addRet(sri, other.sci, other.sri - 1, eci);
-        }
-        if (der > 0) {
-          addRet(other.sri + 1, other.sci, eri, eci);
-        }
-      }
-    } else if (dec > 0) {
-      addRet(eri, other.eci + 1, eri, eci);
-      if (dsr > 0) {
-        addRet(sri, sci, other.sri - 1, other.eci);
-      }
-      if (der > 0) {
-        addRet(other.eri + 1, sci, eri, other.eci);
-      }
-    }
+    const isr = Math.max(sri, other.sri);
+    const isc = Math.max(sci, other.sci);
+    const ier = Math.min(eri, other.eri);
+    const iec = Math.min(eci, other.eci);
+    if (isr > sri) ret.push(new CellRange(sri, sci, isr - 1, eci));
+    if (ier < eri) ret.push(new CellRange(ier + 1, sci, eri, eci));
+    if (isc > sci) ret.push(new CellRange(isr, sci, ier, isc - 1));
+    if (iec < eci) ret.push(new CellRange(isr, iec + 1, ier, eci));
     return ret;
   }
 

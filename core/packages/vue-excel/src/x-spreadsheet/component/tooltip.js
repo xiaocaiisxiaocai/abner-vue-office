@@ -1,11 +1,13 @@
-/* global document */
 import { h } from './element';
-import { bind } from './event';
+import { bind, unbind } from './event';
 import { cssPrefix } from '../config';
 
 export default function tooltip(html, target) {
   if (target.classList.contains('active')) {
     return;
+  }
+  if (typeof target._xTooltipCleanup === 'function') {
+    target._xTooltipCleanup();
   }
   const {
     left, top, width, height,
@@ -17,15 +19,18 @@ export default function tooltip(html, target) {
   el.css('left', `${left + (width / 2) - (elBox.width / 2)}px`)
     .css('top', `${top + height + 2}px`);
 
-  bind(target, 'mouseleave', () => {
-    if (document.body.contains(el.el)) {
-      document.body.removeChild(el.el);
+  const cleanup = () => {
+    if (el.el.parentNode) {
+      el.el.parentNode.removeChild(el.el);
     }
-  });
+    unbind(target, 'mouseleave', cleanup);
+    unbind(target, 'click', cleanup);
+    if (target._xTooltipCleanup === cleanup) {
+      target._xTooltipCleanup = null;
+    }
+  };
+  target._xTooltipCleanup = cleanup;
 
-  bind(target, 'click', () => {
-    if (document.body.contains(el.el)) {
-      document.body.removeChild(el.el);
-    }
-  });
+  bind(target, 'mouseleave', cleanup);
+  bind(target, 'click', cleanup);
 }

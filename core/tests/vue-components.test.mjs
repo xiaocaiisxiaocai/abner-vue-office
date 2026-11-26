@@ -88,6 +88,16 @@ test('vue-docx/src/main.vue covers validator, mount, switch, empty clear, error,
         sfc.setProp('src', 'after-unmount');
         await new Promise(r => setTimeout(r, 10));
         assert.equal(rootEl.innerHTML, '');
+
+        // Clearing src before mount must not crash or emit rendered
+        const unmountedSfc = mountSfcScript(
+            'packages/vue-docx/src/main.vue',
+            { docx: mockDocx, downloadFile: () => {} },
+            { src: 'init', requestOptions: {}, options: {} }
+        );
+        unmountedSfc.setProp('src', '');
+        await new Promise(r => setTimeout(r, 5));
+        assert.equal(unmountedSfc.emitted.length, 0);
     });
 });
 
@@ -188,6 +198,24 @@ test('vue-excel/src/main.vue covers mount, hooks, events, switchSheet, error, sa
 
         sfc.unmount();
         assert.equal(sheets[0].destroyed, true);
+
+        // Pre-mount src watch does not crash or emit
+        const preSfc = mountSfcScript(
+            'packages/vue-excel/src/main.vue',
+            {
+                Spreadsheet: MockSpreadsheet,
+                getData: async src => src,
+                readExcelData: async () => ({ _worksheets: [] }),
+                transferExcelToSpreadSheet: wb => ({ workbookData: [], medias: [], workbookSource: wb }),
+                renderImage: () => {},
+                clearCache: () => {},
+                debounce,
+                downloadFile: () => {}
+            },
+            { src: 'a.xlsx', requestOptions: {}, options: {} }
+        );
+        preSfc.setProp('src', '');
+        assert.equal(preSfc.emitted.length, 0);
     });
 });
 
@@ -299,8 +327,71 @@ test('vue-pdf/src/main.vue covers scheduleInit dedupe, scale, virtual scroll, in
             assert.equal(downloads.length, 1);
             assert.equal(downloads[0].n, 'out.pdf');
 
+            sfc.setProp('defaultScale', 2);
+            await new Promise(r => setTimeout(r, 15));
+            assert.equal(sfc.setupResult.getScale(), 2);
+
             sfc.unmount();
             assert.ok(cancelledTasks >= 0);
+        });
+
+        // setScale while initial loadingTask is in flight must not re-call getDocument
+        let slowGetDocCalls = 0;
+        let resolveSlowDoc;
+        let lastDocOpts;
+        mockWindow.pdfjsLib.getDocument = (opts) => {
+            slowGetDocCalls++;
+            lastDocOpts = opts;
+            return {
+                destroy() {},
+                promise: new Promise(r => {
+                    resolveSlowDoc = r;
+                })
+            };
+        };
+        await runWithDomGlobals({
+            document: mockDocument,
+            window: mockWindow,
+            getComputedStyle: mockWindow.getComputedStyle
+        }, async () => {
+            const c = mockDocument.createElement('div');
+            const w = mockDocument.createElement('div');
+            const sfcSlow = mountSfcScript(
+                'packages/vue-pdf/src/main.vue',
+                {
+                    workerStr: 'console.log(1);',
+                    pdfjsLib: 'console.log(2);',
+                    downloadFile: () => {},
+                    getUrlAsync: async src => src,
+                    revokeUrl: () => {},
+                    loadScript: async () => {},
+                    omit,
+                    debounce
+                },
+                {
+                    src: 'https://example.com/slow.pdf',
+                    options: { width: -10, url: 'https://override.invalid/bad.pdf' },
+                    defaultScale: 1
+                },
+                { containerRef: c, wrapperRef: w }
+            );
+            sfcSlow.mount();
+            await new Promise(r => setTimeout(r, 5));
+            assert.equal(slowGetDocCalls, 1);
+            assert.equal(lastDocOpts.url, 'https://example.com/slow.pdf');
+            sfcSlow.setupResult.setScale(1.25);
+            assert.equal(slowGetDocCalls, 1);
+            resolveSlowDoc({
+                numPages: 1,
+                destroy() {},
+                getPage: async () => ({
+                    getViewport: ({ scale }) => ({ width: 200 * scale, height: 300 * scale }),
+                    render: () => ({ cancel() {}, promise: Promise.resolve() })
+                })
+            });
+            await new Promise(r => setTimeout(r, 15));
+            assert.ok(w.style.minWidth && !w.style.minWidth.startsWith('-'));
+            sfcSlow.unmount();
         });
     } finally {
         URL.createObjectURL = origCreate;
@@ -390,5 +481,61 @@ test('vue-pptx/src/main.vue covers off-DOM stageEl swap, race guard, rerender, s
 
         sfc.unmount();
         assert.ok(destroyedViewers.length >= 2);
+    });
+
+    // Additional coverage: string HTTP fetch, Blob, Response, invalid src, negative options, pre-mount guard
+    await runWithDomGlobals({
+        document: mockDocument,
+        fetch: async (url) => ({
+            ok: !url.includes('404'),
+            status: url.includes('404') ? 404 : 200,
+            arrayBuffer: async () => new TextEncoder().encode(`fetched:${url}`).buffer
+        })
+    }, async () => {
+        const root2 = mockDocument.createElement('div');
+        const seenOpts = [];
+        const sfc2 = mountSfcScript(
+            'packages/vue-pptx/src/main.vue',
+            {
+                initPptxPreviewer: (el, opts) => {
+                    seenOpts.push(opts);
+                    return initPptxPreviewer(el, opts);
+                },
+                downloadFile: () => {},
+                normalizeFetchOptions: opts => opts || {}
+            },
+            { src: 'https://example.com/ok.pptx', options: { width: -100, height: NaN } },
+            { rootRef: root2 }
+        );
+        sfc2.mount();
+        await new Promise(r => setTimeout(r, 15));
+        assert.equal(seenOpts[0].width, 800);
+        assert.equal(seenOpts[0].height, 600);
+
+        sfc2.setProp('src', new Blob([new TextEncoder().encode('from-blob')]));
+        await new Promise(r => setTimeout(r, 15));
+        assert.equal(root2.children[0].className, 'from-blob');
+
+        sfc2.setProp('src', new Response(new TextEncoder().encode('from-resp')));
+        await new Promise(r => setTimeout(r, 15));
+        assert.equal(root2.children[0].className, 'from-resp');
+
+        sfc2.setProp('src', 'https://example.com/404.pptx');
+        await new Promise(r => setTimeout(r, 15));
+        assert.ok(sfc2.emitted.some(e => e.name === 'error' && /404/.test(e.args[0].message)));
+
+        sfc2.setProp('src', { invalid: true });
+        await new Promise(r => setTimeout(r, 15));
+        assert.ok(sfc2.emitted.some(e => e.name === 'error' && /不支持/.test(e.args[0].message)));
+
+        sfc2.unmount();
+
+        const prePptx = mountSfcScript(
+            'packages/vue-pptx/src/main.vue',
+            { initPptxPreviewer, downloadFile: () => {}, normalizeFetchOptions: opts => opts || {} },
+            { src: 'a.pptx' }
+        );
+        prePptx.setProp('src', 'b.pptx');
+        assert.equal(prePptx.emitted.length, 0);
     });
 });

@@ -111,19 +111,20 @@ export default class Bottombar {
       this.deleteEl = item;
     }).on('dblclick', () => {
       if (options.mode === 'read') return;
-      const v = item.html();
+      if (item.el && typeof item.el.querySelector === 'function' && item.el.querySelector('input')) {
+        return;
+      }
+      const idx = this.items.indexOf(item);
+      if (idx < 0) return;
+      const v = this.dataNames[idx];
       const input = new FormInput('auto', '');
       input.val(v);
       input.input.on('blur', ({ target }) => {
         const { value } = target;
-        const nindex = this.dataNames.findIndex(it => it === v);
-        this.renameItem(nindex, value);
-        /*
-        this.dataNames.splice(nindex, 1, value);
-        this.moreEl.reset(this.dataNames);
-        item.html('').child(value);
-        this.updateFunc(nindex, value);
-        */
+        const nindex = this.items.indexOf(item);
+        if (nindex >= 0) {
+          this.renameItem(nindex, value);
+        }
       });
       item.html('').child(input.el);
       input.focus();
@@ -137,6 +138,7 @@ export default class Bottombar {
   }
 
   renameItem(index, value) {
+    if (index < 0 || index >= this.items.length) return;
     this.dataNames.splice(index, 1, value);
     this.moreEl.reset(this.dataNames);
     this.items[index].html('').child(value);
@@ -156,11 +158,14 @@ export default class Bottombar {
 
   deleteItem() {
     const { activeEl, deleteEl } = this;
+    if (!deleteEl) return [-1];
     if (this.items.length > 1) {
       const index = this.items.findIndex(it => it === deleteEl);
+      if (index < 0) return [-1];
       this.items.splice(index, 1);
       this.dataNames.splice(index, 1);
       this.menuEl.removeChild(deleteEl.el);
+      this.deleteEl = null;
       this.moreEl.reset(this.dataNames);
       if (activeEl === deleteEl) {
         const [f] = this.items;
@@ -175,6 +180,7 @@ export default class Bottombar {
 
   clickSwap2(item) {
     const index = this.items.findIndex(it => it === item);
+    if (index < 0) return;
     this.clickSwap(item);
     this.activeEl.toggle();
     this.swapFunc(index);

@@ -1,5 +1,3 @@
-/* global document */
-
 import Selector from './selector';
 import Scroll from './scroll';
 import History from './history';
@@ -159,7 +157,7 @@ function setStyleBorder(ri, ci, bss) {
   const { styles, rows } = this;
   const cell = rows.getCellOrNew(ri, ci);
   let cstyle = {};
-  if (cell.style !== undefined) {
+  if (cell.style !== undefined && styles[cell.style]) {
     cstyle = helper.cloneDeep(styles[cell.style]);
   }
   cstyle = helper.merge(cstyle, { border: bss });
@@ -184,7 +182,7 @@ function setStyleBorders({ mode, style, color }) {
   } else if (mode === 'none') {
     selector.range.each((ri, ci) => {
       const cell = rows.getCell(ri, ci);
-      if (cell && cell.style !== undefined) {
+      if (cell && cell.style !== undefined && styles[cell.style]) {
         const ns = helper.cloneDeep(styles[cell.style]);
         delete ns.border;
         // ['bottom', 'top', 'left', 'right'].forEach((prop) => {
@@ -210,7 +208,9 @@ function setStyleBorders({ mode, style, color }) {
             }
           }
         }
-        mergeIndexes.forEach(it => merges.splice(it, 1));
+        for (let k = mergeIndexes.length - 1; k >= 0; k -= 1) {
+          merges.splice(mergeIndexes[k], 1);
+        }
         if (ci > eci) break;
         // jump merges -- end
         const cell = rows.getCell(ri, ci);
@@ -414,7 +414,7 @@ export default class DataProxy {
       const row = [];
       for (let ci = sci; ci <= eci; ci += 1) {
         const cell = this.getCell(ri, ci);
-        row.push((cell && cell.text) || '');
+        row.push((cell && cell.text != null) ? cell.text : '');
       }
       copyText.push(row);
     }
@@ -424,15 +424,14 @@ export default class DataProxy {
 
     // why used this
     // cuz http protocol will be blocked request clipboard by browser
-    if (evt) {
+    if (evt && evt.clipboardData) {
       evt.clipboardData.clearData();
       evt.clipboardData.setData('text/plain', copyText);
       evt.preventDefault();
     }
 
     // this need https protocol
-    /* global navigator */
-    if (navigator.clipboard) {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
       navigator.clipboard.writeText(copyText).then(() => {}, (err) => {
         console.log('text copy to the system clipboard error  ', copyText, err);
       });
@@ -461,8 +460,11 @@ export default class DataProxy {
   }
 
   pasteFromSystemClipboard(resetSheet, eventTrigger) {
+    if (typeof navigator === 'undefined' || !navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+      return Promise.resolve();
+    }
     const { selector } = this;
-    navigator.clipboard.readText().then((content) => {
+    return navigator.clipboard.readText().then((content) => {
       const contentToPaste = this.parseClipboardContent(content);
       let startRow = selector.ri;
       contentToPaste.forEach((row) => {
@@ -475,7 +477,7 @@ export default class DataProxy {
       });
       resetSheet();
       eventTrigger(this.rows.getData());
-    });
+    }).catch(() => {});
   }
 
   parseClipboardContent(clipboardContent) {
@@ -599,7 +601,7 @@ export default class DataProxy {
         selector.range.each((ri, ci) => {
           const cell = rows.getCellOrNew(ri, ci);
           let cstyle = {};
-          if (cell.style !== undefined) {
+          if (cell.style !== undefined && styles[cell.style]) {
             cstyle = helper.cloneDeep(styles[cell.style]);
           }
           if (property === 'format') {
@@ -1010,7 +1012,7 @@ export default class DataProxy {
   getCellStyleOrDefault(ri, ci) {
     const { styles, rows } = this;
     const cell = rows.getCell(ri, ci);
-    const cellStyle = (cell && cell.style !== undefined) ? styles[cell.style] : {};
+    const cellStyle = (cell && cell.style !== undefined && styles[cell.style]) ? styles[cell.style] : {};
     return helper.merge(this.defaultStyle(), cellStyle);
   }
 
@@ -1231,8 +1233,10 @@ export default class DataProxy {
         || property === 'cols' || property === 'validations') {
         this[property].setData(d[property]);
       } else if (property === 'freeze') {
-        const [x, y] = expr2xy(d[property]);
-        this.freeze = [y, x];
+        if (typeof d[property] === 'string' && d[property]) {
+          const [x, y] = expr2xy(d[property]);
+          this.freeze = [y, x];
+        }
       } else if (property === 'autofilter') {
         this.autoFilter.setData(d[property]);
       } else if (d[property] !== undefined) {

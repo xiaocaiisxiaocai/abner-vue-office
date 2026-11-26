@@ -59,7 +59,7 @@ test('media.js getImageMimeType and calcPosition handle anchors, hidden tracks, 
         assert.equal(sameCellPos.height, 100);
     });
 
-    await runWithDomGlobals({ window: undefined }, () => {
+        await runWithDomGlobals({ window: undefined }, () => {
         const oneCellPos = calcPosition(
             sheet,
             {
@@ -73,6 +73,20 @@ test('media.js getImageMimeType and calcPosition handle anchors, hidden tracks, 
         assert.equal(oneCellPos.y, 24);
         assert.ok(Math.abs(oneCellPos.width - 120) < 0.01);
         assert.ok(Math.abs(oneCellPos.height - 60) < 0.01);
+
+        const clampedPos = calcPosition(
+            sheet,
+            {
+                tl: { nativeCol: 1, nativeColOff: 0, nativeRow: 1, nativeRowOff: 0 },
+                br: { nativeCol: 3, nativeColOff: 0, nativeRow: 3, nativeRowOff: 0 }
+            },
+            null,
+            { widthOffset: -500, heightOffset: -500 }
+        );
+        assert.equal(clampedPos.x, 61);
+        assert.equal(clampedPos.y, 25);
+        assert.ok(clampedPos.width > 1);
+        assert.ok(clampedPos.height > 1);
     });
 });
 
@@ -166,6 +180,38 @@ test('media.js renderImage clips, deduplicates concurrent loads, clears cache, a
             await new Promise(r => setTimeout(r, 10));
             assert.equal(createCount, 3);
             assert.equal(drawn.length, 4);
+
+            // Sync throw inside Blob/createObjectURL must not poison cache
+            clearCache(ctx);
+            URL.createObjectURL = () => {
+                throw new Error('sync blob fail');
+            };
+            renderImage(ctx, medias, sheet, null, {});
+            await new Promise(r => setTimeout(r, 10));
+            URL.createObjectURL = () => {
+                createCount++;
+                return `blob:img-${createCount}`;
+            };
+            renderImage(ctx, medias, sheet, null, {});
+            await new Promise(r => setTimeout(r, 10));
+            assert.equal(drawn.length, 6);
+
+            // Early exit guards (null ctx, empty _media, invalid media buffer, completely clipped off-screen)
+            renderImage(null, medias, sheet);
+            renderImage(ctx, medias, { _media: [] });
+            renderImage(ctx, [{}], { _media: [{ type: 'image', imageId: 0, range: {} }] });
+            const clippedCountBefore = drawn.length;
+            renderImage(ctx, medias, {
+                _columns: [],
+                _rows: [],
+                _media: [{
+                    type: 'image',
+                    imageId: 0,
+                    range: { tl: { nativeCol: 0, nativeColOff: 0, nativeRow: 0, nativeRowOff: 0 }, ext: { width: 10, height: 10 } }
+                }]
+            }, { scroll: { x: 500, y: 500 } }, {});
+            await new Promise(r => setTimeout(r, 10));
+            assert.equal(drawn.length, clippedCountBefore);
         });
     } finally {
         URL.createObjectURL = origCreate;
@@ -304,6 +350,7 @@ test('js-excel/src/main.js lifecycle, transform hooks, race guard, save, and des
         assert.equal(createdSheets[0].reRenderCount, 1);
 
         excel.setOptions({ xls: true });
+        excel.setOptions(null);
         excel.setRequestOptions({ headers: { A: '1' } });
         excel.save();
         assert.match(downloads[0].name, /\.xls$/);
@@ -320,5 +367,42 @@ test('js-excel/src/main.js lifecycle, transform hooks, race guard, save, and des
         assert.deepEqual(excel.options, {});
         assert.deepEqual(excel.requestOptions, {});
         assert.equal(createdSheets[0].destroyed, true);
+    });
+
+    // Test MutationObserver lifecycle and swapFunc sheetIndex update before original swapFunc
+    let disconnected = false;
+    class MockObserver {
+        constructor(cb) {
+            this.cb = cb;
+        }
+        observe() {}
+        disconnect() {
+            disconnected = true;
+        }
+    }
+    const renderedSheets = [];
+    class MockSheetWithRender extends MockSpreadsheet {
+        constructor(el, opts) {
+            super(el, opts);
+            this.datas = [
+                { getSelectedRect: () => ({ scroll: { x: 0, y: 0 } }) },
+                { getSelectedRect: () => ({ scroll: { x: 12, y: 34 } }) }
+            ];
+            this.bottombar.swapFunc = () => {
+                renderedSheets.push(excelObs.sheetIndex);
+            };
+        }
+    }
+    const { init: initObs } = new Function(
+        'Spreadsheet', 'getData', 'readExcelData', 'transferExcelToSpreadSheet', 'renderImage', 'clearCache', 'readOnlyInput', 'debounce', 'downloadFile',
+        `${src}\nreturn { init };`
+    )(MockSheetWithRender, mockGetData, async () => ({ _worksheets: [{ name: 'S1' }, { name: 'S2' }] }), mockTransfer, () => {}, () => {}, () => {}, debounce, () => {});
+    let excelObs;
+    await runWithDomGlobals({ document: mockDocument, MutationObserver: MockObserver }, async () => {
+        excelObs = initObs(mockDocument.createElement('div'));
+        excelObs.xs.bottombar.swapFunc(1);
+        assert.equal(renderedSheets[0], 1);
+        excelObs.destroy();
+        assert.equal(disconnected, true);
     });
 });

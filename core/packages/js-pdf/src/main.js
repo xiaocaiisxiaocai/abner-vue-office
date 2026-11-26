@@ -29,6 +29,8 @@ class AbnerJsPdfPreview {
     renderId = 0;
     isDestroyed = false;
     activeRenderTasks = new Set();
+    canvasRenderTasks = new WeakMap();
+    cancelledRenderTasks = new WeakSet();
     totalItems = 0; //pdf总页数
     pageWidth = 0; //每个canvas dom宽度
     pageHeight = 0; //每个canvas dom高度
@@ -119,6 +121,7 @@ class AbnerJsPdfPreview {
     cancelRenderTasks() {
         this.activeRenderTasks.forEach(task => {
             if (task && typeof task.cancel === 'function') {
+                this.cancelledRenderTasks.add(task);
                 try {
                     task.cancel();
                 } catch (e) {
@@ -180,7 +183,7 @@ class AbnerJsPdfPreview {
             cMapUrl: `${staticBase.endsWith('/') ? staticBase : staticBase + '/'}cmaps/`,
             cMapPacked: true,
             enableXfa: true,
-            ...omit(this.options, ['width', 'staticFileUrl', 'gap', 'httpHeaders', 'onError', 'onRendered'])
+            ...omit(this.options, ['url', 'width', 'staticFileUrl', 'gap', 'httpHeaders', 'onError', 'onRendered'])
         });
         return this.loadingTask.promise;
     }
@@ -206,6 +209,9 @@ class AbnerJsPdfPreview {
                 }
             }
             const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                return;
+            }
             const transform = outputScale !== 1
                 ? [outputScale, 0, 0, outputScale, 0, 0]
                 : null;
@@ -216,13 +222,17 @@ class AbnerJsPdfPreview {
                 viewport
             });
             this.activeRenderTasks.add(renderTask);
+            this.canvasRenderTasks.set(canvas, renderTask);
             return renderTask.promise.catch(err => {
-                if (this.isDestroyed || currentId !== this.renderId) {
+                if (this.isDestroyed || currentId !== this.renderId || this.cancelledRenderTasks.has(renderTask)) {
                     return;
                 }
                 return Promise.reject(err);
             }).finally(() => {
                 this.activeRenderTasks.delete(renderTask);
+                if (this.canvasRenderTasks.get(canvas) === renderTask) {
+                    this.canvasRenderTasks.delete(canvas);
+                }
             });
         });
     }
@@ -233,7 +243,10 @@ class AbnerJsPdfPreview {
                 return null;
             }
             const rawWidth = this.wrapper.getBoundingClientRect().width || 820;
-            const maxWidth = this.options.width || Math.max(rawWidth - 20, 100);
+            const optWidth = typeof this.options.width === 'number' && Number.isFinite(this.options.width) && this.options.width > 0
+                ? this.options.width
+                : 0;
+            const maxWidth = optWidth || Math.max(rawWidth - 20, 100);
             let viewport = pdfPage.getViewport({ scale: 1 });
             if (viewport.width > maxWidth * 1.5) {
                 this.getViewportScale = 0.5;
@@ -249,9 +262,9 @@ class AbnerJsPdfPreview {
             const canvasHeight = Math.floor(viewport.height * outputScale);
             let domWidth = Math.floor(viewport.width);
             let domHeight = Math.floor(viewport.height);
-            if (this.options.width && domWidth > 0) {
-                const scale = this.options.width / domWidth;
-                domWidth = Math.floor(this.options.width);
+            if (optWidth && domWidth > 0) {
+                const scale = optWidth / domWidth;
+                domWidth = Math.floor(optWidth);
                 domHeight = Math.floor(domHeight * scale);
             }
             const wrapperWidth = this.wrapper.getBoundingClientRect().width - 20;
@@ -412,6 +425,19 @@ class AbnerJsPdfPreview {
             originNodes.forEach(node => {
                 const id = +node.getAttribute('data-id');
                 if (id < startIndex || id > endIndex) {
+                    const pendingTask = this.canvasRenderTasks.get(node);
+                    if (pendingTask) {
+                        this.cancelledRenderTasks.add(pendingTask);
+                        this.canvasRenderTasks.delete(node);
+                        this.activeRenderTasks.delete(pendingTask);
+                        if (typeof pendingTask.cancel === 'function') {
+                            try {
+                                pendingTask.cancel();
+                            } catch (e) {
+                                // ignore
+                            }
+                        }
+                    }
                     list.removeChild(node);
                 }
             });

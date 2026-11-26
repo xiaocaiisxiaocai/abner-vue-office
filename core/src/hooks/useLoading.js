@@ -14,9 +14,11 @@ function showLoading(content) {
 }
 
 function hideLoading() {
-    if (loading.value === true && typeof hide === 'function') {
-        hide();
-        hide = null;
+    if (loading.value === true) {
+        if (typeof hide === 'function') {
+            hide();
+            hide = null;
+        }
         loading.value = false;
     }
 }

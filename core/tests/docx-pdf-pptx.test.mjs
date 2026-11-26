@@ -24,6 +24,15 @@ test('usePreview, useLoading, and docx hack.js work in browser and SSR safely', 
     await runWithDomGlobals({ window: mockWin }, async () => {
         await import(`../packages/vue-docx/src/hack.js?browser=${Date.now()}`);
         assert.equal(typeof mockWin.setImmediate, 'function');
+        assert.equal(typeof mockWin.clearImmediate, 'function');
+        let gotArgs = null;
+        await new Promise(resolve => {
+            mockWin.setImmediate((a, b) => {
+                gotArgs = [a, b];
+                resolve();
+            }, 'x', 42);
+        });
+        assert.deepEqual(gotArgs, ['x', 42]);
         const customImm = () => 99;
         mockWin.setImmediate = customImm;
         await import(`../packages/js-docx/src/hack.js?preserve=${Date.now()}`);
@@ -100,6 +109,17 @@ test('vue-docx/src/docx.js validates data and serializes container commits', asy
     await docxHelper.render(new Blob(['fresh']), container, {}, () => true);
     assert.equal(container.innerHTML, '<p>fresh</p>');
     assert.deepEqual(events, ['parse:stale', 'parse:fresh', 'commit:fresh']);
+
+    await docxHelper.render('', container, {}, () => true);
+    assert.equal(container.innerHTML, '');
+
+    await runWithDomGlobals({ Blob: undefined }, async () => {
+        assert.equal(await docxHelper.getBlob(new Uint8Array([1, 2])), undefined);
+    });
+
+    await runWithDomGlobals({ fetch: async () => ({ ok: false, status: 403 }) }, async () => {
+        await assert.rejects(docxHelper.getData('https://example.com/deny.docx'), r => r.status === 403);
+    });
 });
 
 test('js-docx/src/main.js constructor, setOptions merge, error handling, and destroy', async () => {
@@ -344,5 +364,118 @@ test('js-pdf/src/main.js handles gap:0, superseded preview, destroy during getPa
             getViewport: ({ scale }) => ({ width: 100 * scale, height: 100 * scale })
         });
         await p;
+    });
+
+    // Test package entrypoints (.install / init) across all 7 packages
+    const fsMod2 = await import('node:fs');
+    for (const pkg of ['vue-docx', 'vue-excel', 'vue-pdf', 'vue-pptx']) {
+        const entrySrc = fsMod2.readFileSync(path.join(path.resolve('packages'), pkg, 'index.js'), 'utf8')
+            .replace(/^\s*import\s+['"][^'"]+['"];\s*$/gm, '')
+            .replace(/^\s*import\s+(\w+)\s+from\s+['"][^'"]+['"];\s*$/gm, '')
+            .replace(/export\s+default\s+/, 'return ');
+        const compName = `AbnerVueOffice${pkg.replace('vue-', '').replace(/^[a-z]/, c => c.toUpperCase())}`;
+        const fakeComp = { name: compName };
+        const comp = new Function(compName, entrySrc)(fakeComp);
+        const registered = [];
+        comp.install({ component: (name, def) => registered.push({ name, def }) });
+        assert.deepEqual(registered[0], { name: compName, def: fakeComp });
+    }
+    for (const pkg of ['js-docx', 'js-excel', 'js-pdf']) {
+        const entrySrc = fsMod2.readFileSync(path.join(path.resolve('packages'), pkg, 'index.js'), 'utf8')
+            .replace(/^\s*import\s+\{init\}\s+from\s+['"][^'"]+['"];\s*$/gm, '')
+            .replace(/export\s+default\s+/, 'return ');
+        const sentinel = () => 'ok';
+        const mod = new Function('init', entrySrc)(sentinel);
+        assert.equal(mod.init, sentinel);
+    }
+});
+
+test('js-pdf/src/main.js validates negative width, preserves resolved url, handles checkPdfLib retry and cancelled detached canvas', async () => {
+    const { mockDocument, mockWindow } = createDomMocks();
+    const fsMod = await import('node:fs');
+    const mainSrc = fsMod.readFileSync(path.resolve('packages/js-pdf/src/main.js'), 'utf8')
+        .replace(/^\s*import\s+[\s\S]*?from\s+['"][^'"]+['"];\s*$/gm, '')
+        .replace(/export\s+function\s+init/g, 'function init');
+
+    let loadAttempt = 0;
+    let passedDocOpts = null;
+    const errors = [];
+    const { init } = new Function(
+        'workerStr', 'pdfLibJsStr', 'downloadFile', 'getUrlAsync', 'revokeUrl', 'loadScript', 'omit', 'debounce',
+        `${mainSrc}\nreturn { init };`
+    )(
+        'e30=',
+        'e30=',
+        () => {},
+        async src => src,
+        () => {},
+        async () => {
+            loadAttempt++;
+            if (loadAttempt === 1) {
+                throw new Error('lib load network error');
+            }
+            if (loadAttempt === 3) {
+                return; // resolves without setting window.pdfjsLib
+            }
+            mockWindow.pdfjsLib = {
+                GlobalWorkerOptions: { workerSrc: '' },
+                getDocument(opts) {
+                    passedDocOpts = opts;
+                    return {
+                        destroy() {},
+                        promise: Promise.resolve({
+                            numPages: 1,
+                            destroy() {},
+                            async getPage() {
+                                return {
+                                    getViewport: ({ scale }) => ({ width: 200 * scale, height: 300 * scale }),
+                                    render: () => ({
+                                        cancel() {},
+                                        promise: Promise.reject(new Error('cancelled by node removal'))
+                                    })
+                                };
+                            }
+                        })
+                    };
+                }
+            };
+        },
+        omit,
+        debounce
+    );
+
+    await runWithDomGlobals({
+        window: mockWindow,
+        document: mockDocument,
+        getComputedStyle: mockWindow.getComputedStyle
+    }, async () => {
+        const pdf = init(mockDocument.createElement('div'), {
+            width: -50,
+            url: 'https://evil.example/override.pdf',
+            onError: e => errors.push(e)
+        });
+        await assert.rejects(pdf.preview('https://real.example/doc.pdf'), /lib load network error/);
+        await assert.rejects(pdf.preview('https://real.example/doc.pdf'), /cancelled by node removal/);
+        assert.equal(passedDocOpts.url, 'https://real.example/doc.pdf');
+        assert.ok(pdf.pageWidth > 0);
+        pdf.destroy();
+
+        delete mockWindow.pdfjsLib;
+        const { init: initMissingLib } = new Function(
+            'workerStr', 'pdfLibJsStr', 'downloadFile', 'getUrlAsync', 'revokeUrl', 'loadScript', 'omit', 'debounce',
+            `${mainSrc}\nreturn { init };`
+        )(
+            'e30=',
+            'e30=',
+            () => {},
+            async src => src,
+            () => {},
+            async () => {},
+            omit,
+            debounce
+        );
+        const pdfNoLib = initMissingLib(mockDocument.createElement('div'));
+        await assert.rejects(pdfNoLib.preview('https://real.example/doc.pdf'), /window\.pdfjsLib未找到/);
+        pdfNoLib.destroy();
     });
 });

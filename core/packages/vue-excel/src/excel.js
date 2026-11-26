@@ -112,8 +112,10 @@ function requestExcel(src, options = {}) {
     const opts = options || {};
     return new Promise(function (resolve, reject) {
         const xhr = new XMLHttpRequest();
-        xhr.open(opts.method || 'GET', src, true);
-        xhr.responseType = opts.responseType || 'arraybuffer';
+        const method = (opts.method || 'GET').trim();
+        const isBodyless = /^(get|head)$/i.test(method);
+        xhr.open(method, src, true);
+        xhr.responseType = 'arraybuffer';
         xhr.onload = function () {
             if (xhr.status >= 200 && xhr.status < 300) {
                 resolve(xhr.response);
@@ -134,6 +136,9 @@ function requestExcel(src, options = {}) {
         xhr.ontimeout = function() {
             reject(new Error('Request timeout'));
         };
+        if (typeof opts.timeout === 'number' && Number.isFinite(opts.timeout) && opts.timeout >= 0) {
+            xhr.timeout = opts.timeout;
+        }
         xhr.withCredentials = Boolean(opts.withCredentials || opts.credentials === 'include');
         if (opts.headers) {
             Object.keys(opts.headers).forEach(function(key) {
@@ -141,7 +146,7 @@ function requestExcel(src, options = {}) {
             });
         }
 
-        xhr.send(opts.body);
+        xhr.send(isBodyless ? null : opts.body);
     });
 }
 
@@ -172,19 +177,19 @@ function transferColumns(excelSheet, spreadSheet, options, effectiveMaxColLen = 
         const col = rawColumns[i];
         spreadSheet.cols[i.toString()] = {};
         if(!col) {
-            spreadSheet.cols[i.toString()].width = defaultColWidth + (options.widthOffset || 0);
+            spreadSheet.cols[i.toString()].width = Math.max(1, defaultColWidth + (options.widthOffset || 0));
         }else if(col._hidden) {
             spreadSheet.cols[i.toString()].width = 0.1;
         }else if(col.width) {
-            spreadSheet.cols[i.toString()].width = col.width * 6 + (options.widthOffset || 0);
+            spreadSheet.cols[i.toString()].width = Math.max(1, col.width * 6 + (options.widthOffset || 0));
         } else {
-            spreadSheet.cols[i.toString()].width = defaultColWidth + (options.widthOffset || 0);
+            spreadSheet.cols[i.toString()].width = Math.max(1, defaultColWidth + (options.widthOffset || 0));
         }
     }
     if (options.widthOffset) {
         for (let i = limit; i < targetLen; i++) {
             spreadSheet.cols[i.toString()] = {
-                width: defaultColWidth + options.widthOffset
+                width: Math.max(1, defaultColWidth + options.widthOffset)
             };
         }
     }
@@ -280,7 +285,12 @@ function formatNumberValue(value, cellNumFmt) {
                 if (zeroQuoted) {
                     return zeroQuoted[1];
                 }
-                return patternOnly.includes('-') ? '-' : '';
+                if (patternOnly.includes('-')) {
+                    return '-';
+                }
+                if (!patternOnly.includes('?')) {
+                    return '';
+                }
             }
 
             const isParenNeg = useAbsForNegSection && /\(.*[0#?].*\)/.test(patternOnly);
@@ -312,13 +322,13 @@ function formatNumberValue(value, cellNumFmt) {
                 if (isParenNeg) {
                     return `(${pctResult}%)`;
                 }
-                if (value < 0 && hasExplicitMinus && !pctResult.startsWith('-')) {
+                if (value < 0 && hasExplicitMinus && !pctResult.startsWith('-') && !/^0(\.0+)?$/.test(pctResult)) {
                     return `-${pctResult}%`;
                 }
                 return `${pctResult}%`;
             }
 
-            if (/[0#]/.test(patternOnly)) {
+            if (/[0#?]/.test(patternOnly)) {
                 const numVal = useAbsForNegSection ? Math.abs(value) : value;
 
                 let prefix = '';
@@ -343,7 +353,7 @@ function formatNumberValue(value, cellNumFmt) {
                     }
                 }
 
-                const decMatch = patternOnly.match(/[0#?]\.([0#?]+)/);
+                const decMatch = patternOnly.match(/\.([0#?]+)/);
                 const maxDec = decMatch ? decMatch[1].length : 0;
                 const minDec = decMatch ? (decMatch[1].match(/0/g) || []).length : 0;
 
@@ -372,7 +382,7 @@ function formatNumberValue(value, cellNumFmt) {
                     }
                 }
 
-                if (patternOnly.includes('#,##') || patternOnly.includes('0,0') || patternOnly.includes('#,#')) {
+                if (/[#0],[#0]/.test(patternOnly)) {
                     const parts = result.split('.');
                     const digits = parts[0].split('').reverse();
                     const formatted = [];
@@ -541,7 +551,7 @@ function transferThemeColor(themeIndex, tint){
 function getStyle(cell){
     const style = cloneDeep(cell.style || {});
     let backGroundColor = null;
-    if(style.fill && style.fill.fgColor) {
+    if(style.fill && style.fill.fgColor && !(style.fill.type === 'pattern' && style.fill.pattern === 'none')) {
         // 8位字符颜色先转rgb再转16进制颜色
         if(style.fill.fgColor.argb){
             backGroundColor = transferArgbColor(style.fill.fgColor.argb);
@@ -618,8 +628,8 @@ function getStyle(cell){
         style.border = styleBorder;
     }
 
-    if(style.font && style.font.size && typeof style.font.size === 'number'){
-        style.font.size = Math.round(style.font.size / 1.333333);
+    if(style.font && typeof style.font.size === 'number' && style.font.size > 0){
+        style.font.size = Math.max(1, Math.round(style.font.size / 1.333333));
     }
     return style;
 }
@@ -666,9 +676,9 @@ export function transferExcelToSpreadSheet(workbook, options = {}){
                 sheetData.rows[spreadSheetRowIndex].height = 0.1;
                 return;
             }else if(row.height){
-                sheetData.rows[spreadSheetRowIndex].height = row.height + (opts.heightOffset || 0);
+                sheetData.rows[spreadSheetRowIndex].height = Math.max(1, row.height + (opts.heightOffset || 0));
             }else{
-                sheetData.rows[spreadSheetRowIndex].height = defaultRowHeight + (opts.heightOffset || 0);
+                sheetData.rows[spreadSheetRowIndex].height = Math.max(1, defaultRowHeight + (opts.heightOffset || 0));
             }
             //includeEmpty = false 不包含空白单元格
             (row._cells || []).forEach((cell, spreadSheetColIndex) =>{

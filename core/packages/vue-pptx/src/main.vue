@@ -50,8 +50,12 @@ export default defineComponent({
             const container = rootRef.value;
             const opts = props.options || {};
             const rect = container ? container.getBoundingClientRect() : { width: 960, height: 540 };
-            const width = opts.width || rect.width || 960;
-            const height = opts.height || rect.height || 540;
+            const width = (typeof opts.width === 'number' && Number.isFinite(opts.width) && opts.width > 0)
+                ? opts.width
+                : (rect.width || 960);
+            const height = (typeof opts.height === 'number' && Number.isFinite(opts.height) && opts.height > 0)
+                ? opts.height
+                : (rect.height || 540);
             return initPptxPreviewer(targetEl, {
                 ...opts,
                 width,
@@ -182,6 +186,9 @@ export default defineComponent({
         });
 
         watch(() => props.src, () => {
+            if (!rootRef.value) {
+                return;
+            }
             preview();
         });
 

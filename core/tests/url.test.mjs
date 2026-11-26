@@ -176,6 +176,36 @@ test('download ignores non-Blob inputs and triggers anchor click for valid paylo
             await download('ssr.docx', new Uint8Array([1]));
         });
 
+        await runWithDomGlobals({ document: mockDocument, Blob: undefined }, async () => {
+            await download('ssr-no-blob.docx', new Uint8Array([1, 2]));
+            await download('ssr-no-blob-ab.docx', new ArrayBuffer(4));
+        });
+
+        await runWithDomGlobals({ document: mockDocument, URL: undefined }, async () => {
+            await download('ssr-no-url.docx', new Blob(['hi']));
+            revokeUrl('blob:safe-noop');
+            assert.equal(getUrl('https://example.com/ok.pdf'), 'https://example.com/ok.pdf');
+            const u8 = new Uint8Array([1, 2]);
+            assert.equal(await getUrlAsync(u8), getUrl(u8));
+        });
+
+        const throwingDoc = {
+            body: mockDocument.createElement('body'),
+            createElement: (tag) => {
+                const el = origCreateEl(tag);
+                if (tag === 'a') {
+                    el.click = () => {
+                        throw new Error('click blocked');
+                    };
+                }
+                return el;
+            }
+        };
+        await runWithDomGlobals({ document: throwingDoc, setTimeout: immediateTimer }, async () => {
+            await assert.rejects(download('throw.docx', new Blob(['err'])), /click blocked/);
+            assert.equal(throwingDoc.body.children.length, 0);
+        });
+
         const noBodyDoc = {
             body: null,
             head: mockDocument.head,
@@ -219,6 +249,10 @@ test('getUrl/getUrlAsync are SSR safe when Blob/Response are undefined and loadS
     await runWithDomGlobals({ document: emptyDoc }, async () => {
         await assert.rejects(loadScript('https://example.com/no-target.js'), /Failed to load script/);
     });
+
+    await runWithDomGlobals({ document: undefined }, async () => {
+        await assert.rejects(loadScript('https://example.com/ssr.js'), /Failed to load script/);
+    });
 });
 
 test('utils/test.js isTest checks location.href accurately', async () => {
@@ -226,6 +260,9 @@ test('utils/test.js isTest checks location.href accurately', async () => {
         assert.equal(isTest(), true);
     });
     await runWithDomGlobals({ location: { href: 'http://localhost:5173/#/docx' } }, () => {
+        assert.equal(isTest(), false);
+    });
+    await runWithDomGlobals({ location: undefined }, () => {
         assert.equal(isTest(), false);
     });
 });

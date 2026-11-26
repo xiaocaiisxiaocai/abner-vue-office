@@ -86,7 +86,9 @@ export default class Suggest {
     this.filterItems = [];
     this.itemIndex = -1;
     el.hide();
-    unbindClickoutside(this.el.parent());
+    if (el && el.el && el.el.parentNode) {
+      unbindClickoutside(el.parent());
+    }
   }
 
   setItems(items) {
@@ -97,7 +99,8 @@ export default class Suggest {
   search(word) {
     let { items } = this;
     if (!/^\s*$/.test(word)) {
-      items = items.filter(it => (it.key || it).startsWith(word.toUpperCase()));
+      const upperWord = String(word).toUpperCase();
+      items = items.filter(it => String(it.key || it).toUpperCase().startsWith(upperWord));
     }
     items = items.map((it) => {
       let { title } = it;
@@ -121,6 +124,7 @@ export default class Suggest {
     });
     this.filterItems = items;
     if (items.length <= 0) {
+      this.hide();
       return;
     }
     const { el } = this;

@@ -7,16 +7,18 @@ import { cssPrefix } from '../config';
 
 function resetTextareaSize() {
   const { inputText } = this;
-  if (!/^\s*$/.test(inputText)) {
+  if (inputText && !/^\s*$/.test(inputText)) {
     const {
       textlineEl, textEl, areaOffset,
     } = this;
+    if (!areaOffset) return;
     const txts = inputText.split('\n');
     const maxTxtSize = Math.max(...txts.map(it => it.length));
     const tlOffset = textlineEl.offset();
     const fontWidth = tlOffset.width / inputText.length;
     const tlineWidth = (maxTxtSize + 1) * fontWidth + 5;
-    const maxWidth = this.viewFn().width - areaOffset.left - fontWidth;
+    const rawMaxWidth = this.viewFn().width - areaOffset.left - fontWidth;
+    const maxWidth = Math.max(areaOffset.width || 1, rawMaxWidth, 1);
     let h1 = txts.length;
     if (tlineWidth > areaOffset.width) {
       let twidth = tlineWidth;
@@ -41,7 +43,7 @@ function insertText({ target }, itxt) {
   target.setSelectionRange(selectionEnd + 1, selectionEnd + 1);
 
   this.inputText = ntxt;
-  this.textlineEl.html(ntxt);
+  this.textlineEl.el.textContent = ntxt;
   resetTextareaSize.call(this);
 }
 
@@ -77,11 +79,11 @@ function inputEventHandler(evt) {
           suggest.hide();
         }
       }
-      textlineEl.html(v);
+      textlineEl.el.textContent = v;
       resetTextareaSize.call(this);
       this.change('input', v);
     } else {
-      evt.target.value = cell.text || '';
+      evt.target.value = (cell && cell.text != null) ? String(cell.text) : '';
     }
   } else {
     this.inputText = v;
@@ -99,7 +101,7 @@ function inputEventHandler(evt) {
         suggest.hide();
       }
     }
-    textlineEl.html(v);
+    textlineEl.el.textContent = v;
     resetTextareaSize.call(this);
     this.change('input', v);
   }
@@ -120,7 +122,7 @@ function setText(text, position) {
   textEl.el.blur();
 
   textEl.val(text);
-  textlineEl.html(text);
+  textlineEl.el.textContent = text;
   setTextareaRange.call(this, position);
 }
 
@@ -193,6 +195,7 @@ export default class Editor {
     this.freeze = { w: 0, h: 0 };
     this.cell = null;
     this.inputText = '';
+    this._editing = false;
     this.change = () => {};
   }
 
@@ -202,17 +205,17 @@ export default class Editor {
   }
 
   clear() {
-    // const { cell } = this;
-    // const cellText = (cell && cell.text) || '';
-    if (this.inputText !== '') {
+    if (this._editing || this.inputText !== '') {
       this.change('finished', this.inputText);
     }
+    this._editing = false;
     this.cell = null;
     this.areaOffset = null;
     this.inputText = '';
     this.el.hide();
     this.textEl.val('');
-    this.textlineEl.html('');
+    this.textlineEl.el.textContent = '';
+    this.suggest.hide();
     resetSuggestItems.call(this);
     this.datepicker.hide();
   }
@@ -255,8 +258,9 @@ export default class Editor {
     // console.log('::', validator);
     const { el, datepicker, suggest } = this;
     el.show();
+    this._editing = true;
     this.cell = cell;
-    const text = (cell && cell.text) || '';
+    const text = (cell && cell.text != null) ? String(cell.text) : '';
     this.setText(text);
 
     this.validator = validator;
@@ -276,9 +280,10 @@ export default class Editor {
   }
 
   setText(text) {
-    this.inputText = text;
+    const strText = text != null ? String(text) : '';
+    this.inputText = strText;
     // console.log('text>>:', text);
-    setText.call(this, text, text.length);
+    setText.call(this, strText, strText.length);
     resetTextareaSize.call(this);
   }
 }

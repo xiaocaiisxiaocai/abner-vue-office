@@ -1,4 +1,3 @@
-/* global window */
 import en from './en';
 
 // Defines the fallback language as English
@@ -8,16 +7,17 @@ const $messages = {
 };
 
 function translate(key, messages) {
-  if (messages) {
+  if (messages && key && typeof key === 'string') {
+    // Splits the key at '.' except where escaped as '\.'
+    const keys = key.match(/(?:\\.|[^.])+/g);
+    if (!keys) return undefined;
+
     // Return the translation from the first language in the languages array
     // that has a value for the provided key.
     for (const lang of $languages) {
-      if (!messages[lang]) break;
+      if (!messages[lang]) continue;
 
       let message = messages[lang];
-
-      // Splits the key at '.' except where escaped as '\.'
-      const keys = key.match(/(?:\\.|[^.])+/g);
 
       for (let i = 0; i < keys.length; i += 1) {
         const property = keys[i];
@@ -37,10 +37,14 @@ function translate(key, messages) {
   return undefined;
 }
 
-function t(key) {
+function t(key, ...args) {
   let v = translate(key, $messages);
   if (!v && typeof window !== 'undefined' && window.x_spreadsheet && window.x_spreadsheet.$messages) {
     v = translate(key, window.x_spreadsheet.$messages);
+  }
+  if (typeof v === 'string' && args.length > 0) {
+    let idx = 0;
+    v = v.replace(/\{\}/g, () => (idx < args.length ? args[idx++] : '{}'));
   }
   return v || '';
 }
@@ -58,10 +62,10 @@ function locale(lang, message, clearLangList = false) {
   if (clearLangList) {
     $languages = [lang];
   } else {
-    // Append to front of array.
+    // Append to front of array without duplicates.
     // Translation method will use the first language in the list that has a
     // matching key.
-    $languages.unshift(lang);
+    $languages = [lang, ...$languages.filter(l => l !== lang)];
   }
 
   if (message) {

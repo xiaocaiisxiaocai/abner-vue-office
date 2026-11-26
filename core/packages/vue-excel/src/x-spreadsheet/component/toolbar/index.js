@@ -1,5 +1,3 @@
-/* global window */
-
 import Align from './align';
 import Valign from './valign';
 import Autofilter from './autofilter';
@@ -54,6 +52,7 @@ function moreResize() {
   const {
     el, btns, moreEl, btns2,
   } = this;
+  if (!btns2) return;
   const { moreBtns, contentEl } = moreEl.dd;
   el.css('width', `${this.widthFn()}px`);
   const elBox = el.box();
@@ -210,9 +209,27 @@ export default class Toolbar {
       this._resizeTimer = null;
     }
     if (this._onWindowResize) {
-      unbind(window, 'resize', this._onWindowResize);
+      if (typeof window !== 'undefined') {
+        unbind(window, 'resize', this._onWindowResize);
+      }
       this._onWindowResize = null;
     }
+    [
+      this.formatEl,
+      this.fontEl,
+      this.fontSizeEl,
+      this.textColorEl,
+      this.fillColorEl,
+      this.borderEl,
+      this.alignEl,
+      this.valignEl,
+      this.formulaEl,
+      this.moreEl,
+    ].forEach((it) => {
+      if (it && it.dd && typeof it.dd.hide === 'function') {
+        it.dd.hide();
+      }
+    });
   }
 
   paintformatActive() {

@@ -101,8 +101,9 @@ class AbnerJsExcelPreview {
 
         const swapFunc = this.xs.bottombar.swapFunc;
         this.xs.bottombar.swapFunc = function (index) {
-            swapFunc.call(that.xs.bottombar, index);
             that.sheetIndex = index;
+            that.offset = (that.xs.datas && that.xs.datas[index]) ? that.xs.datas[index].getSelectedRect() : null;
+            swapFunc.call(that.xs.bottombar, index);
             that.offset = that.xs.sheet.data.getSelectedRect();
             that.clearSwapTimer();
             that.swapTimer = setTimeout(() => {
@@ -225,7 +226,7 @@ class AbnerJsExcelPreview {
     }
 
     setOptions(options = {}) {
-        this.options = { ...defaultOptions, ...(this.options || {}), ...options };
+        this.options = { ...defaultOptions, ...(this.options || {}), ...(options || {}) };
     }
 
     setRequestOptions(requestOptions = {}) {

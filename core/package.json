@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "node script/bak-vue.js && vite",
     "build": "node script/bak-vue.js && vite build",
+    "lint": "eslint . --ext .js,.vue",
     "test": "node --test tests/*.test.mjs",
     "lib": "node script/run-lib.js --concurrency=1",
     "lib:js-excel": "node script/run-lib.js --scope @abner-vue-office/js-excel",

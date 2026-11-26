@@ -65,7 +65,7 @@ export default class AutoFilter {
   setData({ ref, filters, sort }) {
     if (ref != null) {
       this.ref = ref;
-      this.filters = filters.map(it => new Filter(it.ci, it.operator, it.value));
+      this.filters = (filters || []).map(it => new Filter(it.ci, it.operator, it.value));
       if (sort) {
         this.sort = new Sort(sort.ci, sort.order);
       }
@@ -149,8 +149,8 @@ export default class AutoFilter {
       const { sri, eri } = this.range();
       for (let ri = sri + 1; ri <= eri; ri += 1) {
         const cell = getCell(ri, ci);
-        if (cell !== null && !/^\s*$/.test(cell.text)) {
-          const key = cell.text;
+        if (cell !== null && cell.text != null && !/^\s*$/.test(String(cell.text))) {
+          const key = String(cell.text);
           const cnt = (m[key] || 0) + 1;
           m[key] = cnt;
         } else {

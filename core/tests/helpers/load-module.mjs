@@ -27,6 +27,7 @@ export function createDomMocks() {
                 }
             };
             this._innerHTML = '';
+            this._textContent = '';
             this.scrollTop = 0;
             this.scrollLeft = 0;
             this.offsetTop = 0;
@@ -40,6 +41,7 @@ export function createDomMocks() {
             this.readOnly = false;
             this.focused = false;
             this.value = '';
+            this.selectionEnd = 0;
             this.src = '';
             this.download = '';
             this.href = '';
@@ -80,6 +82,22 @@ export function createDomMocks() {
         set innerHTML(val) {
             this._innerHTML = String(val);
             if (!val) {
+                this.children.forEach(c => {
+                    c.parentNode = null;
+                });
+                this.children = [];
+                this.childNodes = [];
+            }
+        }
+
+        get textContent() {
+            return this._textContent;
+        }
+
+        set textContent(val) {
+            this._textContent = String(val ?? '');
+            if (!val) {
+                this._innerHTML = '';
                 this.children.forEach(c => {
                     c.parentNode = null;
                 });
@@ -254,6 +272,11 @@ export function createDomMocks() {
             if (this.parentNode) {
                 // no-op
             }
+        }
+
+        setSelectionRange(start, end) {
+            this.selectionStart = start;
+            this.selectionEnd = end;
         }
 
         blur() {

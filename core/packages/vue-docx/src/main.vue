@@ -93,11 +93,14 @@ export default defineComponent({
         });
 
         watch(() => props.src, () => {
+            if (!rootRef.value) {
+                return;
+            }
             if (props.src) {
                 init();
             } else {
                 const currentId = ++renderId;
-                const shouldCommit = () => !isUnmounted && currentId === renderId;
+                const shouldCommit = () => !isUnmounted && currentId === renderId && !!rootRef.value;
                 fileData = null;
                 docx.render('', rootRef.value, props.options, shouldCommit).then(() => {
                     if (shouldCommit()) {

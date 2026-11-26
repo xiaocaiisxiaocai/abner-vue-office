@@ -1,4 +1,3 @@
-/* global window */
 function dpr() {
   return (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
 }
@@ -255,13 +254,13 @@ class Draw {
     const txtHeight = (ntxts.length - 1) * (font.size + 2);
     let ty = box.texty(valign, txtHeight);
     ntxts.forEach((txt) => {
-      const txtWidth = ctx.measureText(txt).width;
+      const txtCssWidth = ctx.measureText(txt).width / dpr();
       this.fillText(txt, tx, ty);
       if (strike) {
-        drawFontLine.call(this, 'strike', tx, ty, align, valign, font.size, txtWidth);
+        drawFontLine.call(this, 'strike', tx, ty, align, valign, font.size, txtCssWidth);
       }
       if (underline) {
-        drawFontLine.call(this, 'underline', tx, ty, align, valign, font.size, txtWidth);
+        drawFontLine.call(this, 'underline', tx, ty, align, valign, font.size, txtCssWidth);
       }
       ty += font.size + 2;
     });
@@ -271,6 +270,9 @@ class Draw {
 
   border(style, color) {
     const { ctx } = this;
+    if (typeof ctx.setLineDash === 'function') {
+      ctx.setLineDash([]);
+    }
     ctx.lineWidth = thinLineWidth();
     ctx.strokeStyle = color;
     // console.log('style:', style);

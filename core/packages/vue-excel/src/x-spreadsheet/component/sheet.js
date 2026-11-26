@@ -1,4 +1,3 @@
-/* global window */
 import { h } from './element';
 import {
   bind,
@@ -21,25 +20,6 @@ import { xtoast } from './message';
 import { cssPrefix } from '../config';
 import { formulas } from '../core/formula';
 
-/**
- * @desc throttle fn
- * @param func function
- * @param wait Delay in milliseconds
- */
-function throttle(func, wait) {
-  let timeout;
-  return (...arg) => {
-    const that = this;
-    const args = arg;
-    if (!timeout) {
-      timeout = setTimeout(() => {
-        timeout = null;
-        func.apply(that, args);
-      }, wait);
-    }
-  };
-}
-
 function scrollbarMove() {
   const {
     data, verticalScrollbar, horizontalScrollbar,
@@ -49,7 +29,7 @@ function scrollbarMove() {
   } = data.getSelectedRect();
   const tableOffset = this.getTableOffset();
   // console.log(',l:', l, ', left:', left, ', tOffset.left:', tableOffset.width);
-  if (Math.abs(left) + width > tableOffset.width) {
+  if (left + width > tableOffset.width) {
     horizontalScrollbar.move({ left: l + width - tableOffset.width });
   } else {
     const fsw = data.freezeTotalWidth();
@@ -58,7 +38,7 @@ function scrollbarMove() {
     }
   }
   // console.log('top:', top, ', height:', height, ', tof.height:', tableOffset.height);
-  if (Math.abs(top) + height > tableOffset.height) {
+  if (top + height > tableOffset.height) {
     verticalScrollbar.move({ top: t + height - tableOffset.height - 1 });
   } else {
     const fsh = data.freezeTotalHeight();
@@ -71,7 +51,7 @@ function scrollbarMove() {
 function selectorSet(multiple, ri, ci, indexesUpdated = true, moving = false) {
   if (ri === -1 && ci === -1) return;
   const {
-    table, selector, toolbar, data,
+    selector, data,
     contextMenu,
   } = this;
   const cell = data.getCell(ri, ci);
@@ -95,21 +75,21 @@ function selectorMove(multiple, direction) {
     selector, data,
   } = this;
   const { rows, cols } = data;
-  let [ri, ci] = selector.indexes;
+  let [ri, ci] = selector.indexes || [0, 0];
   const { eri, eci } = selector.range;
   if (multiple) {
-    [ri, ci] = selector.moveIndexes;
+    [ri, ci] = selector.moveIndexes || selector.indexes || [0, 0];
   }
   // console.log('selector.move:', ri, ci);
   if (direction === 'left') {
     if (ci > 0) ci -= 1;
   } else if (direction === 'right') {
-    if (eci !== ci) ci = eci;
+    if (!multiple && eci !== ci) ci = eci;
     if (ci < cols.len - 1) ci += 1;
   } else if (direction === 'up') {
     if (ri > 0) ri -= 1;
   } else if (direction === 'down') {
-    if (eri !== ri) ri = eri;
+    if (!multiple && eri !== ri) ri = eri;
     if (ri < rows.len - 1) ri += 1;
   } else if (direction === 'row-first') {
     ci = 0;
@@ -136,6 +116,11 @@ function overlayerMousemove(evt) {
   const {
     rowResizer, colResizer, tableEl, data,
   } = this;
+  if (data.settings.mode === 'read') {
+    rowResizer.hide();
+    colResizer.hide();
+    return;
+  }
   const { rows, cols } = data;
   if (offsetX > cols.indexWidth && offsetY > rows.height) {
     rowResizer.hide();
@@ -187,13 +172,13 @@ function overlayerMousescroll(evt) {
 
   // deltaY for vertical delta
   const { deltaY, deltaX } = evt;
-  const loopValue = (ii, vFunc) => {
+  const loopValue = (ii, maxLen, vFunc) => {
     let i = ii;
     let v = 0;
     do {
       v = vFunc(i);
       i += 1;
-    } while (v <= 0);
+    } while (v <= 0 && i < maxLen);
     return v;
   };
   // console.log('deltaX', deltaX, 'evt.detail', evt.detail);
@@ -203,14 +188,14 @@ function overlayerMousescroll(evt) {
       // up
       const ri = data.scroll.ri + 1;
       if (ri < rows.len) {
-        const rh = loopValue(ri, i => rows.getHeight(i));
+        const rh = loopValue(ri, rows.len, i => rows.getHeight(i));
         verticalScrollbar.move({ top: top + rh - 1 });
       }
     } else {
       // down
       const ri = data.scroll.ri - 1;
       if (ri >= 0) {
-        const rh = loopValue(ri, i => rows.getHeight(i));
+        const rh = loopValue(ri, rows.len, i => rows.getHeight(i));
         verticalScrollbar.move({ top: ri === 0 ? 0 : top - rh });
       }
     }
@@ -222,14 +207,14 @@ function overlayerMousescroll(evt) {
       // left
       const ci = data.scroll.ci + 1;
       if (ci < cols.len) {
-        const cw = loopValue(ci, i => cols.getWidth(i));
+        const cw = loopValue(ci, cols.len, i => cols.getWidth(i));
         horizontalScrollbar.move({ left: left + cw - 1 });
       }
     } else {
       // right
       const ci = data.scroll.ci - 1;
       if (ci >= 0) {
-        const cw = loopValue(ci, i => cols.getWidth(i));
+        const cw = loopValue(ci, cols.len, i => cols.getWidth(i));
         horizontalScrollbar.move({ left: ci === 0 ? 0 : left - cw });
       }
     }
@@ -240,11 +225,11 @@ function overlayerMousescroll(evt) {
   // console.log('event:', evt);
   // detail for windows/mac firefox vertical scroll
   if (typeof window !== 'undefined' && window.navigator && /Firefox/i.test(window.navigator.userAgent) && evt.detail) {
-    throttle(moveY(evt.detail), 50);
+    moveY(evt.detail);
   }
   if (temp === 0) return;
-  if (deltaX !== 0 && temp === tempX) throttle(moveX(deltaX), 50);
-  if (deltaY !== 0 && temp === tempY) throttle(moveY(deltaY), 50);
+  if (deltaX !== 0 && temp === tempX) moveX(deltaX);
+  if (deltaY !== 0 && temp === tempY) moveY(deltaY);
 }
 
 function overlayerTouch(direction, distance) {
@@ -337,33 +322,40 @@ function paste(what, evt) {
   const { data } = this;
   if (data.settings.mode === 'read') return;
   if (data.clipboard.isClear()) {
-    const resetSheet = () => sheetReset.call(this);
+    if (evt && evt.clipboardData) {
+      const cdata = evt.clipboardData.getData('text/plain');
+      this.data.pasteFromText(cdata);
+      sheetReset.call(this);
+      return;
+    }
+    const resetSheet = () => {
+      if (!this._isDestroyed) sheetReset.call(this);
+    };
     const eventTrigger = (rows) => {
-      this.trigger('pasted-clipboard', rows);
+      if (!this._isDestroyed) this.trigger('pasted-clipboard', rows);
     };
     // pastFromSystemClipboard is async operation, need to tell it how to reset sheet and trigger event after it finishes
     // pasting content from system clipboard
     data.pasteFromSystemClipboard(resetSheet, eventTrigger);
   } else if (data.paste(what, msg => xtoast('Tip', msg))) {
     sheetReset.call(this);
-  } else if (evt) {
-    const cdata = evt.clipboardData.getData('text/plain');
-    this.data.pasteFromText(cdata);
-    sheetReset.call(this);
   }
 }
 
 function hideRowsOrCols() {
+  if (this.data.settings.mode === 'read') return;
   this.data.hideRowsOrCols();
   sheetReset.call(this);
 }
 
 function unhideRowsOrCols(type, index) {
+  if (this.data.settings.mode === 'read') return;
   this.data.unhideRowsOrCols(type, index);
   sheetReset.call(this);
 }
 
 function autofilter() {
+  if (this.data.settings.mode === 'read') return;
   const { data } = this;
   data.autofilter();
   sheetReset.call(this);
@@ -382,10 +374,14 @@ function overlayerMousedown(evt) {
   // console.log(':::::overlayer.mousedown:', evt.detail, evt.button, evt.buttons, evt.shiftKey);
   // console.log('evt.target.className:', evt.target.className);
   const {
-    selector, data, table, sortFilter,
+    selector, data, table, sortFilter, overlayerEl,
   } = this;
-  const { offsetX, offsetY } = evt;
-  const isAutofillEl = evt.target.className === `${cssPrefix}-selector-corner`;
+  const isRead = data.settings.mode === 'read';
+  const isAutofillEl = !isRead && evt.target.className === `${cssPrefix}-selector-corner`;
+  const oRect = overlayerEl && typeof overlayerEl.box === 'function' ? overlayerEl.box() : null;
+  const useClient = oRect && oRect.width > 0 && typeof evt.clientX === 'number' && typeof evt.clientY === 'number';
+  const offsetX = useClient ? (evt.clientX - oRect.left) : evt.offsetX;
+  const offsetY = useClient ? (evt.clientY - oRect.top) : evt.offsetY;
   const cellRect = data.getCellRectByXY(offsetX, offsetY);
   const {
     left, top, width, height,
@@ -393,7 +389,7 @@ function overlayerMousedown(evt) {
   let { ri, ci } = cellRect;
   // sort or filter
   const { autoFilter } = data;
-  if (autoFilter.includes(ri, ci)) {
+  if (!isRead && autoFilter.includes(ri, ci)) {
     if (left + width - 20 < offsetX && top + height - 20 < offsetY) {
       const items = autoFilter.items(ci, (r, c) => data.rows.getCell(r, c));
       sortFilter.hide();
@@ -413,15 +409,20 @@ function overlayerMousedown(evt) {
     }
 
     // mouse move up
-    mouseMoveUp(window, (e) => {
+    this._cancelMoveUp = mouseMoveUp(window, (e) => {
       // console.log('mouseMoveUp::::');
-      ({ ri, ci } = data.getCellRectByXY(e.offsetX, e.offsetY));
+      const moveRect = overlayerEl && typeof overlayerEl.box === 'function' ? overlayerEl.box() : null;
+      const moveUseClient = moveRect && moveRect.width > 0 && typeof e.clientX === 'number' && typeof e.clientY === 'number';
+      const mx = moveUseClient ? (e.clientX - moveRect.left) : e.offsetX;
+      const my = moveUseClient ? (e.clientY - moveRect.top) : e.offsetY;
+      ({ ri, ci } = data.getCellRectByXY(mx, my));
       if (isAutofillEl) {
         selector.showAutofill(ri, ci);
       } else if (e.buttons === 1 && !e.shiftKey) {
         selectorSet.call(this, true, ri, ci, true, true);
       }
     }, () => {
+      this._cancelMoveUp = null;
       if (isAutofillEl && selector.arange && data.settings.mode !== 'read') {
         if (data.autofill(selector.arange, 'all', msg => xtoast('Tip', msg))) {
           table.render();
@@ -479,6 +480,7 @@ function horizontalScrollbarMove(distance) {
 }
 
 function rowResizerFinished(cRect, distance) {
+  if (this.data.settings.mode === 'read') return;
   const { ri } = cRect;
   const { table, selector, data } = this;
   const { sri, eri } = selector.range;
@@ -497,6 +499,7 @@ function rowResizerFinished(cRect, distance) {
 }
 
 function colResizerFinished(cRect, distance) {
+  if (this.data.settings.mode === 'read') return;
   const { ci } = cRect;
   const { table, selector, data } = this;
   const { sci, eci } = selector.range;
@@ -595,6 +598,7 @@ function toolbarChange(type, value) {
 }
 
 function sortFilterChange(ci, order, operator, value) {
+  if (this.data.settings.mode === 'read') return;
   // console.log('sort:', sortDesc, operator, value);
   this.data.setAutoFilter(ci, order, operator, value);
   sheetReset.call(this);
@@ -620,7 +624,7 @@ function sheetInitEvents() {
       overlayerMousemove.call(this, evt);
     })
     .on('mousedown', (evt) => {
-      // editor.clear();
+      editor.clear();
       contextMenu.hide();
       // the left mouse button: mousedown → mouseup → click
       // the right mouse button: mousedown → contenxtmenu → mouseup
@@ -692,6 +696,7 @@ function sheetInitEvents() {
   };
   // modal validation
   modalValidation.change = (action, ...args) => {
+    if (this.data.settings.mode === 'read') return;
     if (action === 'save') {
       this.data.addValidation(...args);
     } else {
@@ -700,6 +705,7 @@ function sheetInitEvents() {
   };
   // contextmenu
   contextMenu.itemClick = (type) => {
+    if (this.data.settings.mode === 'read') return;
     // console.log('type:', type);
     if (type === 'validation') {
       modalValidation.setValue(this.data.getSelectedValidation());
@@ -731,14 +737,14 @@ function sheetInitEvents() {
   bind(window, 'click', this._onWindowClick);
 
   this._onWindowPaste = (evt) => {
-    if (!this.focusing) return;
+    if (!this.focusing || this.data.settings.mode === 'read') return;
     paste.call(this, 'all', evt);
     evt.preventDefault();
   };
   bind(window, 'paste', this._onWindowPaste);
 
   this._onWindowCopy = (evt) => {
-    if (!this.focusing) return;
+    if (!this.focusing || this.data.settings.mode === 'read') return;
     copy.call(this, evt);
     evt.preventDefault();
   };
@@ -762,15 +768,15 @@ function sheetInitEvents() {
           // undo: ctrl + z
           if (this.data.settings.mode !== 'read') {
             this.undo();
+            evt.preventDefault();
           }
-          evt.preventDefault();
           break;
         case 89:
           // redo: ctrl + y
           if (this.data.settings.mode !== 'read') {
             this.redo();
+            evt.preventDefault();
           }
-          evt.preventDefault();
           break;
         case 67:
           // ctrl + c
@@ -780,15 +786,17 @@ function sheetInitEvents() {
           break;
         case 88:
           // ctrl + x
-          cut.call(this);
-          evt.preventDefault();
+          if (this.data.settings.mode !== 'read') {
+            cut.call(this);
+            evt.preventDefault();
+          }
           break;
         case 85:
           // ctrl + u
           if (this.data.settings.mode !== 'read') {
             toolbar.trigger('underline');
+            evt.preventDefault();
           }
-          evt.preventDefault();
           break;
         case 86:
           // ctrl + v
@@ -879,16 +887,20 @@ function sheetInitEvents() {
           evt.preventDefault();
           break;
         case 8: // backspace
-          insertDeleteRowColumn.call(this, 'delete-cell-text');
-          evt.preventDefault();
+          if (this.data.settings.mode !== 'read') {
+            insertDeleteRowColumn.call(this, 'delete-cell-text');
+            evt.preventDefault();
+          }
           break;
         default:
           break;
       }
 
       if (key === 'Delete') {
-        insertDeleteRowColumn.call(this, 'delete-cell-text');
-        evt.preventDefault();
+        if (this.data.settings.mode !== 'read') {
+          insertDeleteRowColumn.call(this, 'delete-cell-text');
+          evt.preventDefault();
+        }
       } else if ((keyCode >= 65 && keyCode <= 90)
         || (keyCode >= 48 && keyCode <= 57)
         || (keyCode >= 96 && keyCode <= 105)
@@ -907,6 +919,8 @@ function sheetInitEvents() {
 
 export default class Sheet {
   constructor(targetEl, data) {
+    this._isDestroyed = false;
+    this._cancelMoveUp = null;
     this.eventMap = createEventEmitter();
     const { view, showToolbar, showContextmenu } = data.settings;
     this.el = h('div', `${cssPrefix}-sheet`);
@@ -980,6 +994,8 @@ export default class Sheet {
     this.data = data;
     verticalScrollbarSet.call(this);
     horizontalScrollbarSet.call(this);
+    this.verticalScrollbar.move({ top: data.scroll.y });
+    this.horizontalScrollbar.move({ left: data.scroll.x });
     this.toolbar.resetData(data);
     this.print.resetData(data);
     this.selector.resetData(data);
@@ -1035,6 +1051,23 @@ export default class Sheet {
   }
 
   destroy() {
+    this._isDestroyed = true;
+    if (typeof this._cancelMoveUp === 'function') {
+      this._cancelMoveUp();
+      this._cancelMoveUp = null;
+    }
+    if (this.editor && typeof this.editor.clear === 'function') {
+      this.editor.clear();
+    }
+    if (this.rowResizer && typeof this.rowResizer.destroy === 'function') {
+      this.rowResizer.destroy();
+    }
+    if (this.colResizer && typeof this.colResizer.destroy === 'function') {
+      this.colResizer.destroy();
+    }
+    if (this.print && typeof this.print.destroy === 'function') {
+      this.print.destroy();
+    }
     if (this.contextMenu && typeof this.contextMenu.hide === 'function') {
       this.contextMenu.hide();
     }
@@ -1050,10 +1083,6 @@ export default class Sheet {
       if (this._onWindowPaste) unbind(window, 'paste', this._onWindowPaste);
       if (this._onWindowCopy) unbind(window, 'copy', this._onWindowCopy);
       if (this._onWindowKeydown) unbind(window, 'keydown', this._onWindowKeydown);
-      if (window.xkeydownEsc) {
-        unbind(window, 'keydown', window.xkeydownEsc);
-        delete window.xkeydownEsc;
-      }
     }
     this._onWindowResize = null;
     this._onWindowClick = null;

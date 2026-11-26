@@ -13,6 +13,9 @@ export default defineConfig({
           compiler: compiler
         }),
   ],
+  optimizeDeps: {
+    exclude: ['vue-demi']
+  },
   build: {
     target: 'es2015',
     outDir: 'lib/v' + (isVue2 ? '2' : '3'),
@@ -21,9 +24,6 @@ export default defineConfig({
       name: 'abner-vue-office-docx',
       formats: ['umd'],
       fileName: () => 'index.js',
-    },
-    optimizeDeps: {
-      exclude: ['vue-demi']
     },
     rollupOptions: {
       external: ['vue-demi','vue'],

@@ -60,8 +60,8 @@ class Draw {
     return this;
   }
 
-  transform(a, b, c, d, e) {
-    this.ctx.transform(a, b, c, d, e);
+  transform(a, b, c, d, e, f) {
+    this.ctx.transform(a, b, c, d, e, f);
     return this;
   }
 

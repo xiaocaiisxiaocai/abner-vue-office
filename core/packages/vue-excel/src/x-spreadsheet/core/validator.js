@@ -3,7 +3,7 @@ import helper from './helper';
 
 const rules = {
   phone: /^[1-9]\d{10}$/,
-  email: /w+([-+.]w+)*@w+([-.]w+)*.w+([-.]w+)*/,
+  email: /^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$/,
 };
 
 function returnMessage(flag, key, ...arg) {
@@ -28,7 +28,7 @@ export default class Validator {
   parseValue(v) {
     const { type } = this;
     if (type === 'date') {
-      return new Date(v);
+      return new Date(v).getTime();
     }
     if (type === 'number') {
       return Number(v);

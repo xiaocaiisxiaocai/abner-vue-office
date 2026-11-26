@@ -183,7 +183,7 @@ class Rows {
       this.eachCells(ri, (ci) => {
         let nri = parseInt(ri, 10);
         let nci = parseInt(ci, 10);
-        if (srcCellRange.includes(ri, ci)) {
+        if (srcCellRange.includes(nri, nci)) {
           nri = dstCellRange.sri + (nri - srcCellRange.sri);
           nci = dstCellRange.sci + (nci - srcCellRange.sci);
         }
@@ -232,7 +232,7 @@ class Rows {
       const nri = parseInt(ri, 10);
       if (nri < sri) {
         ndata[nri] = row;
-      } else if (ri > eri) {
+      } else if (nri > eri) {
         ndata[nri - n] = row;
         this.eachCells(ri, (ci, cell) => {
           if (cell.text && cell.text[0] === '=') {
@@ -291,7 +291,7 @@ class Rows {
   // what: all | text | format | merge
   deleteCell(ri, ci, what = 'all') {
     const row = this.get(ri);
-    if (row !== null) {
+    if (row) {
       const cell = this.getCell(ri, ci);
       if (cell !== null && cell.editable !== false) {
         if (what === 'all') {

@@ -98,7 +98,7 @@ export function renderCell(draw, data, rindex, cindex, yoffset = 0) {
       underline: style.underline,
     }, style.textwrap);
     // error
-    const error = data.validations.getError(rindex, cindex);
+    const error = data.validations.getError(nrindex, cindex);
     if (error) {
       // console.log('error:', rindex, cindex, error);
       draw.error(dbox);
@@ -295,8 +295,8 @@ function renderFreezeHighlightLine(fw, fh, ftw, fth) {
   draw.save()
     .translate(fw, fh)
     .attr({ strokeStyle: 'rgba(75, 137, 255, .6)' });
-  draw.line([0, fth], [twidth, fth]);
-  draw.line([ftw, 0], [ftw, theight]);
+  if (fth > 0) draw.line([0, fth], [twidth, fth]);
+  if (ftw > 0) draw.line([ftw, 0], [ftw, theight]);
   draw.restore();
 }
 

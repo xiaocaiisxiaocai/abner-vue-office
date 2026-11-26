@@ -33,7 +33,7 @@ function getColWidth(sheet, index, widthOffset = 0) {
         return 0.1;
     }
     const baseWidth = col?.width ? col.width * 6 : defaultColWidth;
-    return baseWidth + (widthOffset || 0);
+    return Math.max(1, baseWidth + (widthOffset || 0));
 }
 
 function getRowHeight(sheet, index, heightOffset = 0) {
@@ -42,7 +42,7 @@ function getRowHeight(sheet, index, heightOffset = 0) {
         return 0.1;
     }
     const baseHeight = row?.height || defaultRowHeight;
-    return baseHeight + (heightOffset || 0);
+    return Math.max(1, baseHeight + (heightOffset || 0));
 }
 
 export function getImageMimeType(extension) {
@@ -174,25 +174,37 @@ function getImage(ctx, index, data) {
     if (!data || !data.buffer) {
         return Promise.reject(new Error('Invalid image data'));
     }
+    if (typeof Blob === 'undefined' || typeof Image === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+        return Promise.reject(new Error('Image API is unavailable'));
+    }
     const cache = getCache(ctx);
     if (cache[index]) {
         return cache[index];
     }
+    let failedSync = false;
     const promise = new Promise((resolve, reject) => {
-        const blob = new Blob([data.buffer], { type: getImageMimeType(data.extension) });
-        const url = URL.createObjectURL(blob);
-        const image = new Image();
-        image.onload = function () {
-            URL.revokeObjectURL(url);
-            resolve(image);
-        };
-        image.onerror = function (e) {
-            URL.revokeObjectURL(url);
+        try {
+            const blob = new Blob([data.buffer], { type: getImageMimeType(data.extension) });
+            const url = URL.createObjectURL(blob);
+            const image = new Image();
+            image.onload = function () {
+                URL.revokeObjectURL(url);
+                resolve(image);
+            };
+            image.onerror = function (e) {
+                URL.revokeObjectURL(url);
+                delete cache[index];
+                reject(e);
+            };
+            image.src = url;
+        } catch (e) {
+            failedSync = true;
             delete cache[index];
             reject(e);
-        };
-        image.src = url;
+        }
     });
-    cache[index] = promise;
+    if (!failedSync) {
+        cache[index] = promise;
+    }
     return promise;
 }

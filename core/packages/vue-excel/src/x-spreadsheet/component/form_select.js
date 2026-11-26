@@ -12,7 +12,7 @@ export default class FormSelect {
       this.itemClick(it.key);
       change(it.key);
       this.vchange(it.key);
-    }, width, this.el);
+    }, width);
     this.el.children(
       this.itemEl = h('div', 'input-text').html(this.getTitle(key)),
       this.suggest.el,

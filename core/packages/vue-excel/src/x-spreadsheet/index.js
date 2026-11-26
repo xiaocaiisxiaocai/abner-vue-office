@@ -1,4 +1,3 @@
-/* global window, document */
 import { h } from './component/element';
 import DataProxy from './core/data_proxy';
 import Sheet from './component/sheet';
@@ -19,14 +18,20 @@ class Spreadsheet {
     this.bottombar = this.options.showBottomBar ? new Bottombar(() => {
       if (this.options.mode === 'read') return;
       const d = this.addSheet();
+      this.data = d;
       this.sheet.resetData(d);
     }, (index) => {
       const d = this.datas[index];
-      this.sheet.resetData(d);
+      if (d) {
+        this.data = d;
+        this.sheet.resetData(d);
+      }
     }, () => {
       this.deleteSheet();
     }, (index, value) => {
-      this.datas[index].name = value;
+      if (this.datas[index]) {
+        this.datas[index].name = value;
+      }
       this.sheet.trigger('change');
     }) : null;
     this.data = this.addSheet();
@@ -62,7 +67,10 @@ class Spreadsheet {
     const [oldIndex, nindex] = this.bottombar.deleteItem();
     if (oldIndex >= 0) {
       this.datas.splice(oldIndex, 1);
-      if (nindex >= 0) this.sheet.resetData(this.datas[nindex]);
+      if (nindex >= 0 && this.datas[nindex]) {
+        this.data = this.datas[nindex];
+        this.sheet.resetData(this.data);
+      }
       this.sheet.trigger('change');
     }
   }
@@ -74,12 +82,14 @@ class Spreadsheet {
     }
     this.datas = [];
     this.sheetIndex = 1;
+    this.data = null;
     if (ds.length > 0) {
       for (let i = 0; i < ds.length; i += 1) {
         const it = ds[i];
-        const nd = this.addSheet(it.name, i === 0);
+        const nd = this.addSheet(it && it.name, i === 0);
         nd.setData(it);
         if (i === 0) {
+          this.data = nd;
           this.sheet.resetData(nd);
         }
       }
@@ -92,16 +102,18 @@ class Spreadsheet {
   }
 
   cellText(ri, ci, text, sheetIndex = 0) {
-    this.datas[sheetIndex].setCellText(ri, ci, text, 'finished');
+    if (this.datas[sheetIndex]) {
+      this.datas[sheetIndex].setCellText(ri, ci, text, 'finished');
+    }
     return this;
   }
 
   cell(ri, ci, sheetIndex = 0) {
-    return this.datas[sheetIndex].getCell(ri, ci);
+    return this.datas[sheetIndex] ? this.datas[sheetIndex].getCell(ri, ci) : null;
   }
 
   cellStyle(ri, ci, sheetIndex = 0) {
-    return this.datas[sheetIndex].getCellStyle(ri, ci);
+    return this.datas[sheetIndex] ? this.datas[sheetIndex].getCellStyle(ri, ci) : null;
   }
 
   reRender() {
@@ -115,6 +127,7 @@ class Spreadsheet {
   }
 
   validate() {
+    if (!this.data) return true;
     const { validations } = this.data;
     return validations.errors.size <= 0;
   }
@@ -140,6 +153,7 @@ class Spreadsheet {
       this.rootEl.el.parentNode.removeChild(this.rootEl.el);
     }
     this.datas = [];
+    this.data = null;
     this.sheet = null;
     this.bottombar = null;
     this.rootEl = null;

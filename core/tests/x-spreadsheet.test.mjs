@@ -89,6 +89,117 @@ test('x-spreadsheet core cell/formula/alphabet/range/merges/rows/cols/helper log
 
     assert.equal(helperMod.numberCalc('+', 0.1, 0.2), '0.3');
     assert.equal(helperMod.equals({ a: 1, b: [2] }, { a: 1, b: [2] }), true);
+    assert.equal(helperMod.equals({ a: [1] }, { a: [1, 2] }), false);
+    assert.equal(helperMod.equals({ a: null }, { a: {} }), false);
+    assert.deepEqual(helperMod.merge({ a: 1 }, null, { b: 2 }), { a: 1, b: 2 });
+
+    // Cell string comparison & circular numeric safety
+    assert.equal(cellMod.render('=IF("a"="a", 1, 0)', formulam, getter), 1);
+    assert.equal(cellMod.render('=IF("a"="b", 1, 0)', formulam, getter), 0);
+    const circularCells = { '0,0': '=A1+50' };
+    assert.equal(cellMod.render('=A1+50', formulam, (x, y) => circularCells[`${x},${y}`] ?? ''), '50');
+    assert.equal(formulam.AVERAGE.render([]), 0);
+
+    // CellRange.difference edge cases
+    const outer = CellRange.valueOf('A1:D4');
+    assert.deepEqual(
+        outer.difference(CellRange.valueOf('B2:C3')).map(r => r.toString()),
+        ['A1:D1', 'A4:D4', 'A2:A3', 'D2:D3']
+    );
+    assert.deepEqual(
+        CellRange.valueOf('A1:B2').difference(CellRange.valueOf('D4:E5')).map(r => r.toString()),
+        ['A1:B2']
+    );
+    assert.equal(CellRange.valueOf('B2:C3').difference(outer).length, 0);
+
+    // Bitmap & expression
+    const bitmap = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/algorithm/bitmap.js');
+    assert.equal(bitmap(0, 2, true), 4);
+    assert.equal(bitmap(4, 2, false), 0);
+    assert.equal(bitmap(0, 2, false), 0);
+
+    const exprMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/algorithm/expression.js');
+    assert.deepEqual(exprMod.infix2suffix('(1+2)*3'), ['1', '2', '+', '3', '*']);
+    assert.deepEqual(exprMod.infix2suffix('1+2)'), ['1', '2', '+']);
+
+    // Validator & Validations & AutoFilter & Rows & History & Clipboard & Scroll & CoreSelector & Font
+    const Validator = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/validator.js', {
+        t: k => k,
+        helper: helperMod
+    });
+    const emailVal = new Validator('email', true);
+    assert.equal(emailVal.validate('user@example.com')[0], true);
+    assert.equal(emailVal.validate('bad-email')[0], false);
+    const dateVal = new Validator('date', false, '2025-05-01', 'eq');
+    assert.equal(dateVal.validate('2025-05-01')[0], true);
+    assert.equal(dateVal.validate('2025-05-02')[0], false);
+    const rangeVal = new Validator('number', false, [10, 20], 'be');
+    assert.equal(rangeVal.validate('15')[0], true);
+    assert.equal(rangeVal.validate('25')[0], false);
+
+    const { Validations } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/validation.js', {
+        Validator,
+        CellRange
+    });
+    const vals = new Validations();
+    vals.add('cell', 'A1:B2', { type: 'number', required: true, operator: 'gte', value: '5' });
+    vals.validate(0, 0, '');
+    assert.ok(vals.getError(0, 0));
+    vals.validate(0, 0, '8');
+    assert.equal(vals.getError(0, 0), undefined);
+    vals.remove(CellRange.valueOf('A1:A2'));
+    assert.equal(vals.get(0, 0), null);
+    assert.ok(vals.get(0, 1));
+
+    const AutoFilter = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/auto_filter.js', { CellRange });
+    const af = new AutoFilter();
+    af.setData({ ref: 'A1:A4' });
+    const afItems = af.items(0, ri => ({ text: ri === 1 ? 0 : '' }));
+    assert.equal(afItems['0'], 1);
+    assert.equal(afItems[''], 2);
+
+    const History = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/history.js');
+    const hist = new History();
+    hist.add({ step: 1 });
+    assert.equal(hist.canUndo(), true);
+    let restored = null;
+    hist.undo({ step: 2 }, d => { restored = d; });
+    assert.deepEqual(restored, { step: 1 });
+    assert.equal(hist.canRedo(), true);
+    hist.redo({ step: 1 }, d => { restored = d; });
+    assert.deepEqual(restored, { step: 2 });
+
+    const Clipboard = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/clipboard.js');
+    const cb = new Clipboard();
+    cb.copy(CellRange.valueOf('A1'));
+    assert.equal(cb.isCopy(), true);
+    cb.cut(CellRange.valueOf('A1'));
+    assert.equal(cb.isCut(), true);
+    cb.clear();
+    assert.equal(cb.isClear(), true);
+
+    const Scroll = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/scroll.js');
+    const sc = new Scroll();
+    assert.equal(sc.x, 0);
+
+    const CoreSelector = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/selector.js', { CellRange });
+    const cs = new CoreSelector();
+    cs.setIndexes(2, 3);
+    assert.equal(cs.ri, 2);
+    assert.deepEqual(cs.size(), [1, 1]);
+
+    const fontMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/font.js');
+    assert.equal(fontMod.getFontSizePxByPt(12), 16);
+    assert.ok(fontMod.fonts().Arial);
+
+    // Rows cutPaste & delete >9 string key fix
+    const r2 = new Rows({ len: 12, height: 24 });
+    r2.setCellText(0, 0, 'move');
+    r2.cutPaste(CellRange.valueOf('A1:A1'), CellRange.valueOf('B1:B1'));
+    assert.equal(r2.getCell(0, 1).text, 'move');
+    r2.setCellText(10, 0, 'stay-row10');
+    r2.delete(1, 2);
+    assert.equal(r2.getCell(8, 0).text, 'stay-row10');
 });
 
 test('x-spreadsheet canvas/draw.js SSR dpr, DrawBox, and numeric border lineWidth', async () => {
@@ -104,24 +215,84 @@ test('x-spreadsheet canvas/draw.js SSR dpr, DrawBox, and numeric border lineWidt
         const box = new drawMod.DrawBox(10, 20, 100, 40, 5);
         assert.equal(box.innerWidth(), 88);
         assert.equal(box.textx('center'), 60);
+        const fakeCtx = {
+            scale: () => {},
+            save: () => {},
+            restore: () => {},
+            beginPath: () => {},
+            moveTo: () => {},
+            lineTo: () => {},
+            stroke: () => {},
+            fillText: () => {},
+            measureText: () => ({ width: 40 }),
+            dashCalls: [],
+            setLineDash(v) { this.dashCalls.push(v); },
+            lineWidth: 0,
+            strokeStyle: ''
+        };
         const fakeCanvas = {
             style: {},
-            getContext: () => ({ scale: () => {}, lineWidth: 0, strokeStyle: '', setLineDash: () => {} })
+            getContext: () => fakeCtx
         };
         const d = new drawMod.Draw(fakeCanvas, 200, 100);
+        d.border('dashed', '#000');
         d.border('thin', '#000');
+        assert.deepEqual(fakeCtx.dashCalls[fakeCtx.dashCalls.length - 1], []);
         assert.equal(typeof d.ctx.lineWidth, 'number');
         assert.equal(d.ctx.lineWidth, 1.5);
+
+        // HiDPI underline length uses CSS width (measureText.width / dpr)
+        const linesDrawn = [];
+        d.line = (...pts) => {
+            linesDrawn.push(pts);
+            return d;
+        };
+        d.text('hi', box, {
+            align: 'left',
+            valign: 'middle',
+            font: { name: 'Arial', size: 12 },
+            color: '#000',
+            underline: true,
+            strike: true
+        }, false);
+        assert.equal(linesDrawn.length, 2);
+        assert.equal(linesDrawn[0][1][0] - linesDrawn[0][0][0], 20);
     });
+
+    const draw2Mod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/canvas/draw2.js');
+    const transformArgs = [];
+    const d2 = new draw2Mod.Draw({
+        width: 10,
+        height: 10,
+        getContext: () => ({
+            transform: (...args) => transformArgs.push(args),
+            clearRect: () => {}
+        })
+    });
+    d2.transform(1, 0, 0, 1, 5, 6);
+    assert.deepEqual(transformArgs[0], [1, 0, 0, 1, 5, 6]);
 });
 
 test('x-spreadsheet DataProxy, locale SSR, Bottombar, Modal, and Dropdown clickoutside cleanup', async () => {
     const localeSsr = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/locale/locale.js', {
-        en: { validation: { required: 'Required' } }
+        en: { validation: { required: 'Required', between: 'between {} and {}' } }
     });
+    const enLocale = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/locale/en.js');
+    const deLocale = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/locale/de.js');
+    const nlLocale = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/locale/nl.js');
+    assert.equal(enLocale.dataValidation.modeType.column, 'Column');
+    assert.equal(enLocale.dataValidation.operator.nbe, 'not between');
+    assert.equal(deLocale.toolbar.fontName, 'Schriftart');
+    assert.equal(deLocale.toolbar.valign, 'Vertikale Ausrichtung');
+    assert.equal(nlLocale.toolbar.bgcolor, 'Opvulkleur');
+
     await runWithDomGlobals({ window: undefined }, () => {
         assert.equal(localeSsr.t('validation.required'), 'Required');
+        assert.equal(localeSsr.t('validation.between', 1, 9), 'between 1 and 9');
+        assert.equal(localeSsr.t(''), '');
         assert.equal(localeSsr.t('missing.key'), '');
+        localeSsr.locale('zh-cn', undefined);
+        assert.equal(localeSsr.t('validation.required'), 'Required');
     });
 
     const { mockDocument, mockWindow, windowListeners } = createDomMocks();

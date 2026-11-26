@@ -1,4 +1,3 @@
-/*eslint-disable*/
 import { parseAsync, renderDocument } from 'docx-preview';
 import { normalizeFetchOptions } from '../../../utils/url';
 
@@ -25,11 +24,12 @@ function fetchDocx(src, options) {
 
 async function getBlob(data) {
     let blob;
-    if (data instanceof Blob) {
+    const hasBlob = typeof Blob !== 'undefined';
+    if (hasBlob && data instanceof Blob) {
         blob = data;
     } else if (typeof Response !== 'undefined' && data instanceof Response) {
         blob = await data.blob();
-    } else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+    } else if (hasBlob && (data instanceof ArrayBuffer || ArrayBuffer.isView(data))) {
         blob = new Blob([data]);
     }
     return blob;

@@ -15,7 +15,8 @@ const lineTypes = [
 export default class DropdownLineType extends Dropdown {
   constructor(type) {
     const icon = new Icon('line-type');
-    let beforei = 0;
+    const idx = lineTypes.findIndex(it => it[0] === type);
+    let beforei = idx >= 0 ? idx : 0;
     const lineTypeEls = lineTypes.map((it, iti) => h('div', `${cssPrefix}-item state ${type === it[0] ? 'checked' : ''}`)
       .on('click', () => {
         lineTypeEls[beforei].toggle('checked');

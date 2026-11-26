@@ -67,7 +67,12 @@ docx预览组件支持的可配置项如下
     trimXmlDeclaration: boolean = true, //if true, xml declaration will be removed from xml documents before parsing
     useBase64URL: boolean = false, //if true, images, fonts, etc. will be converted to base 64 URL, otherwise URL.createObjectURL is used
     useMathMLPolyfill: boolean = false, //includes MathML polyfills for chrome, edge, etc.
-    renderChanges: false, //enables experimental rendering of document changes (insertions/deletions)
+    renderHeaders: boolean = true, //enables headers rendering
+    renderFooters: boolean = true, //enables footers rendering
+    renderFootnotes: boolean = true, //enables footnotes rendering
+    renderEndnotes: boolean = true, //enables endnotes rendering
+    renderChanges: boolean = false, //enables experimental rendering of document changes (insertions/deletions)
+    showChanges: boolean = false, //enables experimental rendering of document changes
     debug: boolean = false, //enables additional logging
 }
 ```

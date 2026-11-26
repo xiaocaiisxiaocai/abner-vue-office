@@ -70,6 +70,8 @@ export default defineComponent({
         let renderId = 0;
         let libRequestId = 0;
         const activeRenderTasks = new Set();
+        const canvasRenderTasks = new WeakMap();
+        const cancelledRenderTasks = new WeakSet();
 
         const containerRef = ref(null); //最外层容器
         const wrapperRef = ref(null); //canvas渲染外层容器
@@ -113,6 +115,7 @@ export default defineComponent({
         function cancelRenderTasks() {
             activeRenderTasks.forEach(task => {
                 if (task && typeof task.cancel === 'function') {
+                    cancelledRenderTasks.add(task);
                     try {
                         task.cancel();
                     } catch (e) {
@@ -187,7 +190,7 @@ export default defineComponent({
                         }
                     });
                 });
-            } else if (props.src && containerRef.value) {
+            } else if (props.src && containerRef.value && !loadingTask) {
                 scheduleInit();
             }
         }
@@ -300,7 +303,7 @@ export default defineComponent({
                     cMapUrl: `${staticBase.endsWith('/') ? staticBase : staticBase + '/'}cmaps/`,
                     cMapPacked: true,
                     enableXfa: true,
-                    ...omit(opts, ['width', 'gap', 'defaultScale', 'httpHeaders'])
+                    ...omit(opts, ['url', 'width', 'gap', 'defaultScale', 'httpHeaders'])
                 });
                 const pdf = await loadingTask.promise;
                 if (isUnmounted || currentId !== renderId) {
@@ -328,7 +331,8 @@ export default defineComponent({
                 }
                 const opts = getOptions();
                 const baseContainerWidth = Math.max((containerRef.value.clientWidth || wrapperRef.value.getBoundingClientRect().width || 820) - 20, 100);
-                const baseWidth = opts.width || baseContainerWidth;
+                const optWidth = typeof opts.width === 'number' && Number.isFinite(opts.width) && opts.width > 0 ? opts.width : 0;
+                const baseWidth = optWidth || baseContainerWidth;
                 const targetWidth = baseWidth * userScale.value;
                 const baseViewport = pdfPage.getViewport({ scale: 1 });
                 const baseViewportWidth = baseViewport.width > 0 ? baseViewport.width : 1;
@@ -421,6 +425,19 @@ export default defineComponent({
                 originNodes.forEach(node => {
                     const id = +node.getAttribute('data-id');
                     if (id < startIndex || id > endIndex) {
+                        const pendingTask = canvasRenderTasks.get(node);
+                        if (pendingTask) {
+                            cancelledRenderTasks.add(pendingTask);
+                            canvasRenderTasks.delete(node);
+                            activeRenderTasks.delete(pendingTask);
+                            if (typeof pendingTask.cancel === 'function') {
+                                try {
+                                    pendingTask.cancel();
+                                } catch (e) {
+                                    // ignore
+                                }
+                            }
+                        }
                         list.removeChild(node);
                     }
                 });
@@ -469,6 +486,9 @@ export default defineComponent({
                 }
 
                 const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    return;
+                }
                 const transform = outputScale !== 1
                     ? [outputScale, 0, 0, outputScale, 0, 0]
                     : null;
@@ -479,13 +499,17 @@ export default defineComponent({
                     viewport
                 });
                 activeRenderTasks.add(renderTask);
+                canvasRenderTasks.set(canvas, renderTask);
                 return renderTask.promise.catch(err => {
-                    if (isUnmounted || currentId !== renderId) {
+                    if (isUnmounted || currentId !== renderId || cancelledRenderTasks.has(renderTask)) {
                         return;
                     }
                     return Promise.reject(err);
                 }).finally(() => {
                     activeRenderTasks.delete(renderTask);
+                    if (canvasRenderTasks.get(canvas) === renderTask) {
+                        canvasRenderTasks.delete(canvas);
+                    }
                 });
             });
         }

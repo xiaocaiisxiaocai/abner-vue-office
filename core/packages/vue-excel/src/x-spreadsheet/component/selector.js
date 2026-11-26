@@ -3,10 +3,9 @@ import { cssPrefix } from '../config';
 import { CellRange } from '../core/cell_range';
 
 const selectorHeightBorderWidth = 2 * 2 - 1;
-let startZIndex = 10;
 
 class SelectorElement {
-  constructor(useHideInput = false, autoFocus = true) {
+  constructor(useHideInput = false, autoFocus = true, zIndex = 10) {
     this.useHideInput = useHideInput;
     this.autoFocus = autoFocus;
     this.inputChange = () => {};
@@ -16,7 +15,7 @@ class SelectorElement {
     this.clipboardEl = h('div', `${cssPrefix}-selector-clipboard`).hide();
     this.autofillEl = h('div', `${cssPrefix}-selector-autofill`).hide();
     this.el = h('div', `${cssPrefix}-selector`)
-      .css('z-index', `${startZIndex}`)
+      .css('z-index', `${zIndex}`)
       .children(this.areaEl, this.clipboardEl, this.autofillEl)
       .hide();
     if (useHideInput) {
@@ -26,7 +25,6 @@ class SelectorElement {
         });
       this.el.child(this.hideInputDiv = h('div', 'hide-input').child(this.hideInput));
     }
-    startZIndex += 1;
   }
 
   setOffset(v) {
@@ -202,18 +200,19 @@ export default class Selector {
     const { autoFocus } = data.settings;
     this.inputChange = () => {};
     this.data = data;
-    this.br = new SelectorElement(true, autoFocus);
-    this.t = new SelectorElement();
-    this.l = new SelectorElement();
-    this.tl = new SelectorElement();
+    this.br = new SelectorElement(true, autoFocus, 10);
+    this.t = new SelectorElement(false, true, 11);
+    this.l = new SelectorElement(false, true, 12);
+    this.tl = new SelectorElement(false, true, 13);
     this.br.inputChange = (v) => {
       this.inputChange(v);
     };
     this.br.el.show();
     this.offset = null;
     this.areaOffset = null;
-    this.indexes = null;
-    this.range = null;
+    this.indexes = [data.selector.ri, data.selector.ci];
+    this.moveIndexes = [data.selector.range.sri, data.selector.range.sci];
+    this.range = data.selector.range;
     this.arange = null;
     this.el = h('div', `${cssPrefix}-selectors`)
       .children(
@@ -226,13 +225,16 @@ export default class Selector {
     // for performance
     this.lastri = -1;
     this.lastci = -1;
-
-    startZIndex += 1;
   }
 
   resetData(data) {
     this.data = data;
+    this.indexes = [data.selector.ri, data.selector.ci];
+    this.moveIndexes = [data.selector.range.sri, data.selector.range.sci];
     this.range = data.selector.range;
+    this.lastri = -1;
+    this.lastci = -1;
+    this.arange = null;
     this.resetAreaOffset();
   }
 
@@ -322,11 +324,11 @@ export default class Selector {
   reset() {
     // console.log('::::', this.data);
     const { eri, eci } = this.data.selector.range;
-    this.setEnd(eri, eci);
+    this.setEnd(eri, eci, false);
   }
 
   showAutofill(ri, ci) {
-    if (ri === -1 && ci === -1) return;
+    if (ri < 0 || ci < 0) return;
     // console.log('ri:', ri, ', ci:', ci);
     // const [sri, sci] = this.sIndexes;
     // const [eri, eci] = this.eIndexes;

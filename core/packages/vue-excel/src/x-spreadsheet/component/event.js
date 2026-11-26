@@ -1,4 +1,3 @@
-/* global window */
 export function bind(target, name, fn) {
   target.addEventListener(name, fn);
 }
@@ -41,15 +40,36 @@ export function bindClickoutside(el, cb) {
   bind(window.document.body, 'click', dom.xclickoutside);
 }
 export function mouseMoveUp(target, movefunc, upfunc) {
-  bind(target, 'mousemove', movefunc);
+  if (target && typeof target._xCancelMoveUp === 'function') {
+    target._xCancelMoveUp();
+  }
   const t = target;
-  t.xEvtUp = (evt) => {
-    // console.log('mouseup>>>');
+  let active = true;
+  const xEvtUp = (evt) => {
+    if (!active) return;
+    active = false;
     unbind(target, 'mousemove', movefunc);
-    unbind(target, 'mouseup', target.xEvtUp);
+    unbind(target, 'mouseup', xEvtUp);
+    if (t && t._xCancelMoveUp === cancel) {
+      t._xCancelMoveUp = null;
+    }
     upfunc(evt);
   };
-  bind(target, 'mouseup', target.xEvtUp);
+  const cancel = () => {
+    if (!active) return;
+    active = false;
+    unbind(target, 'mousemove', movefunc);
+    unbind(target, 'mouseup', xEvtUp);
+    if (t && t._xCancelMoveUp === cancel) {
+      t._xCancelMoveUp = null;
+    }
+  };
+  if (t) {
+    t._xCancelMoveUp = cancel;
+  }
+  bind(target, 'mousemove', movefunc);
+  bind(target, 'mouseup', xEvtUp);
+  return cancel;
 }
 
 function calTouchDirection(spanx, spany, evt, cb) {
@@ -115,10 +135,10 @@ export function createEventEmitter() {
         || create();
   }
 
-  function fire(eventName, args) {
+  function fire(eventName, args = []) {
     const exec = () => {
       const currentListener = listeners.get(eventName);
-      for (const callback of currentListener) callback.call(null, ...args);
+      for (const callback of [...currentListener]) callback.call(null, ...args);
     };
 
     return listeners.has(eventName)

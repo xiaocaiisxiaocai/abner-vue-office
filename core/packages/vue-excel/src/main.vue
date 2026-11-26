@@ -191,8 +191,9 @@ export default defineComponent({
 
             const swapFunc = xs.bottombar.swapFunc;
             xs.bottombar.swapFunc = function (index) {
-                swapFunc.call(xs.bottombar, index);
                 sheetIndex = index;
+                offset = (xs.datas && xs.datas[index]) ? xs.datas[index].getSelectedRect() : null;
+                swapFunc.call(xs.bottombar, index);
                 offset = xs.sheet.data.getSelectedRect();
                 clearSwapTimer();
                 swapTimer = setTimeout(() => {
@@ -262,6 +263,9 @@ export default defineComponent({
         });
 
         watch(() => props.src, () => {
+            if (!xs) {
+                return;
+            }
             loadExcelFromSrc();
         });
 

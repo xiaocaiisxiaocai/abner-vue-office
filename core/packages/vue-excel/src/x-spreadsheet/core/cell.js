@@ -168,10 +168,9 @@ const evalSuffixExpr = (srcStack, formulaMap, cellRender, cellList) => {
       const top = stack.pop();
       stack.push(numberCalc('/', stack.pop(), top));
     } else if (fc === '=' || fc === '>' || fc === '<') {
-      let top = stack.pop();
-      if (!Number.isNaN(top)) top = Number(top);
-      let left = stack.pop();
-      if (!Number.isNaN(left)) left = Number(left);
+      const toComparable = v => (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v)) ? Number(v) : v);
+      const top = toComparable(stack.pop());
+      const left = toComparable(stack.pop());
       let ret = false;
       if (fc === '=') {
         ret = (left === top);
@@ -199,11 +198,17 @@ const evalSuffixExpr = (srcStack, formulaMap, cellRender, cellList) => {
       if (cellList.includes(expr)) {
         return 0;
       }
-      if ((fc >= 'a' && fc <= 'z') || (fc >= 'A' && fc <= 'Z')) {
+      const isCellRef = (fc >= 'a' && fc <= 'z') || (fc >= 'A' && fc <= 'Z');
+      if (isCellRef) {
         cellList.push(expr);
       }
-      stack.push(evalSubExpr(expr, cellRender));
-      cellList.pop();
+      try {
+        stack.push(evalSubExpr(expr, cellRender));
+      } finally {
+        if (isCellRef) {
+          cellList.pop();
+        }
+      }
     }
     // console.log('stack:', stack);
   }

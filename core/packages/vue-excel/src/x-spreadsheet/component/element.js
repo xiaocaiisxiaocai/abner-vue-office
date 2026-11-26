@@ -1,5 +1,3 @@
-/* global document */
-/* global window */
 class Element {
   constructor(tag, className = '') {
     if (typeof tag === 'string') {
@@ -8,25 +6,24 @@ class Element {
     } else {
       this.el = tag;
     }
-    this.data = {};
+    this._data = {};
   }
 
   data(key, value) {
     if (value !== undefined) {
-      this.data[key] = value;
+      this._data[key] = value;
       return this;
     }
-    return this.data[key];
+    return this._data[key];
   }
 
   on(eventNames, handler) {
     const [fen, ...oen] = eventNames.split('.');
     let eventName = fen;
-    if (eventName === 'mousewheel' && /Firefox/i.test(window.navigator.userAgent)) {
+    if (eventName === 'mousewheel' && typeof window !== 'undefined' && window.navigator && /Firefox/i.test(window.navigator.userAgent)) {
       eventName = 'DOMMouseScroll';
     }
     this.el.addEventListener(eventName, (evt) => {
-      handler(evt);
       for (let i = 0; i < oen.length; i += 1) {
         const k = oen[i];
         if (k === 'left' && evt.button !== 0) {
@@ -39,6 +36,7 @@ class Element {
           evt.stopPropagation();
         }
       }
+      handler(evt);
     });
     return this;
   }

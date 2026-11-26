@@ -82,10 +82,15 @@ test('excel.js getData handles buffers, typedarray slices, Blob, Response, and X
     await runWithDomGlobals({ XMLHttpRequest: MockXHR }, async () => {
         const okBuf = await excelMod.getData('https://example.com/ok', {
             credentials: 'include',
+            responseType: 'blob',
+            timeout: 5000,
+            body: 'ignored',
             headers: { Authorization: 'Bearer tok' }
         });
         assert.equal(okBuf.byteLength, 4);
         assert.equal(MockXHR.lastInstance.withCredentials, true);
+        assert.equal(MockXHR.lastInstance.responseType, 'arraybuffer');
+        assert.equal(MockXHR.lastInstance.timeout, 5000);
         assert.equal(MockXHR.lastInstance.headers.Authorization, 'Bearer tok');
 
         const nullOptsBuf = await excelMod.getData('https://example.com/ok', null);
@@ -206,6 +211,11 @@ test('excel.js formatNumberValue, getCellText, getStyle, and transferExcelToSpre
     assert.equal(excelMod.formatNumberValue(50, '0.00"%"'), '50.00%');
     assert.equal(excelMod.formatNumberValue(0.125, '0.0#%'), '12.5%');
     assert.equal(excelMod.formatNumberValue(-0.0001, '0.00'), '0.00');
+    assert.equal(excelMod.formatNumberValue(-0.00001, '0.00%;-0.00%'), '0.00%');
+    assert.equal(excelMod.formatNumberValue(0.55, '.00'), '.55'.replace('.', '0.'));
+    assert.equal(excelMod.formatNumberValue(1234, '#,0'), '1,234');
+    assert.equal(excelMod.formatNumberValue(1234.5, '#,0.00'), '1,234.50');
+    assert.equal(excelMod.formatNumberValue(0, '?.??'), '0');
     assert.equal(excelMod.formatNumberValue(0, '_(* #,##0.00_);_(* (#,##0.00);_(* "-"??_);_(@_)'), '-');
     assert.equal(excelMod.formatNumberValue(0, '_(* #,##0.00_);_(* (#,##0.00);_(* 0.00_)'), '0.00');
     assert.equal(excelMod.formatNumberValue(0, '_(#,##0.00_)'), '0.00');
@@ -255,6 +265,25 @@ test('excel.js formatNumberValue, getCellText, getStyle, and transferExcelToSpre
     assert.deepEqual(styled.border.bottom, ['thin', '#C7C9CC']);
     assert.equal(styled.border.left, undefined);
 
+    const noneFillStyle = excelMod.getStyle({
+        style: {
+            fill: { type: 'pattern', pattern: 'none', fgColor: { argb: 'FFFF0000' } },
+            font: { size: 0.5, color: { theme: 4, tint: 0.3 } }
+        }
+    });
+    assert.equal(noneFillStyle.bgcolor, undefined);
+    assert.equal(noneFillStyle.font.size, 1);
+    assert.ok(noneFillStyle.color.startsWith('#'));
+
+    const idxFallback = excelMod.getStyle({
+        style: {
+            fill: { fgColor: { indexed: 999 } },
+            font: { color: { indexed: 999 } }
+        }
+    });
+    assert.equal(idxFallback.bgcolor, '#C7C9CC');
+    assert.equal(idxFallback.color, '#000000');
+
     const wbEdge = {
         media: [],
         eachSheet(cb) {
@@ -296,6 +325,13 @@ test('excel.js formatNumberValue, getCellText, getStyle, and transferExcelToSpre
     const resZeroRows = excelMod.transferExcelToSpreadSheet(wbEdge, { minRowLength: 0, minColLength: 0 });
     assert.equal(resZeroRows.workbookData[0].rows.len, 15);
     assert.equal(resZeroRows.workbookData[0].cols.len, 3);
+
+    const resClampNegative = excelMod.transferExcelToSpreadSheet(wbEdge, {
+        widthOffset: -500,
+        heightOffset: -500
+    });
+    assert.equal(resClampNegative.workbookData[0].cols['1'].width, 1);
+    assert.equal(resClampNegative.workbookData[0].rows[0].height, 1);
 });
 
 test('x-spreadsheet alphabet, cell formula fallback/unclosed quote, and DataProxy zero-text', async () => {
@@ -335,4 +371,15 @@ test('x-spreadsheet alphabet, cell formula fallback/unclosed quote, and DataProx
     });
     assert.equal(innerInput.readOnly, true);
     assert.notEqual(externalInput.blurred, true);
+
+    mockDocument.activeElement = innerInput;
+    await runWithDomGlobals({ document: mockDocument }, () => {
+        readOnlyInput(rootEl);
+    });
+    assert.equal(innerInput.blurred, true);
+
+    await runWithDomGlobals({ document: undefined }, () => {
+        readOnlyInput(rootEl);
+        readOnlyInput(null);
+    });
 });

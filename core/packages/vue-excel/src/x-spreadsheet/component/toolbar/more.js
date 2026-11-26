@@ -30,6 +30,9 @@ export default class More extends DropdownItem {
   }
 
   hide() {
+    if (this.dd && typeof this.dd.hide === 'function') {
+      this.dd.hide();
+    }
     this.el.hide();
   }
 }

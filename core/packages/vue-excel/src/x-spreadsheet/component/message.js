@@ -1,4 +1,3 @@
-/* global document */
 import { h } from './element';
 import Icon from './icon';
 import { cssPrefix } from '../config';
@@ -7,8 +6,12 @@ export function xtoast(title, content) {
   const el = h('div', `${cssPrefix}-toast`);
   const dimmer = h('div', `${cssPrefix}-dimmer active`);
   const remove = () => {
-    document.body.removeChild(el.el);
-    document.body.removeChild(dimmer.el);
+    if (el.el.parentNode) {
+      el.el.parentNode.removeChild(el.el);
+    }
+    if (dimmer.el.parentNode) {
+      dimmer.el.parentNode.removeChild(dimmer.el);
+    }
   };
 
   el.children(

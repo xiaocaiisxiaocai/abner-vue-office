@@ -10,9 +10,12 @@ const infix2suffix = (src) => {
         stack.push(c);
       } else if (c === ')') {
         let c1 = operatorStack.pop();
-        while (c1 !== '(') {
+        while (c1 !== '(' && operatorStack.length > 0) {
           stack.push(c1);
           c1 = operatorStack.pop();
+        }
+        if (c1 !== undefined && c1 !== '(') {
+          stack.push(c1);
         }
       } else {
         // priority: */ > +-

@@ -1,4 +1,3 @@
-/* global window */
 import { h } from './element';
 import { mouseMoveUp } from './event';
 import { cssPrefix } from '../config';
@@ -7,6 +6,7 @@ export default class Resizer {
   constructor(vertical = false, minDistance) {
     this.moving = false;
     this.vertical = vertical;
+    this._cancelMove = null;
     this.el = h('div', `${cssPrefix}-resizer ${vertical ? 'vertical' : 'horizontal'}`).children(
       this.unhideHoverEl = h('div', `${cssPrefix}-resizer-hover`)
         .on('dblclick.stop', evt => this.mousedblclickHandler(evt))
@@ -76,6 +76,7 @@ export default class Resizer {
   }
 
   mousedownHandler(evt) {
+    if (evt && evt.buttons !== undefined && evt.buttons !== 1) return;
     let startEvt = evt;
     const {
       el, lineEl, cRect, vertical, minDistance,
@@ -83,24 +84,21 @@ export default class Resizer {
     let distance = vertical ? cRect.width : cRect.height;
     // console.log('distance:', distance);
     lineEl.show();
-    mouseMoveUp(window, (e) => {
+    this._cancelMove = mouseMoveUp(window, (e) => {
       this.moving = true;
       if (startEvt !== null && e.buttons === 1) {
         // console.log('top:', top, ', left:', top, ', cRect:', cRect);
         if (vertical) {
-          distance += e.movementX;
-          if (distance > minDistance) {
-            el.css('left', `${cRect.left + distance}px`);
-          }
+          distance = Math.max(minDistance, distance + e.movementX);
+          el.css('left', `${cRect.left + distance}px`);
         } else {
-          distance += e.movementY;
-          if (distance > minDistance) {
-            el.css('top', `${cRect.top + distance}px`);
-          }
+          distance = Math.max(minDistance, distance + e.movementY);
+          el.css('top', `${cRect.top + distance}px`);
         }
         startEvt = e;
       }
     }, () => {
+      this._cancelMove = null;
       startEvt = null;
       lineEl.hide();
       this.moving = false;
@@ -110,5 +108,15 @@ export default class Resizer {
         this.finishedFn(cRect, distance);
       }
     });
+  }
+
+  destroy() {
+    if (typeof this._cancelMove === 'function') {
+      this._cancelMove();
+      this._cancelMove = null;
+    }
+    this.moving = false;
+    this.lineEl.hide();
+    this.hide();
   }
 }

@@ -1,3 +1,7 @@
 node_modules/
 lib/
 dist/
+packages/vue-pdf/src/pdf.js
+packages/vue-pdf/src/worker.js
+packages/js-pdf/src/pdf.js
+packages/js-pdf/src/worker.js

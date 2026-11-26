@@ -23,7 +23,7 @@ const baseFormulas = [
   {
     key: 'AVERAGE',
     title: tf('formula.average'),
-    render: ary => ary.reduce((a, b) => Number(a) + Number(b), 0) / ary.length,
+    render: ary => (ary.length ? ary.reduce((a, b) => Number(a) + Number(b), 0) / ary.length : 0),
   },
   {
     key: 'MAX',

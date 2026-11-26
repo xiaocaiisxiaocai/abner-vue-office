@@ -14,6 +14,9 @@ export default defineConfig({
           compiler: compiler
         })
   ],
+  optimizeDeps: {
+    exclude: ['vue-demi']
+  },
   build: {
     minify: 'terser',
     target: 'es2015',
@@ -23,9 +26,6 @@ export default defineConfig({
       name: 'abner-vue-office-excel',
       formats: ['umd'],
       fileName: () => 'index.js',
-    },
-    optimizeDeps: {
-      exclude: ['vue-demi']
     },
     rollupOptions: {
       external: ['vue-demi','vue'],

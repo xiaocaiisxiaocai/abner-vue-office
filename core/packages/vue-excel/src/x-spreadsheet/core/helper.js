@@ -5,6 +5,7 @@ function cloneDeep(obj) {
 
 const mergeDeep = (object = {}, ...sources) => {
   sources.forEach((source) => {
+    if (!source || typeof source !== 'object') return;
     Object.keys(source).forEach((key) => {
       const v = source[key];
       // console.log('k:', key, ', v:', source[key], typeof v, v instanceof Object);
@@ -23,23 +24,25 @@ const mergeDeep = (object = {}, ...sources) => {
 };
 
 function equals(obj1, obj2) {
+  if (obj1 === obj2) return true;
+  if (!obj1 || !obj2 || typeof obj1 !== 'object' || typeof obj2 !== 'object') {
+    return false;
+  }
+  if (Array.isArray(obj1) || Array.isArray(obj2)) {
+    if (!Array.isArray(obj1) || !Array.isArray(obj2) || obj1.length !== obj2.length) {
+      return false;
+    }
+    for (let ai = 0; ai < obj1.length; ai += 1) {
+      if (!equals(obj1[ai], obj2[ai])) return false;
+    }
+    return true;
+  }
   const keys = Object.keys(obj1);
   if (keys.length !== Object.keys(obj2).length) return false;
   for (let i = 0; i < keys.length; i += 1) {
     const k = keys[i];
-    const v1 = obj1[k];
-    const v2 = obj2[k];
-    if (v2 === undefined) return false;
-    if (typeof v1 === 'string' || typeof v1 === 'number' || typeof v1 === 'boolean') {
-      if (v1 !== v2) return false;
-    } else if (Array.isArray(v1)) {
-      if (v1.length !== v2.length) return false;
-      for (let ai = 0; ai < v1.length; ai += 1) {
-        if (!equals(v1[ai], v2[ai])) return false;
-      }
-    } else if (typeof v1 !== 'function' && !Array.isArray(v1) && v1 instanceof Object) {
-      if (!equals(v1, v2)) return false;
-    }
+    if (!Object.prototype.hasOwnProperty.call(obj2, k)) return false;
+    if (!equals(obj1[k], obj2[k])) return false;
   }
   return true;
 }
@@ -111,13 +114,13 @@ function digits(a) {
 }
 
 export function numberCalc(type, a1, a2) {
-  if (Number.isNaN(a1) || Number.isNaN(a2)) {
+  const num1 = Number(a1);
+  const num2 = Number(a2);
+  if (Number.isNaN(num1) || Number.isNaN(num2)) {
     return a1 + type + a2;
   }
   const al1 = digits(a1);
   const al2 = digits(a2);
-  const num1 = Number(a1);
-  const num2 = Number(a2);
   let ret = 0;
   if (type === '-') {
     ret = num1 - num2;

@@ -93,11 +93,17 @@ export default class ModalValidation extends Modal {
     this.change = () => {};
   }
 
-  showVf(it) {
-    const hint = it === 'date' ? '2018-11-12' : '10';
-    const { vf } = this;
-    vf.input.hint(hint);
-    vf.show();
+  hide() {
+    if (this.mf && this.mf.input && this.mf.input.suggest) {
+      this.mf.input.suggest.hide();
+    }
+    if (this.cf && this.cf.input && this.cf.input.suggest) {
+      this.cf.input.suggest.hide();
+    }
+    if (this.of && this.of.input && this.of.input.suggest) {
+      this.of.input.suggest.hide();
+    }
+    super.hide();
   }
 
   criteriaSelected(it) {
@@ -176,9 +182,10 @@ export default class ModalValidation extends Modal {
       const mode = this.mf.val();
       const ref = this.rf.val();
       const type = this.cf.val();
-      const operator = this.of.val();
-      let value = this.svf.val();
-      if (type === 'number' || type === 'date') {
+      const isRangeType = type === 'number' || type === 'date';
+      const operator = isRangeType ? this.of.val() : undefined;
+      let value = type === 'list' ? this.svf.val() : '';
+      if (isRangeType) {
         if (operator === 'be' || operator === 'nbe') {
           value = [this.minvf.val(), this.maxvf.val()];
         } else {
@@ -208,10 +215,14 @@ export default class ModalValidation extends Modal {
       const {
         type, operator, value,
       } = validator || { type: 'list' };
+      const isRangeType = type === 'number' || type === 'date';
+      const resolvedOperator = isRangeType ? (operator || 'be') : undefined;
       mf.val(mode || 'cell');
       rf.val(ref);
       cf.val(type);
-      of.val(operator);
+      if (isRangeType) {
+        of.val(resolvedOperator);
+      }
       if (Array.isArray(value)) {
         minvf.val(value[0]);
         maxvf.val(value[1]);
@@ -220,7 +231,9 @@ export default class ModalValidation extends Modal {
         vf.val(value || '');
       }
       this.criteriaSelected(type);
-      this.criteriaOperatorSelected(operator);
+      if (isRangeType) {
+        this.criteriaOperatorSelected(resolvedOperator);
+      }
     }
     this.show();
   }

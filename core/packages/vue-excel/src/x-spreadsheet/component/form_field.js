@@ -3,7 +3,7 @@ import { cssPrefix } from '../config';
 import { t } from '../locale/locale';
 
 const patterns = {
-  number: /(^\d+$)|(^\d+(\.\d{0,4})?$)/,
+  number: /^-?\d+(\.\d+)?$/,
   date: /^\d{4}-\d{1,2}-\d{1,2}$/,
 };
 
@@ -57,7 +57,7 @@ export default class FormField {
     }
     if (rule.type || rule.pattern) {
       const pattern = rule.pattern || patterns[rule.type];
-      if (!pattern.test(v)) {
+      if (pattern && !pattern.test(v)) {
         tip.html(t('validation.notMatch'));
         el.addClass('error');
         return false;
