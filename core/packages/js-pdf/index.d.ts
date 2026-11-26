@@ -1,3 +1,5 @@
+export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob;
+
 export interface Options {
     staticFileUrl?: string;
     gap?: number;
@@ -19,7 +21,7 @@ export interface Options {
 }
 
 export interface AbnerJsPdfPreview {
-    preview: (src: string | ArrayBuffer | Blob) => Promise<any>;
+    preview: (src: OfficeSource) => Promise<any>;
     rerender: () => Promise<any>;
     save: (fileName?: string) => void;
     setOptions: (options: Options) => void;

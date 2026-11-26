@@ -1,3 +1,5 @@
+export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob;
+
 export interface ExcelCellEvent {
     cell: any;
     rowIndex: number;
@@ -12,7 +14,7 @@ export interface ExcelCellsEvent {
     endColumnIndex: number;
 }
 
-export interface Options {
+export interface ExcelOptions {
     xls?: boolean;
     minColLength?: number;
     minRowLength?: number;
@@ -23,11 +25,28 @@ export interface Options {
     transformData?: (workbookData: any) => any;
 }
 
-declare const AbnerVueOfficeExcel: {
-    install?: (vue: any) => void;
-    src: string | ArrayBuffer | Blob;
+export type Options = ExcelOptions;
+
+export interface ExcelProps {
+    src: OfficeSource;
     requestOptions?: Record<string, any>;
-    options?: Options;
-    save?: (fileName?: string) => void;
-};
+    options?: ExcelOptions;
+    onRendered?: () => void;
+    onError?: (error: any) => void;
+    onSwitchSheet?: (sheetIndex: number) => void;
+    onCellSelected?: (event: ExcelCellEvent) => void;
+    onCellsSelected?: (event: ExcelCellsEvent) => void;
+}
+
+export interface AbnerVueOfficeExcelInstance {
+    $props: ExcelProps;
+    save: (fileName?: string) => void;
+}
+
+export interface AbnerVueOfficeExcelComponent {
+    new (): AbnerVueOfficeExcelInstance;
+    install(app: any): void;
+}
+
+declare const AbnerVueOfficeExcel: AbnerVueOfficeExcelComponent;
 export default AbnerVueOfficeExcel;

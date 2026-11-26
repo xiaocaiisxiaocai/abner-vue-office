@@ -1,5 +1,6 @@
 /*eslint-disable*/
 import { renderAsync } from 'docx-preview';
+import { normalizeFetchOptions } from '../../../utils/url';
 
 const defaultOptions = {
     ignoreLastRenderedPageBreak: false
@@ -13,7 +14,7 @@ function getData(src, options = {}) {
 }
 
 function fetchDocx(src, options) {
-    return fetch(src, options).then(res => {
+    return fetch(src, normalizeFetchOptions(options)).then(res => {
         if (!res.ok) {
             return Promise.reject(res);
         }
@@ -27,7 +28,7 @@ async function getBlob(data) {
         blob = data;
     } else if (typeof Response !== 'undefined' && data instanceof Response) {
         blob = await data.blob();
-    } else if (data instanceof ArrayBuffer) {
+    } else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
         blob = new Blob([data]);
     }
     return blob;
@@ -42,6 +43,10 @@ async function render(data, container, options = {}) {
         return;
     }
     const blob = await getBlob(data);
+    if (!blob) {
+        container.innerHTML = '';
+        return Promise.reject(new Error('Unsupported docx data'));
+    }
     return renderAsync(blob, container, container, { ...defaultOptions, ...options });
 }
 

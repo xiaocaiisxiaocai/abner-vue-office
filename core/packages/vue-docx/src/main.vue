@@ -45,6 +45,7 @@ export default defineComponent({
                     if (isUnmounted || currentId !== renderId || !rootRef.value) {
                         return;
                     }
+                    fileData = null;
                     docx.render('', container, props.options);
                     emit('error', e);
                 });
@@ -52,6 +53,7 @@ export default defineComponent({
                 if (isUnmounted || currentId !== renderId || !rootRef.value) {
                     return;
                 }
+                fileData = null;
                 docx.render('', container, props.options);
                 emit('error', e);
             });

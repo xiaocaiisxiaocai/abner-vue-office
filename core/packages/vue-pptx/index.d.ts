@@ -1,14 +1,31 @@
-export interface Options {
+export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob;
+
+export interface PptxOptions {
     width?: number;
     height?: number;
     [key: string]: any;
 }
 
-declare const AbnerVueOfficePptx: {
-    install?: (vue: any) => void;
-    src: string | ArrayBuffer | Blob;
+export type Options = PptxOptions;
+
+export interface PptxProps {
+    src: OfficeSource;
     requestOptions?: Record<string, any>;
-    options?: Options;
-    save?: (fileName?: string) => void;
-};
+    options?: PptxOptions;
+    onRendered?: (pptx?: any) => void;
+    onError?: (error: any) => void;
+}
+
+export interface AbnerVueOfficePptxInstance {
+    $props: PptxProps;
+    save: (fileName?: string) => void;
+    rerender: () => Promise<void>;
+}
+
+export interface AbnerVueOfficePptxComponent {
+    new (): AbnerVueOfficePptxInstance;
+    install(app: any): void;
+}
+
+declare const AbnerVueOfficePptx: AbnerVueOfficePptxComponent;
 export default AbnerVueOfficePptx;

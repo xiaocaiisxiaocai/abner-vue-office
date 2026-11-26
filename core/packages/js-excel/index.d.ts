@@ -1,3 +1,5 @@
+export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob;
+
 export interface ExcelCellEvent {
     cell: any;
     rowIndex: number;
@@ -27,7 +29,7 @@ export interface Options {
 }
 
 export interface AbnerJsExcelPreview {
-    preview: (src: string | ArrayBuffer | Blob) => Promise<any>;
+    preview: (src: OfficeSource) => Promise<any>;
     save: (fileName?: string) => void;
     setOptions: (options: Options) => void;
     setRequestOptions: (requestOptions?: Record<string, any>) => void;

@@ -15,7 +15,8 @@ export default {
         {
             file: 'lib/index.umd.js',
             name: 'abnerJsPdf',
-            format: 'umd'
+            format: 'umd',
+            plugins: [getBabelOutputPlugin({ allowAllFormats: true, presets: ['@babel/preset-env'] })]
         }
     ],
     plugins: [

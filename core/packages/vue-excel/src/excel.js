@@ -2,7 +2,6 @@ import * as Excel from 'exceljs/dist/exceljs';
 import tinycolor from 'tinycolor2';
 import cloneDeep from 'lodash/cloneDeep';
 import get from 'lodash/get';
-import find from 'lodash/find';
 import { getDarkColor, getLightColor } from './color';
 import dayjs from 'dayjs';
 import { read, write } from 'xlsx';
@@ -94,6 +93,9 @@ export function getData(src, options = {}) {
     if (src instanceof ArrayBuffer) {
         return Promise.resolve(src);
     }
+    if (ArrayBuffer.isView(src)) {
+        return Promise.resolve(src.buffer.slice(src.byteOffset, src.byteOffset + src.byteLength));
+    }
     if (src instanceof Blob) {
         return src.arrayBuffer();
     }
@@ -149,12 +151,16 @@ export function readExcelData(buffer, xls){
 
 
 function transferColumns(excelSheet, spreadSheet, options){
-    for(let i = 0;i < (excelSheet.columns || []).length; i++){
+    const columns = excelSheet.columns || [];
+    for(let i = 0; i < columns.length; i++){
+        const col = columns[i];
         spreadSheet.cols[i.toString()] = {};
-        if(excelSheet.columns[i]._hidden) {
+        if(!col) {
+            spreadSheet.cols[i.toString()].width = defaultColWidth + (options.widthOffset || 0);
+        }else if(col._hidden) {
             spreadSheet.cols[i.toString()].width = 0.1;
-        }else if(excelSheet.columns[i].width) {
-            spreadSheet.cols[i.toString()].width = excelSheet.columns[i].width * 6 + (options.widthOffset || 0);
+        }else if(col.width) {
+            spreadSheet.cols[i.toString()].width = col.width * 6 + (options.widthOffset || 0);
         } else {
             spreadSheet.cols[i.toString()].width = defaultColWidth + (options.widthOffset || 0);
         }
@@ -176,31 +182,30 @@ function getCellText(cell){
     switch (type){
         case 2: //数字
             try {
-                //numFmt:
-                // "0.00%"
-                // "0.00_);(0.00)"
-                // "#,##0.000_);(#,##0.000)"   千分位
-                // "#,##0.000;[Red]#,##0.000"
-                if(cell.style.numFmt){
-                    if(cell.style.numFmt.endsWith('%')){
-                        let precision = cell.style.numFmt.match(/\.(\d+)%/);
+                if (typeof value !== 'number') {
+                    return value != null ? String(value) : '';
+                }
+                const cellNumFmt = cell.style && cell.style.numFmt;
+                if(cellNumFmt){
+                    if(cellNumFmt.includes('%')){
+                        let precision = cellNumFmt.match(/\.(\d+)%/);
                         if(precision){
                             return (value * 100).toFixed(precision[1].length) + '%';
                         }else {
-                            return value * 100 + '%';
+                            return parseFloat((value * 100).toFixed(12)) + '%';
                         }
-                    }else if(/0(\.0+)?/.test(cell.style.numFmt)){
+                    }else if(/0(\.0+)?/.test(cellNumFmt)){
                         let prefix = '';
-                        if(cell.style.numFmt.startsWith('$')){
+                        if(cellNumFmt.startsWith('$')){
                             prefix = '$';
-                        }else if(cell.style.numFmt.startsWith('"¥')){
+                        }else if(cellNumFmt.startsWith('"¥') || cellNumFmt.startsWith('¥')){
                             prefix = '¥';
                         }
 
-                        if(value === 0 && cell.style.numFmt.startsWith('_')){
+                        if(value === 0 && cellNumFmt.startsWith('_')){
                             return '-';
                         }
-                        let precision = cell.style.numFmt.match(/0\.(0+)(_|;|$)/);
+                        let precision = cellNumFmt.match(/0\.(0+)/);
                         if(precision){
                             precision = precision[1].length;
                         }else{
@@ -208,7 +213,7 @@ function getCellText(cell){
                         }
 
                         let result = value.toFixed(precision) + '';
-                        if(cell.style.numFmt.includes('#,##')){
+                        if(cellNumFmt.includes('#,##')){
                             //千分位
                             result = result.split('.');
                             let number = result[0].split('').reverse();
@@ -223,15 +228,17 @@ function getCellText(cell){
                             result[0] = newNumber.reverse().join('');
                             result = result.join('.');
                         }
-                        return prefix + result;
+                        const suffixMatch = cellNumFmt.match(/[0#][^"]*?"([^"]+)"[^"]*$/);
+                        const suffix = suffixMatch ? suffixMatch[1] : '';
+                        return prefix + result + suffix;
                     }
 
                 }
                 return value + '';
             }catch (e){
-                return value;
+                return value != null ? String(value) : '';
             }
-            
+
         case 3: //字符串
             return value;
         case 4: { //日期
@@ -250,6 +257,12 @@ function getCellText(cell){
                 case 'h:mm;@':
                     return formatExcelDate(value, 'HH:mm');
                 default:
+                    if (numFmt && /h{1,2}:m{1,2}:s{1,2}/i.test(numFmt)) {
+                        return formatExcelDate(value, /y|d/i.test(numFmt) ? 'YYYY-MM-DD HH:mm:ss' : 'HH:mm:ss');
+                    }
+                    if (numFmt && /h{1,2}:m{1,2}/i.test(numFmt)) {
+                        return formatExcelDate(value, /y|d/i.test(numFmt) ? 'YYYY-MM-DD HH:mm' : 'HH:mm');
+                    }
                     return formatExcelDate(value, 'YYYY-MM-DD');
             }
         }
@@ -270,11 +283,20 @@ function getCellText(cell){
                 return get(value, 'result.error');
             }
             if (value.result instanceof Date) {
-                return formatExcelDate(value.result, numFmt === 'h:mm;@' ? 'HH:mm' : 'YYYY-MM-DD');
+                const fmt = numFmt && /h{1,2}:m{1,2}/i.test(numFmt)
+                    ? (/y|d/i.test(numFmt) ? 'YYYY-MM-DD HH:mm' : 'HH:mm')
+                    : 'YYYY-MM-DD';
+                return formatExcelDate(value.result, fmt);
             }
-            return value.result ?? '';
+            if (value.result && typeof value.result === 'object' && Array.isArray(value.result.richText)) {
+                return value.result.richText.map(item => item.text || '').join('');
+            }
+            if (value.result === undefined || value.result === null) {
+                return '';
+            }
+            return String(value.result);
         case 8: //富文本
-            return cell.text;
+            return cell.text || '';
         case 9: //Boolean
             return String(cell.text ?? value ?? '').toUpperCase();
         default:
@@ -282,13 +304,14 @@ function getCellText(cell){
     }
 }
 function transferArgbColor(originColor){
-    if(typeof originColor === 'object'){
+    if(!originColor || typeof originColor !== 'string'){
         return '#000000';
     }
+    originColor = originColor.trim();
     if(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.test(originColor)){
         return originColor.startsWith('#') ? originColor : '#' + originColor;
     }
-    originColor = originColor.trim().toLowerCase(); //去掉前后空格
+    originColor = originColor.toLowerCase(); //去掉前后空格
     let color = {};
     try {
         let argb = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(originColor);
@@ -306,8 +329,7 @@ function transferArgbColor(originColor){
     }
 }
 function transferThemeColor(themeIndex, tint){
-
-    if(themeIndex > 9){
+    if(typeof themeIndex !== 'number' || themeIndex < 0 || themeIndex >= themeColor.length){
         return '#C7C9CC';
     }
     if(typeof tint === 'undefined'){
@@ -319,16 +341,16 @@ function transferThemeColor(themeIndex, tint){
     }
 }
 function getStyle(cell){
-    cell.style = cloneDeep(cell.style);
+    const style = cloneDeep(cell.style || {});
     let backGroundColor = null;
-    if(cell.style.fill && cell.style.fill.fgColor) {
+    if(style.fill && style.fill.fgColor) {
         // 8位字符颜色先转rgb再转16进制颜色
-        if(cell.style.fill.fgColor.argb){
-            backGroundColor = transferArgbColor(cell.style.fill.fgColor.argb);
-        }else if(Object.prototype.hasOwnProperty.call(cell.style.fill.fgColor, 'theme')){
-            backGroundColor = transferThemeColor(cell.style.fill.fgColor.theme, cell.style.fill.fgColor.tint);
-        }else if(cell.style.fill.fgColor.indexed){
-            backGroundColor = indexedColor[cell.style.fill.fgColor.indexed] || '#C7C9CC';
+        if(style.fill.fgColor.argb){
+            backGroundColor = transferArgbColor(style.fill.fgColor.argb);
+        }else if(Object.prototype.hasOwnProperty.call(style.fill.fgColor, 'theme')){
+            backGroundColor = transferThemeColor(style.fill.fgColor.theme, style.fill.fgColor.tint);
+        }else if(typeof style.fill.fgColor.indexed === 'number'){
+            backGroundColor = indexedColor[style.fill.fgColor.indexed] || '#C7C9CC';
         }else{
             backGroundColor = '#C7C9CC';
         }
@@ -336,46 +358,49 @@ function getStyle(cell){
     }
 
     if(backGroundColor) {
-        cell.style.bgcolor = backGroundColor;
+        style.bgcolor = backGroundColor;
     }
     //*************************************************************************** */
 
     //*********************字体存在背景色******************************
     // 字体颜色
     let fontColor = null;
-    if(cell.style.font && cell.style.font.color ) {
-        if(cell.style.font.color.argb){
-            fontColor = transferArgbColor(cell.style.font.color.argb);
-        }else if(Object.prototype.hasOwnProperty.call(cell.style.font.color, 'theme')){
-            fontColor = transferThemeColor(cell.style.font.color.theme, cell.style.font.color.tint);
-        }else if(cell.style.font.color.indexed){
-            fontColor = indexedColor[cell.style.font.color.indexed] || '#000000';
+    if(style.font && style.font.color ) {
+        if(style.font.color.argb){
+            fontColor = transferArgbColor(style.font.color.argb);
+        }else if(Object.prototype.hasOwnProperty.call(style.font.color, 'theme')){
+            fontColor = transferThemeColor(style.font.color.theme, style.font.color.tint);
+        }else if(typeof style.font.color.indexed === 'number'){
+            fontColor = indexedColor[style.font.color.indexed] || '#000000';
         }else {
             fontColor = '#000000';
         }
 
     }
     if(fontColor) {
-        cell.style.color = fontColor;
+        style.color = fontColor;
     }
 
     // exceljs 对齐的格式转成 x-date-spreedsheet 能识别的对齐格式
-    if(cell.style.alignment ) {
-        if(cell.style.alignment.horizontal){
-            cell.style.align = cell.style.alignment.horizontal;
+    if(style.alignment ) {
+        if(style.alignment.horizontal){
+            style.align = style.alignment.horizontal;
         }
-       if(cell.style.alignment.vertical){
-           cell.style.valign = cell.style.alignment.vertical;
-       }
+        if(style.alignment.vertical){
+            style.valign = style.alignment.vertical;
+        }
     }
-    if(cell.style.alignment && cell.style.alignment.wrapText) {
-        cell.style.textwrap = true;
+    if(style.alignment && style.alignment.wrapText) {
+        style.textwrap = true;
     }
 
-    if(cell.style.border){
+    if(style.border){
         let styleBorder = {};
-        Object.keys(cell.style.border).forEach(position =>{
-            let originBorder = cell.style.border[position];
+        Object.keys(style.border).forEach(position =>{
+            let originBorder = style.border[position];
+            if (!originBorder) {
+                return;
+            }
             let bordColor = '#000000';
 
             if(typeof originBorder.color === 'string'){
@@ -385,20 +410,20 @@ function getStyle(cell){
                     bordColor = transferArgbColor(originBorder.color.argb);
                 }else if(Object.prototype.hasOwnProperty.call(originBorder.color, 'theme')){
                     bordColor = transferThemeColor(originBorder.color.theme, originBorder.color.tint);
-                }else if(originBorder.color.indexed){
-                    bordColor = indexedColor[originBorder.color.indexed];
+                }else if(typeof originBorder.color.indexed === 'number'){
+                    bordColor = indexedColor[originBorder.color.indexed] || '#000000';
                 }
             }
             styleBorder[position] = [originBorder.style || 'thin', bordColor];
         });
-        cell.style.border2 = {...cell.style.border};
-        cell.style.border = styleBorder;
+        style.border2 = {...style.border};
+        style.border = styleBorder;
     }
 
-    if(cell.style.font && cell.style.font.size && typeof cell.style.font.size === 'number'){
-        cell.style.font.size = Math.round(cell.style.font.size / 1.333333);
+    if(style.font && style.font.size && typeof style.font.size === 'number'){
+        style.font.size = Math.round(style.font.size / 1.333333);
     }
-    return cell.style;
+    return style;
 }
 
 export function transferExcelToSpreadSheet(workbook, options){
@@ -410,7 +435,8 @@ export function transferExcelToSpreadSheet(workbook, options){
         // 构造x-data-spreadsheet 的 sheet 数据源结构
         let sheetData = { name: sheet.name,styles : [], rows: {},cols:{}, merges:[],media:[] };
         // 收集合并单元格信息
-        let mergeAddressData = [];
+        const mergeMap = new Map();
+        const styleMap = new Map();
         for(let mergeRange in sheet._merges) {
             sheetData.merges.push(sheet._merges[mergeRange].shortRange);
             let mergeAddress = {};
@@ -422,7 +448,7 @@ export function transferExcelToSpreadSheet(workbook, options){
             mergeAddress.YRange = sheet._merges[mergeRange].model.bottom - sheet._merges[mergeRange].model.top;
             // X轴方向跨度
             mergeAddress.XRange = sheet._merges[mergeRange].model.right - sheet._merges[mergeRange].model.left;
-            mergeAddressData.push(mergeAddress);
+            mergeMap.set(mergeAddress.startAddress, mergeAddress);
         }
 
         let effectiveMaxColLen = 0; //真正有数据的列长度，有时excel会展示一堆没数据的列
@@ -443,20 +469,27 @@ export function transferExcelToSpreadSheet(workbook, options){
                 sheetData.rows[spreadSheetRowIndex].cells[spreadSheetColIndex] = {};
                 effectiveMaxColLen = Math.max(effectiveMaxColLen, spreadSheetColIndex);
 
-                let mergeAddress = find(mergeAddressData, function(o) { return o.startAddress == cell._address; });
-                if(mergeAddress && cell.master.address != mergeAddress.startAddress) {
+                if (cell.isMerged && cell.master && cell.master.address !== cell._address) {
                     return;
                 }
+                const mergeAddress = mergeMap.get(cell._address);
                 if(mergeAddress){
                     sheetData.rows[spreadSheetRowIndex].cells[spreadSheetColIndex].merge = [mergeAddress.YRange, mergeAddress.XRange];
                 }
                 sheetData.rows[spreadSheetRowIndex].cells[spreadSheetColIndex].text = getCellText(cell);
-                sheetData.styles.push(getStyle(cell));
-                sheetData.rows[spreadSheetRowIndex].cells[spreadSheetColIndex].style = sheetData.styles.length - 1;
+                const cellStyle = getStyle(cell);
+                const styleKey = JSON.stringify(cellStyle);
+                let styleIndex = styleMap.get(styleKey);
+                if (styleIndex === undefined) {
+                    styleIndex = sheetData.styles.length;
+                    sheetData.styles.push(cellStyle);
+                    styleMap.set(styleKey, styleIndex);
+                }
+                sheetData.rows[spreadSheetRowIndex].cells[spreadSheetColIndex].style = styleIndex;
             });
         });
-        if(sheetData._media){
-            sheetData.media = sheetData._media;
+        if(sheet._media){
+            sheetData.media = sheet._media;
         }
 
         let tempRowsKeys = Object.keys(sheetData.rows);

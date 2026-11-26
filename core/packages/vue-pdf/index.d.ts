@@ -1,4 +1,6 @@
-export interface Options {
+export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob;
+
+export interface PdfOptions {
     width?: number;
     gap?: number;
     defaultScale?: number;
@@ -16,16 +18,30 @@ export interface Options {
     [key: string]: any;
 }
 
-declare const AbnerVueOfficePdf: {
-    install?: (vue: any) => void;
-    src: string | ArrayBuffer | Blob;
+export type Options = PdfOptions;
+
+export interface PdfProps {
+    src: OfficeSource;
     staticFileUrl?: string;
     requestOptions?: Record<string, any>;
-    options?: Options;
+    options?: PdfOptions;
     defaultScale?: number;
-    rerender?: () => void;
-    save?: (fileName?: string) => void;
-    getScale?: () => number;
-    setScale?: (scale: number) => void;
-};
+    onRendered?: () => void;
+    onError?: (error: any) => void;
+}
+
+export interface AbnerVueOfficePdfInstance {
+    $props: PdfProps;
+    rerender: () => Promise<void>;
+    save: (fileName?: string) => void;
+    getScale: () => number;
+    setScale: (scale: number) => void;
+}
+
+export interface AbnerVueOfficePdfComponent {
+    new (): AbnerVueOfficePdfInstance;
+    install(app: any): void;
+}
+
+declare const AbnerVueOfficePdf: AbnerVueOfficePdfComponent;
 export default AbnerVueOfficePdf;

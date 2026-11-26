@@ -1,7 +1,7 @@
 {
   "name": "@abner-vue-office/docx",
   "version": "1.0.0",
-  "description": "",
+  "description": "基于 Vue 的 docx 文件预览组件（支持 Vue 2 / Vue 3）",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
@@ -45,13 +45,13 @@
   },
   "keywords": [
     "vue",
+    "vue2",
+    "vue3",
+    "vue-demi",
     "docx",
-    "pdf",
-    "ppt",
-    "excel",
+    "word",
     "docx-preview",
-    "excel-preview",
-    "pdf-preview"
+    "office-preview"
   ],
   "license": "MIT",
   "author": "abner",

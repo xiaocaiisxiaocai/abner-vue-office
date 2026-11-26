@@ -1,3 +1,5 @@
+export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob;
+
 export interface RequestOptions {
     method?: string;
     headers?: Record<string, string>;
@@ -28,7 +30,7 @@ export interface Options {
 }
 
 export interface AbnerJsDocxPreview {
-    preview: (src: string | ArrayBuffer | Blob) => Promise<any>;
+    preview: (src: OfficeSource) => Promise<any>;
     save: (fileName?: string) => void;
     setOptions: (options: Options) => void;
     setRequestOptions: (requestOptions?: RequestOptions) => void;

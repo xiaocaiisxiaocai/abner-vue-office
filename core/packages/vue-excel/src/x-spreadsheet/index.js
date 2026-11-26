@@ -143,7 +143,7 @@ class Spreadsheet {
 
 const spreadsheet = (el, options = {}) => new Spreadsheet(el, options);
 
-if (window) {
+if (typeof window !== 'undefined') {
   window.x_spreadsheet = spreadsheet;
   window.x_spreadsheet.locale = (lang, message) => locale(lang, message);
 }

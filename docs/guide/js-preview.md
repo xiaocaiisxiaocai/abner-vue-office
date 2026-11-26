@@ -124,8 +124,17 @@ export interface Options {
 excel支持的配置
 ```ts
 export interface Options {
+    xls?: boolean; //是否预览.xls格式文件，默认false
     minColLength?: number;  //excel最少渲染多少列，如果想实现xlsx文件内容有几列，就渲染几列，可以将此值设置为0.
+    minRowLength?: number; //excel最少渲染多少行，默认100
+    widthOffset?: number; //单元格列宽偏移量（像素）
+    heightOffset?: number; //单元格行高偏移量（像素）
     showContextmenu?: boolean; //是否显示右键菜单，默认false
+    beforeTransformData?: (workbookData: any) => any; //底层exceljs转换前钩子
+    transformData?: (workbookData: any) => any; //数据转换后钩子
+    switchSheet?: (sheetIndex: number) => void; //切换sheet回调
+    cellSelected?: (event: ExcelCellEvent) => void; //单元格点击回调
+    cellsSelected?: (event: ExcelCellsEvent) => void; //单元格框选回调
 }
 ```
 

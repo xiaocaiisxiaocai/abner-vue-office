@@ -4,6 +4,6 @@ export function readOnlyInput(root){
         for(let node of nodes){
             node && !node.readOnly && (node.readOnly = true);
         }
-        document.activeElement && document.activeElement.blur();
+        document.activeElement && root.contains(document.activeElement) && document.activeElement.blur();
     }
 }

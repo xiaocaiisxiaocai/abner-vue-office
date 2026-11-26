@@ -1,5 +1,6 @@
 <script setup>
-import { watch } from 'vue';
+import { watch, onBeforeUnmount } from 'vue';
+import { UploadOutlined } from '@ant-design/icons-vue';
 import usePreview, { isXlsName } from '../hooks/usePreview.js';
 import useLoading from '../hooks/useLoading.js';
 import { isTest } from '../../utils/test.js';
@@ -15,6 +16,10 @@ watch(src, () => {
     useLoading.showLoading();
 }, {
     immediate: true
+});
+
+onBeforeUnmount(() => {
+    useLoading.hideLoading();
 });
 </script>
 

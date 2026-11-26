@@ -27,11 +27,15 @@ class AbnerJsExcelPreview {
     observer = null;
     observerCallback = null;
     renderImageDebounce = null;
+    swapTimer = null;
     fileData = null;
     renderId = 0;
     isDestroyed = false;
 
     constructor(container, options = {}, requestOptions = {}) {
+        if (!container) {
+            throw new Error('container is required');
+        }
         this.container = container;
         this.options = { ...defaultOptions, ...options };
         this.requestOptions = requestOptions;
@@ -71,17 +75,17 @@ class AbnerJsExcelPreview {
             autoFocus: false
         }).loadData({});
 
-        if (this.options.cellSelected && typeof this.options.cellSelected === 'function') {
-            this.xs.on('cell-selected', (cell, ri, ci) => {
+        this.xs.on('cell-selected', (cell, ri, ci) => {
+            if (this.options && typeof this.options.cellSelected === 'function') {
                 this.options.cellSelected({
                     cell,
                     rowIndex: ri,
                     columnIndex: ci
                 });
-            });
-        }
-        if (this.options.cellsSelected && typeof this.options.cellsSelected === 'function') {
-            this.xs.on('cells-selected', (cell, { sri, sci, eri, eci }) => {
+            }
+        });
+        this.xs.on('cells-selected', (cell, { sri, sci, eri, eci }) => {
+            if (this.options && typeof this.options.cellsSelected === 'function') {
                 this.options.cellsSelected({
                     cell,
                     startRowIndex: sri,
@@ -89,8 +93,8 @@ class AbnerJsExcelPreview {
                     endRowIndex: eri,
                     endColumnIndex: eci
                 });
-            });
-        }
+            }
+        });
 
         const that = this;
 
@@ -99,23 +103,44 @@ class AbnerJsExcelPreview {
             swapFunc.call(that.xs.bottombar, index);
             that.sheetIndex = index;
             that.offset = that.xs.sheet.data.getSelectedRect();
-            setTimeout(() => {
+            that.clearSwapTimer();
+            that.swapTimer = setTimeout(() => {
+                that.swapTimer = null;
                 if (that.isDestroyed || !that.xs) {
                     return;
                 }
+                that.renderImageDebounce && that.renderImageDebounce.cancel();
                 that.xs.reRender();
-                renderImage(that.ctx, that.mediasSource, that.workbookDataSource._worksheets[that.sheetIndex], that.offset, that.options);
-                that.options.switchSheet && that.options.switchSheet(index);
+                that.options && that.options.switchSheet && that.options.switchSheet(index);
             });
         };
 
-        this.renderImageDebounce = debounce(renderImage, 200, {
+        this.renderImageDebounce = debounce(() => {
+            if (
+                that.isDestroyed ||
+                !that.ctx ||
+                !that.workbookDataSource ||
+                !that.workbookDataSource._worksheets[that.sheetIndex]
+            ) {
+                return;
+            }
+            const targetRenderId = that.renderId;
+            const targetSheetIndex = that.sheetIndex;
+            renderImage(
+                that.ctx,
+                that.mediasSource,
+                that.workbookDataSource._worksheets[targetSheetIndex],
+                that.offset,
+                that.options,
+                () => !that.isDestroyed && targetRenderId === that.renderId && targetSheetIndex === that.sheetIndex
+            );
+        }, 200, {
             leading: true
         });
         const tableRender = this.xs.sheet.table.render;
         this.xs.sheet.table.render = function (...args) {
             that.xs && that.xs.sheet && tableRender.apply(that.xs.sheet.table, args);
-            that.renderImageDebounce(that.ctx, that.mediasSource, that.workbookDataSource._worksheets[that.sheetIndex], that.offset, that.options);
+            that.renderImageDebounce();
         };
 
         const setOffset = this.xs.sheet.editor.setOffset;
@@ -128,11 +153,20 @@ class AbnerJsExcelPreview {
         this.ctx = canvas.getContext('2d');
     }
 
+    clearSwapTimer() {
+        if (this.swapTimer) {
+            clearTimeout(this.swapTimer);
+            this.swapTimer = null;
+        }
+    }
+
     resetEmptyState() {
+        this.clearSwapTimer();
         this.mediasSource = [];
         this.workbookDataSource = {
             _worksheets: []
         };
+        this.renderImageDebounce && this.renderImageDebounce.cancel();
         clearCache(this.ctx);
         this.xs && this.xs.loadData({});
     }
@@ -156,16 +190,18 @@ class AbnerJsExcelPreview {
             if (this.options.transformData && typeof this.options.transformData === 'function') {
                 workbookData = this.options.transformData(workbookData);
             }
+            this.clearSwapTimer();
             this.mediasSource = medias;
             this.workbookDataSource = workbookSource;
             this.offset = null;
             this.sheetIndex = 0;
             clearCache(this.ctx);
+            this.renderImageDebounce && this.renderImageDebounce.cancel();
             this.xs.loadData(workbookData);
-            renderImage(this.ctx, this.mediasSource, this.workbookDataSource._worksheets[this.sheetIndex], this.offset, this.options);
             this.options.switchSheet && this.options.switchSheet(0);
         }).catch(e => {
             if (!this.isDestroyed && currentId === this.renderId) {
+                this.fileData = null;
                 this.resetEmptyState();
             }
             return Promise.reject(e);
@@ -180,46 +216,40 @@ class AbnerJsExcelPreview {
         readOnlyInput(this.wrapperMain);
     }
 
-    setOptions(options) {
-        this.options = { ...defaultOptions, ...options };
+    setOptions(options = {}) {
+        this.options = { ...defaultOptions, ...(this.options || {}), ...options };
     }
 
     setRequestOptions(requestOptions) {
         this.requestOptions = requestOptions;
     }
 
-    preview(src) {
+    async preview(src) {
         const currentId = ++this.renderId;
-        return new Promise((resolve, reject) => {
-            getData(src, this.requestOptions).then((res) => {
-                if (this.isDestroyed || currentId !== this.renderId) {
-                    return;
-                }
-                this.renderExcel(res, currentId).then(() => {
-                    if (!this.isDestroyed && currentId === this.renderId) {
-                        resolve();
-                    }
-                }).catch(e => {
-                    if (!this.isDestroyed && currentId === this.renderId) {
-                        this.resetEmptyState();
-                        reject(e);
-                    }
-                });
-            }).catch(e => {
-                if (!this.isDestroyed && currentId === this.renderId) {
-                    this.resetEmptyState();
-                    reject(e);
-                }
-            });
-        });
+        try {
+            const res = await getData(src, this.requestOptions);
+            if (this.isDestroyed || currentId !== this.renderId) {
+                return;
+            }
+            await this.renderExcel(res, currentId);
+        } catch (e) {
+            if (!this.isDestroyed && currentId === this.renderId) {
+                this.fileData = null;
+                this.resetEmptyState();
+                throw e;
+            }
+        }
     }
 
     save(fileName) {
-        downloadFile(fileName || `abner-vue-office-js-excel-${new Date().getTime()}.xlsx`, this.fileData);
+        const ext = this.options && this.options.xls ? 'xls' : 'xlsx';
+        downloadFile(fileName || `abner-vue-office-js-excel-${new Date().getTime()}.${ext}`, this.fileData);
     }
 
     destroy() {
         this.isDestroyed = true;
+        ++this.renderId;
+        this.clearSwapTimer();
         this.renderImageDebounce && this.renderImageDebounce.cancel();
         this.renderImageDebounce = null;
         this.observerCallback && this.observerCallback.cancel();

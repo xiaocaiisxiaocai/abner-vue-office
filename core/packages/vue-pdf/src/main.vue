@@ -98,6 +98,7 @@ export default defineComponent({
 
         onBeforeUnmount(() => {
             isUnmounted = true;
+            ++renderId;
             onScrollPdf.cancel();
             cleanupPdfResources();
         });
@@ -112,12 +113,19 @@ export default defineComponent({
             }
             userScale.value = scale;
             if (pdfDocument) {
+                const currentId = renderId;
                 nextTick(() => {
-                    layoutAndRender(renderId);
+                    layoutAndRender(currentId).catch(e => {
+                        if (!isUnmounted && currentId === renderId) {
+                            emit('error', e);
+                        }
+                    });
                 });
             } else if (props.src) {
                 checkPdfLib().then(init).catch(e => {
-                    console.warn(e);
+                    if (!isUnmounted) {
+                        emit('error', e);
+                    }
                 });
             }
         }
@@ -130,8 +138,11 @@ export default defineComponent({
                 return Promise.resolve();
             }
             if (!pdfLibLoadPromise) {
-                pdfLibLoadPromise = loadScript(getPdfJsLibUrl())
+                const libUrl = getPdfJsLibUrl();
+                pdfLibLoadPromise = loadScript(libUrl)
                     .then(() => {
+                        revokeUrl(libUrl);
+                        pdfJsLibBlobUrl = null;
                         if (window.pdfjsLib) {
                             window.pdfjsLib.GlobalWorkerOptions.workerSrc = getPdfJsWorkerUrl();
                         } else {
@@ -139,6 +150,8 @@ export default defineComponent({
                         }
                     })
                     .catch(err => {
+                        revokeUrl(libUrl);
+                        pdfJsLibBlobUrl = null;
                         pdfLibLoadPromise = null;
                         return Promise.reject(err);
                     });
@@ -171,6 +184,7 @@ export default defineComponent({
                 visibleItems = Math.ceil(containerHeight / Math.max(pageHeight + gap, 1)) + 4; //多渲染4个
                 const height = Math.max((pageHeight + gap) * totalItems - gap, 0);
                 wrapperRef.value.style.height = height + 'px';
+                wrapperRef.value.style.minWidth = pageWidth > 0 ? `${pageWidth + 20}px` : '';
 
                 clearCanvas();
                 const scrollTop = containerRef.value.scrollTop || 0;
@@ -258,10 +272,6 @@ export default defineComponent({
                     canvasWidth: cWidth,
                     canvasHeight: cHeight
                 };
-            }).catch((e) => {
-                if (!isUnmounted) {
-                    emit('error', e);
-                }
             });
         }
 
@@ -372,10 +382,12 @@ export default defineComponent({
                 if (canvasWidth * viewport.height !== canvasHeight * viewport.width) {
                     const width = Math.floor(viewport.width * outputScale);
                     const height = Math.floor(viewport.height * outputScale);
-                    const scale = canvasHeight / height;
-                    outputScale = outputScale * scale;
-                    canvas.width = Math.floor(width * scale);
-                    canvas.style.width = Math.floor(viewport.width * scale) + 'px';
+                    if (height > 0 && viewport.height > 0) {
+                        const scale = canvasHeight / height;
+                        outputScale = outputScale * scale;
+                        canvas.width = Math.floor(width * scale);
+                        canvas.style.width = Math.floor(pageHeight * (viewport.width / viewport.height)) + 'px';
+                    }
                 }
 
                 const ctx = canvas.getContext('2d');
@@ -393,13 +405,23 @@ export default defineComponent({
         }
 
         function rerender() {
-            renderList(1, Math.min(totalItems, visibleItems), true);
+            if (isUnmounted || !pdfDocument) {
+                return Promise.resolve();
+            }
+            const currentId = renderId;
+            return layoutAndRender(currentId).catch(e => {
+                if (!isUnmounted && currentId === renderId) {
+                    emit('error', e);
+                }
+            });
         }
 
         onMounted(() => {
             if (props.src) {
                 checkPdfLib().then(init).catch(e => {
-                    console.warn(e);
+                    if (!isUnmounted) {
+                        emit('error', e);
+                    }
                 });
             }
         });
@@ -413,7 +435,9 @@ export default defineComponent({
                 return;
             }
             checkPdfLib().then(init).catch(e => {
-                console.warn(e);
+                if (!isUnmounted) {
+                    emit('error', e);
+                }
             });
         });
 
@@ -424,8 +448,14 @@ export default defineComponent({
         });
 
         function save(fileName) {
-            pdfDocument && pdfDocument._transport && pdfDocument._transport.getData().then(fileData => {
-                downloadFile(fileName || `abner-vue-office-pdf-${new Date().getTime()}.pdf`, fileData.buffer);
+            if (!pdfDocument || typeof pdfDocument.getData !== 'function') {
+                return;
+            }
+            pdfDocument.getData().then(fileData => {
+                downloadFile(
+                    fileName || `abner-vue-office-pdf-${new Date().getTime()}.pdf`,
+                    new Blob([fileData], { type: 'application/pdf' })
+                );
             });
         }
 

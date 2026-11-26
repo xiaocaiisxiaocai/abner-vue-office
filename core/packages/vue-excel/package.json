@@ -1,7 +1,7 @@
 {
   "name": "@abner-vue-office/excel",
   "version": "1.0.0",
-  "description": "",
+  "description": "基于 Vue 的 excel (xlsx/xls) 文件预览组件（支持 Vue 2 / Vue 3）",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
@@ -45,13 +45,14 @@
   },
   "keywords": [
     "vue",
-    "docx",
-    "pdf",
-    "ppt",
+    "vue2",
+    "vue3",
+    "vue-demi",
     "excel",
-    "docx-preview",
+    "xlsx",
+    "xls",
     "excel-preview",
-    "pdf-preview"
+    "office-preview"
   ],
   "license": "MIT",
   "author": "abner",

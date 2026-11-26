@@ -15,11 +15,12 @@ function copy(name, version) {
     if(!fs.existsSync(src)){
         return;
     }
-    let content = fs.readFileSync(src, 'utf-8');
     try {
         fs.unlinkSync(dest);
-    } catch (error) {}
-    fs.writeFileSync(dest, content, 'utf-8');
+    } catch (error) {
+        // ignore
+    }
+    fs.copyFileSync(src, dest);
 }
 
 function switchVersion(version) {

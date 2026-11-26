@@ -26,7 +26,7 @@
  server {
     location /upload/ {
         add_header Access-Control-Allow-Origin *;
-        root /opt/homebrew/etc/nginx;
+        root /usr/share/nginx/html;
     }
  }
 ```

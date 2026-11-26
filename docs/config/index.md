@@ -104,4 +104,4 @@ const options = {
 
 pdf渲染时可能会请求一些bcmap文件，这些文件默认从 https://unpkg.com/pdfjs-dist@3.1.81/ 加载，但是可能存在网络不通问题，如果遇到这种问题，可以将这些文件放到自己静态目录，然后修改该属性，告诉组件去这里请求bcmap文件。
 
-涉及的文件存放在当前github项目中 `core/public/static/cmaps` 目录下，可将 `cmaps` 目录复制到你的静态服务目录下，然后修改 `staticFileUrl` 为 `cmaps` 文件夹对应的父地址，必须以 `http` 或 `https` 开头，如 `http://yourdomain/static/`
+涉及的文件存放在当前github项目中 `core/public/static/cmaps` 目录下，可将 `cmaps` 目录复制到你的静态服务目录下，然后修改 `staticFileUrl` 为 `cmaps` 文件夹对应的父地址，必须以 `http` 或 `https` 开头，如 `https://example.com/static/`

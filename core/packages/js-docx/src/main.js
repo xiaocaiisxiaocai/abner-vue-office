@@ -13,6 +13,9 @@ class AbnerJsDocxPreview {
     isDestroyed = false;
 
     constructor(container, options = {}, requestOptions = {}) {
+        if (!container) {
+            throw new Error('container is required');
+        }
         this.container = container;
         this.options = options;
         this.requestOptions = requestOptions;
@@ -36,34 +39,28 @@ class AbnerJsDocxPreview {
         this.requestOptions = requestOptions;
     }
 
-    preview(src) {
+    async preview(src) {
         const currentId = ++this.renderId;
-        return new Promise((resolve, reject) => {
-            docx.getData(src, this.requestOptions).then(async res => {
-                if (this.isDestroyed || currentId !== this.renderId || !this.wrapperMain) {
-                    return;
+        try {
+            const res = await docx.getData(src, this.requestOptions);
+            if (this.isDestroyed || currentId !== this.renderId || !this.wrapperMain) {
+                return;
+            }
+            const blob = await docx.getBlob(res);
+            if (this.isDestroyed || currentId !== this.renderId || !this.wrapperMain) {
+                return;
+            }
+            this.fileData = blob || null;
+            await docx.render(this.fileData, this.wrapperMain, this.options);
+        } catch (err) {
+            if (!this.isDestroyed && currentId === this.renderId) {
+                this.fileData = null;
+                if (this.wrapperMain) {
+                    await docx.render('', this.wrapperMain, this.options).catch(() => {});
                 }
-                this.fileData = await docx.getBlob(res);
-                if (this.isDestroyed || currentId !== this.renderId || !this.wrapperMain) {
-                    return;
-                }
-                docx.render(this.fileData, this.wrapperMain, this.options).then(() => {
-                    if (!this.isDestroyed && currentId === this.renderId) {
-                        resolve();
-                    }
-                }).catch(e => {
-                    if (!this.isDestroyed && currentId === this.renderId && this.wrapperMain) {
-                        docx.render('', this.wrapperMain, this.options);
-                        reject(e);
-                    }
-                });
-            }).catch(err => {
-                if (!this.isDestroyed && currentId === this.renderId && this.wrapperMain) {
-                    docx.render('', this.wrapperMain, this.options);
-                    reject(err);
-                }
-            });
-        });
+                throw err;
+            }
+        }
     }
 
     save(fileName) {
@@ -72,6 +69,7 @@ class AbnerJsDocxPreview {
 
     destroy() {
         this.isDestroyed = true;
+        ++this.renderId;
         if (this.wrapper && this.wrapper.parentNode) {
             this.wrapper.parentNode.removeChild(this.wrapper);
         }

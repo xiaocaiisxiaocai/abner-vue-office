@@ -9,7 +9,7 @@ function getCache(ctx) {
     return cache;
 }
 
-export function renderImage(ctx, medias, sheet, offset, options = {}) {
+export function renderImage(ctx, medias, sheet, offset, options = {}, shouldDraw) {
     if (!ctx || !sheet || !sheet._media || !sheet._media.length) {
         return;
     }
@@ -17,7 +17,7 @@ export function renderImage(ctx, medias, sheet, offset, options = {}) {
         const { imageId, range, type } = media;
         if (type === 'image' && medias && medias[imageId]) {
             const position = calcPosition(sheet, range, offset, options);
-            drawImage(ctx, imageId, medias[imageId], position);
+            drawImage(ctx, imageId, medias[imageId], position, shouldDraw);
         }
     });
 }
@@ -26,6 +26,41 @@ const clipWidth = 60; //左侧序号列宽
 const clipHeight = 25; //顶部序号行高
 const defaultColWidth = 80;
 const defaultRowHeight = 24;
+
+function getColWidth(sheet, index, widthOffset = 0) {
+    const col = sheet?._columns?.[index];
+    if (col?._hidden) {
+        return 0.1;
+    }
+    const baseWidth = col?.width ? col.width * 6 : defaultColWidth;
+    return baseWidth + (widthOffset || 0);
+}
+
+function getRowHeight(sheet, index, heightOffset = 0) {
+    const row = sheet?._rows?.[index];
+    if (row?._hidden) {
+        return 0.1;
+    }
+    const baseHeight = row?.height || defaultRowHeight;
+    return baseHeight + (heightOffset || 0);
+}
+
+function getImageMimeType(extension) {
+    const ext = String(extension || '').toLowerCase();
+    const mimeMap = {
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        gif: 'image/gif',
+        bmp: 'image/bmp',
+        webp: 'image/webp',
+        svg: 'image/svg+xml',
+        tif: 'image/tiff',
+        tiff: 'image/tiff',
+        ico: 'image/x-icon'
+    };
+    return mimeMap[ext] || (ext ? `image/${ext}` : 'image/png');
+}
 
 function calcPosition(sheet, range, offset, options) {
     const dpr = window.devicePixelRatio || 1;
@@ -36,12 +71,10 @@ function calcPosition(sheet, range, offset, options) {
     let basicX = clipWidth;
     let basicY = clipHeight;
     for (let i = 0; i < nativeCol; i++) {
-        basicX += sheet?._columns?.[i]?.width * 6 || defaultColWidth;
-        basicX += widthOffset || 0;
+        basicX += getColWidth(sheet, i, widthOffset);
     }
     for (let i = 0; i < nativeRow; i++) {
-        basicY += sheet?._rows?.[i]?.height || defaultRowHeight;
-        basicY += heightOffset || 0;
+        basicY += getRowHeight(sheet, i, heightOffset);
     }
     const x = basicX + nativeColOff / 12700;
     const y = basicY + nativeRowOff / 12700;
@@ -56,10 +89,9 @@ function calcPosition(sheet, range, offset, options) {
     if (nativeCol === nativeColEnd && br) {
         width = (nativeColOffEnd - nativeColOff) / 12700;
     } else if (br) {
-        width = (sheet?._columns?.[nativeCol]?.width * 6 || defaultColWidth) - nativeColOff / 12700;
-
+        width = getColWidth(sheet, nativeCol, widthOffset) - nativeColOff / 12700;
         for (let i = nativeCol + 1; i < nativeColEnd; i++) {
-            width += sheet?._columns?.[i]?.width * 6 || defaultColWidth;
+            width += getColWidth(sheet, i, widthOffset);
         }
         width += nativeColOffEnd / 12700;
     } else if (ext?.width) {
@@ -69,9 +101,9 @@ function calcPosition(sheet, range, offset, options) {
     if (nativeRow === nativeRowEnd && br) {
         height = (nativeRowOffEnd - nativeRowOff) / 12700;
     } else if (br) {
-        height = (sheet?._rows?.[nativeRow]?.height || defaultRowHeight) - nativeRowOff / 12700;
+        height = getRowHeight(sheet, nativeRow, heightOffset) - nativeRowOff / 12700;
         for (let i = nativeRow + 1; i < nativeRowEnd; i++) {
-            height += sheet?._rows?.[i]?.height || defaultRowHeight;
+            height += getRowHeight(sheet, i, heightOffset);
         }
         height += nativeRowOffEnd / 12700;
     } else if (ext?.height) {
@@ -92,12 +124,15 @@ export function clearCache(ctx) {
     }
 }
 
-function drawImage(ctx, index, data, position) {
+function drawImage(ctx, index, data, position, shouldDraw) {
     if (!ctx || !data) {
         return;
     }
     const dpr = window.devicePixelRatio || 1;
     getImage(ctx, index, data).then(image => {
+        if (typeof shouldDraw === 'function' && !shouldDraw()) {
+            return;
+        }
         let sx = 0;
         let sy = 0;
         let sWidth = image.width;
@@ -137,12 +172,14 @@ function drawImage(ctx, index, data, position) {
 
 function getImage(ctx, index, data) {
     return new Promise((resolve, reject) => {
+        if (!data || !data.buffer) {
+            return reject(new Error('Invalid image data'));
+        }
         const cache = getCache(ctx);
         if (cache[index]) {
             return resolve(cache[index]);
         }
-        const rawBuffer = data.buffer instanceof ArrayBuffer ? data.buffer : data.buffer.buffer;
-        const blob = new Blob([rawBuffer], { type: 'image/' + data.extension });
+        const blob = new Blob([data.buffer], { type: getImageMimeType(data.extension) });
         const url = URL.createObjectURL(blob);
         const image = new Image();
         image.onload = function () {

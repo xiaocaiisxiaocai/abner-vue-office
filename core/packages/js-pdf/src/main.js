@@ -54,6 +54,9 @@ class AbnerJsPdfPreview {
     }, 60);
 
     constructor(container, options = {}, requestOptions = {}) {
+        if (!container) {
+            throw new Error('container is required');
+        }
         this.container = container;
         this.options = {
             staticFileUrl: 'https://unpkg.com/pdfjs-dist@3.1.81/',
@@ -147,7 +150,7 @@ class AbnerJsPdfPreview {
             cMapUrl: `${this.options.staticFileUrl.endsWith('/') ? this.options.staticFileUrl : this.options.staticFileUrl + '/'}cmaps/`,
             cMapPacked: true,
             enableXfa: true,
-            ...omit(this.options, ['width', 'staticFileUrl', 'gap', 'httpHeaders'])
+            ...omit(this.options, ['width', 'staticFileUrl', 'gap', 'httpHeaders', 'onError', 'onRendered'])
         });
         return this.loadingTask.promise;
     }
@@ -165,10 +168,12 @@ class AbnerJsPdfPreview {
             if (this.canvasWidth * viewport.height !== this.canvasHeight * viewport.width) {
                 const width = Math.floor(viewport.width * outputScale);
                 const height = Math.floor(viewport.height * outputScale);
-                const scale = this.canvasHeight / height;
-                outputScale = outputScale * scale;
-                canvas.width = Math.floor(width * scale);
-                canvas.style.width = Math.floor(viewport.width * scale) + 'px';
+                if (height > 0 && viewport.height > 0) {
+                    const scale = this.canvasHeight / height;
+                    outputScale = outputScale * scale;
+                    canvas.width = Math.floor(width * scale);
+                    canvas.style.width = Math.floor(this.pageHeight * (viewport.width / viewport.height)) + 'px';
+                }
             }
             const ctx = canvas.getContext('2d');
             const transform = outputScale !== 1
@@ -244,15 +249,47 @@ class AbnerJsPdfPreview {
         this.wrapperMain && (this.wrapperMain.innerHTML = '');
     }
 
-    setOptions(options) {
+    setOptions(options = {}) {
         this.options = {
-            staticFileUrl: 'https://unpkg.com/pdfjs-dist@3.1.81/',
+            ...this.options,
             ...options
         };
     }
 
     setRequestOptions(requestOptions) {
         this.requestOptions = requestOptions;
+    }
+
+    layoutAndRender(currentId) {
+        if (this.isDestroyed || currentId !== this.renderId || !this.pdfDocument || !this.wrapper || !this.wrapperMain) {
+            return Promise.resolve();
+        }
+        return this.getPageSize(this.pdfDocument).then(res => {
+            if (this.isDestroyed || currentId !== this.renderId || !this.pdfDocument || !this.wrapper || !this.wrapperMain) {
+                return;
+            }
+            this.totalItems = this.pdfDocument.numPages;
+            this.containerHeight = this.wrapper.getBoundingClientRect().height;
+            this.pageWidth = res.width;
+            this.pageHeight = res.height;
+            this.canvasWidth = res.canvasWidth;
+            this.canvasHeight = res.canvasHeight;
+
+            const gap = this.options.gap || 10;
+            this.visibleItems = Math.ceil(this.containerHeight / Math.max(this.pageHeight + gap, 1)) + 4; //多渲染4个
+            const height = Math.max((this.pageHeight + gap) * this.totalItems - gap, 0);
+            this.wrapperMain.style.height = height + 'px';
+
+            this.clearAllCanvas();
+            const scrollTop = this.wrapper.scrollTop || 0;
+            const paddingTop = parseInt(getComputedStyle(this.wrapperMain).paddingTop, 10) || 0;
+            const startIndex = Math.min(
+                Math.max(Math.floor(Math.max(scrollTop - paddingTop, 0) / Math.max(this.pageHeight + gap, 1)), 1),
+                Math.max(this.totalItems, 1)
+            );
+            const endIndex = Math.min(startIndex + this.visibleItems - 1, this.totalItems);
+            return this.renderList(startIndex, endIndex, true);
+        });
     }
 
     preview(src) {
@@ -274,25 +311,10 @@ class AbnerJsPdfPreview {
                     return;
                 }
                 this.pdfDocument = pdfDocument;
-                return this.getPageSize(pdfDocument).then(res => {
-                    if (this.isDestroyed || currentId !== this.renderId || !this.wrapper || !this.wrapperMain) {
-                        return;
-                    }
-                    this.totalItems = pdfDocument.numPages;
-                    this.containerHeight = this.wrapper.getBoundingClientRect().height;
-                    this.pageWidth = res.width;
-                    this.pageHeight = res.height;
-                    this.canvasWidth = res.canvasWidth;
-                    this.canvasHeight = res.canvasHeight;
-
-                    const gap = this.options.gap || 10;
-                    this.visibleItems = Math.ceil(this.containerHeight / Math.max(this.pageHeight + gap, 1)) + 4; //多渲染4个
-                    const height = Math.max((this.pageHeight + gap) * this.totalItems - gap, 0);
-                    this.wrapperMain.style.height = height + 'px';
-
-                    this.clearAllCanvas();
-                    return this.renderList(1, Math.min(this.totalItems, this.visibleItems), true);
-                });
+                if (this.wrapper) {
+                    this.wrapper.scrollTop = 0;
+                }
+                return this.layoutAndRender(currentId);
             });
         }).catch(e => {
             if (!this.isDestroyed && currentId === this.renderId) {
@@ -365,17 +387,32 @@ class AbnerJsPdfPreview {
     }
 
     rerender() {
-        return this.renderList(1, Math.min(this.totalItems, this.visibleItems), true);
+        if (this.isDestroyed || !this.pdfDocument) {
+            return Promise.resolve();
+        }
+        const currentId = this.renderId;
+        return this.layoutAndRender(currentId).catch(e => {
+            if (!this.isDestroyed && currentId === this.renderId) {
+                this.options.onError && this.options.onError(e);
+            }
+        });
     }
 
     save(fileName) {
-        this.pdfDocument && this.pdfDocument._transport && this.pdfDocument._transport.getData().then(fileData => {
-            downloadFile(fileName || `abner-vue-office-js-pdf-${new Date().getTime()}.pdf`, fileData.buffer);
+        if (!this.pdfDocument || typeof this.pdfDocument.getData !== 'function') {
+            return;
+        }
+        this.pdfDocument.getData().then(fileData => {
+            downloadFile(
+                fileName || `abner-vue-office-js-pdf-${new Date().getTime()}.pdf`,
+                new Blob([fileData], { type: 'application/pdf' })
+            );
         });
     }
 
     destroy() {
         this.isDestroyed = true;
+        ++this.renderId;
         this.onScroll.cancel();
         if (this.wrapper) {
             this.wrapper.removeEventListener('scroll', this.onScroll);

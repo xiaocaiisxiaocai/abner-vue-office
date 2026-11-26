@@ -1,7 +1,7 @@
 {
   "name": "@abner-vue-office/pdf",
   "version": "1.0.0",
-  "description": "",
+  "description": "基于 Vue 的 pdf 文件预览组件（支持 Vue 2 / Vue 3）",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
@@ -40,13 +40,12 @@
   },
   "keywords": [
     "vue",
-    "docx",
+    "vue2",
+    "vue3",
+    "vue-demi",
     "pdf",
-    "ppt",
-    "excel",
-    "docx-preview",
-    "excel-preview",
-    "pdf-preview"
+    "pdf-preview",
+    "office-preview"
   ],
   "license": "MIT",
   "author": "abner",

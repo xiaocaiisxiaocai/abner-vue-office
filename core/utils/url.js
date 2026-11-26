@@ -9,7 +9,7 @@ export function getUrl(src, options) {
         return src;
     } else if (src instanceof Blob) {
         return URL.createObjectURL(src);
-    } else if (src instanceof ArrayBuffer) {
+    } else if (src instanceof ArrayBuffer || ArrayBuffer.isView(src)) {
         return URL.createObjectURL(new Blob([src], options));
     } else {
         return src;
@@ -21,13 +21,29 @@ export async function getUrlAsync(src, options) {
         return src;
     } else if (src instanceof Blob) {
         return URL.createObjectURL(src);
-    } else if (src instanceof ArrayBuffer) {
+    } else if (src instanceof ArrayBuffer || ArrayBuffer.isView(src)) {
         return URL.createObjectURL(new Blob([src], options));
     } else if (typeof Response !== 'undefined' && src instanceof Response) {
         return URL.createObjectURL(await src.blob());
     } else {
         return src;
     }
+}
+
+export function normalizeFetchOptions(options) {
+    if (!options || typeof options !== 'object') {
+        return {};
+    }
+    const fetchOptions = { ...options };
+    if (fetchOptions.withCredentials && !fetchOptions.credentials) {
+        fetchOptions.credentials = 'include';
+    }
+    delete fetchOptions.withCredentials;
+    delete fetchOptions.responseType;
+    if ((!fetchOptions.method || /^(get|head)$/i.test(fetchOptions.method)) && fetchOptions.body == null) {
+        delete fetchOptions.body;
+    }
+    return fetchOptions;
 }
 
 export function loadScript(src) {
@@ -37,8 +53,11 @@ export function loadScript(src) {
         script.onload = function () {
             resolve();
         };
-        script.onerror = function (err) {
-            reject(err);
+        script.onerror = function () {
+            if (script.parentNode) {
+                script.parentNode.removeChild(script);
+            }
+            reject(new Error(`Failed to load script: ${src}`));
         };
         document.body.append(script);
     });
@@ -48,7 +67,7 @@ export async function download(filename, data) {
     if (!data) {
         return;
     }
-    const blob = data instanceof ArrayBuffer ? new Blob([data]) : data;
+    const blob = (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) ? new Blob([data]) : data;
     const objectUrl = URL.createObjectURL(blob);
     downloadFile(filename, objectUrl);
     setTimeout(() => {

@@ -2,7 +2,7 @@
   "name": "@abner-vue-office/js-pdf",
   "type" :"module",
   "version": "1.0.0",
-  "description": "",
+  "description": "不依赖前端框架的原生 JavaScript pdf 文件预览库",
   "main": "lib/index.js",
   "module": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -27,14 +27,10 @@
     "build": "npm run clean && rollup --config rollup.config.js && npm run copy"
   },
   "keywords": [
-    "vue",
-    "docx",
+    "javascript",
     "pdf",
-    "ppt",
-    "excel",
-    "docx-preview",
-    "excel-preview",
-    "pdf-preview"
+    "pdf-preview",
+    "office-preview"
   ],
   "license": "MIT",
   "author": "abner",

@@ -1,3 +1,5 @@
+export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob;
+
 export interface RequestOptions {
     method?: string;
     headers?: Record<string, string>;
@@ -27,11 +29,25 @@ export interface DocxOptions {
     debug?: boolean;
 }
 
-declare const AbnerVueOfficeDocx: {
-    install?: (vue: any) => void;
-    src: string | ArrayBuffer | Blob;
+export type Options = DocxOptions;
+
+export interface DocxProps {
+    src: OfficeSource;
     requestOptions?: RequestOptions;
     options?: DocxOptions;
-    save?: (fileName?: string) => void;
-};
+    onRendered?: () => void;
+    onError?: (error: any) => void;
+}
+
+export interface AbnerVueOfficeDocxInstance {
+    $props: DocxProps;
+    save: (fileName?: string) => void;
+}
+
+export interface AbnerVueOfficeDocxComponent {
+    new (): AbnerVueOfficeDocxInstance;
+    install(app: any): void;
+}
+
+declare const AbnerVueOfficeDocx: AbnerVueOfficeDocxComponent;
 export default AbnerVueOfficeDocx;
