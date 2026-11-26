@@ -1,88 +1,103 @@
-let cache = [];
-export function renderImage(ctx, medias, sheet, offset, options={}){
-    // console.log('medias', medias);
-    // console.log('sheet', sheet);
-    // console.log('offset',  offset)
-    if(sheet && sheet._media.length){
-        sheet._media.forEach(media => {
-            let {imageId, range, type} = media;
-            if(type === 'image'){
-                let position = calcPosition(sheet,range,offset, options);
-                drawImage(ctx,imageId, medias[imageId], position);
-            }
-        });
+const cacheMap = new WeakMap();
+
+function getCache(ctx) {
+    let cache = cacheMap.get(ctx);
+    if (!cache) {
+        cache = [];
+        cacheMap.set(ctx, cache);
     }
-
+    return cache;
 }
-let clipWidth = 60; //左侧序号列宽
-let clipHeight = 25; //顶部序号行高
-let defaultColWidth = 80;
-let defaultRowHeight = 24;
-let devicePixelRatio = window.devicePixelRatio;
 
-function calcPosition(sheet, range, offset, options){
-    let {widthOffset, heightOffset} = options;
-    let {tl, br, ext} = range;
-    let {nativeCol=0, nativeColOff=0, nativeRow=0, nativeRowOff=0} = tl || {};
+export function renderImage(ctx, medias, sheet, offset, options = {}) {
+    if (!ctx || !sheet || !sheet._media || !sheet._media.length) {
+        return;
+    }
+    sheet._media.forEach(media => {
+        const { imageId, range, type } = media;
+        if (type === 'image' && medias && medias[imageId]) {
+            const position = calcPosition(sheet, range, offset, options);
+            drawImage(ctx, imageId, medias[imageId], position);
+        }
+    });
+}
+
+const clipWidth = 60; //左侧序号列宽
+const clipHeight = 25; //顶部序号行高
+const defaultColWidth = 80;
+const defaultRowHeight = 24;
+
+function calcPosition(sheet, range, offset, options) {
+    const dpr = window.devicePixelRatio || 1;
+    const { widthOffset, heightOffset } = options;
+    const { tl, br, ext } = range || {};
+    const { nativeCol = 0, nativeColOff = 0, nativeRow = 0, nativeRowOff = 0 } = tl || {};
 
     let basicX = clipWidth;
     let basicY = clipHeight;
-    for(let i=0; i < nativeCol; i++){
-        basicX += sheet?._columns?.[i]?.width*6 || defaultColWidth;
+    for (let i = 0; i < nativeCol; i++) {
+        basicX += sheet?._columns?.[i]?.width * 6 || defaultColWidth;
         basicX += widthOffset || 0;
     }
-    for(let i=0; i < nativeRow; i++){
+    for (let i = 0; i < nativeRow; i++) {
         basicY += sheet?._rows?.[i]?.height || defaultRowHeight;
         basicY += heightOffset || 0;
     }
-    let x = basicX + nativeColOff/12700;
-    let y = basicY + nativeRowOff/12700;
+    const x = basicX + nativeColOff / 12700;
+    const y = basicY + nativeRowOff / 12700;
 
-    let {
-        nativeCol: nativeColEnd=0,
-        nativeColOff: nativeColOffEnd=0,
-        nativeRow: nativeRowEnd=0,
-        nativeRowOff: nativeRowOffEnd=0
-    } = br||{};
-    let width =0;
-    if(nativeCol === nativeColEnd && br){
+    const {
+        nativeCol: nativeColEnd = 0,
+        nativeColOff: nativeColOffEnd = 0,
+        nativeRow: nativeRowEnd = 0,
+        nativeRowOff: nativeRowOffEnd = 0
+    } = br || {};
+    let width = 0;
+    if (nativeCol === nativeColEnd && br) {
         width = (nativeColOffEnd - nativeColOff) / 12700;
-    }else if(br) {
-        width = (sheet?._columns?.[nativeCol]?.width*6 || defaultColWidth) - nativeColOff/12700;
+    } else if (br) {
+        width = (sheet?._columns?.[nativeCol]?.width * 6 || defaultColWidth) - nativeColOff / 12700;
 
-        for(let i = nativeCol+1; i < nativeColEnd; i++){
-            width += sheet?._columns?.[i]?.width*6 || defaultColWidth;
+        for (let i = nativeCol + 1; i < nativeColEnd; i++) {
+            width += sheet?._columns?.[i]?.width * 6 || defaultColWidth;
         }
         width += nativeColOffEnd / 12700;
-    }else if(ext?.width){
+    } else if (ext?.width) {
         width = ext.width / 1.333333;
     }
-    let height;
-    if(nativeRow === nativeRowEnd){
+    let height = 0;
+    if (nativeRow === nativeRowEnd && br) {
         height = (nativeRowOffEnd - nativeRowOff) / 12700;
-    }else if(br) {
-        height = (sheet?._rows?.[nativeRow]?.height || defaultRowHeight) - nativeRowOff/12700;
-        for(let i = nativeRow+1; i < nativeRowEnd; i++){
+    } else if (br) {
+        height = (sheet?._rows?.[nativeRow]?.height || defaultRowHeight) - nativeRowOff / 12700;
+        for (let i = nativeRow + 1; i < nativeRowEnd; i++) {
             height += sheet?._rows?.[i]?.height || defaultRowHeight;
         }
         height += nativeRowOffEnd / 12700;
-    }else if(ext?.height){
+    } else if (ext?.height) {
         height = ext.height / 1.333333;
     }
 
     return {
-        x: (x - (offset?.scroll?.x || 0)) * devicePixelRatio,
-        y: (y - (offset?.scroll?.y || 0)) * devicePixelRatio,
-        width: width * devicePixelRatio,
-        height: height * devicePixelRatio
+        x: (x - (offset?.scroll?.x || 0)) * dpr,
+        y: (y - (offset?.scroll?.y || 0)) * dpr,
+        width: width * dpr,
+        height: height * dpr
     };
 }
-export function clearCache(){
-    cache = [];
+
+export function clearCache(ctx) {
+    if (ctx) {
+        cacheMap.delete(ctx);
+    }
 }
 
-function drawImage(ctx,index, data, position){
-    getImage(index, data).then(image=>{
+function drawImage(ctx, index, data, position) {
+    if (!ctx || !data) {
+        return;
+    }
+    const dpr = window.devicePixelRatio || 1;
+    getImage(ctx, index, data).then(image => {
         let sx = 0;
         let sy = 0;
         let sWidth = image.width;
@@ -91,47 +106,54 @@ function drawImage(ctx,index, data, position){
         let dy = position.y;
         let dWidth = position.width;
         let dHeight = position.height;
-        let scaleX = dWidth / sWidth;
-        let scaleY = dHeight / sHeight;
+        if (!sWidth || !sHeight || dWidth <= 0 || dHeight <= 0) {
+            return;
+        }
+        const scaleX = dWidth / sWidth;
+        const scaleY = dHeight / sHeight;
 
-        if(dx < clipWidth * devicePixelRatio){
-            let diff = clipWidth * devicePixelRatio - dx;
-            dx = clipWidth * devicePixelRatio;
+        if (dx < clipWidth * dpr) {
+            const diff = clipWidth * dpr - dx;
+            dx = clipWidth * dpr;
             dWidth -= diff;
-            sWidth -= diff/scaleX;
-            sx += diff/scaleX;
+            sWidth -= diff / scaleX;
+            sx += diff / scaleX;
         }
-        if(dy < clipHeight * devicePixelRatio){
-            let diff = clipHeight * devicePixelRatio - dy;
-            dy = clipHeight * devicePixelRatio;
+        if (dy < clipHeight * dpr) {
+            const diff = clipHeight * dpr - dy;
+            dy = clipHeight * dpr;
             dHeight -= diff;
-            sHeight -= diff/scaleY;
-            sy += diff/scaleY;
+            sHeight -= diff / scaleY;
+            sy += diff / scaleY;
         }
-        // console.log('=>', sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
-        let scale =  window.outerWidth / window.innerWidth;
-        ctx.drawImage(image, sx, sy, sWidth, sHeight, dx*scale, dy*scale, dWidth*scale, dHeight*scale);
-    }).catch(e=>{
+        if (dWidth <= 0 || dHeight <= 0 || sWidth <= 0 || sHeight <= 0) {
+            return;
+        }
+        ctx.drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
+    }).catch(e => {
         console.error(e);
     });
 }
-function getImage(index, data){
-    return new Promise(((resolve, reject) => {
-        if(cache[index]){
+
+function getImage(ctx, index, data) {
+    return new Promise((resolve, reject) => {
+        const cache = getCache(ctx);
+        if (cache[index]) {
             return resolve(cache[index]);
         }
-        const {buffer} = data.buffer;
-        let blob = new Blob([buffer], { type: 'image/' + data.extension});
-        let url = URL.createObjectURL(blob);
-        let image = new Image();
-        image.src = url;
-        image.onload = function (){
-            resolve(image);
+        const rawBuffer = data.buffer instanceof ArrayBuffer ? data.buffer : data.buffer.buffer;
+        const blob = new Blob([rawBuffer], { type: 'image/' + data.extension });
+        const url = URL.createObjectURL(blob);
+        const image = new Image();
+        image.onload = function () {
             cache[index] = image;
+            URL.revokeObjectURL(url);
+            resolve(image);
         };
-        image.onerror = function (e){
+        image.onerror = function (e) {
+            URL.revokeObjectURL(url);
             reject(e);
         };
-    }));
-
+        image.src = url;
+    });
 }

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "main": "lib/index.js",
+  "types": "lib/index.d.ts",
   "files": [
     "lib/"
   ],
@@ -10,13 +11,13 @@
     "clean": "rimraf lib",
     "copyFile2": "node ../../script/copy.js lib/v2/abner-vue-office-docx.umd.js lib/v2/index.js lib/v2/style.css lib/v2/index.css",
     "copyFile3": "node ../../script/copy.js lib/v3/abner-vue-office-docx.umd.js lib/v3/index.js lib/v3/style.css lib/v3/index.css",
-    "copyReadme": "node ../../script/copy.js ../../../help.md README.md",
+    "copyReadme": "node ../../script/copy.js ../../../README.md README.md",
     "copyType": "node ../../script/copy.js index.d.ts lib/index.d.ts",
     "copyScripts": "node ../../script/copy.js ../../script/postinstall.js lib/script/postinstall.js ../../script/switch-cli.js lib/script/switch-cli.js ../../script/utils.js lib/script/utils.js",
     "build:2": "npx vue-demi-switch 2 vue2 && vite build && npm run copyFile2",
     "build:3": "npx vue-demi-switch 3 vue3 && vite build && npm run copyFile3",
     "build": "npm run clean && npm run build:2 && npm run build:3 && npm run copyScripts && npm run copyReadme && npm run copyType",
-    "postinstall": "node lib/script/postinstall.js"
+    "postinstall": "node -e \"if(require('fs').existsSync('lib/script/postinstall.js'))require('./lib/script/postinstall.js')\""
   },
   "peerDependencies": {
     "@vue/composition-api": "^1.7.1",
@@ -39,5 +40,9 @@
     "pdf-preview"
   ],
   "license": "MIT",
-  "author": "abner"
+  "author": "abner",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

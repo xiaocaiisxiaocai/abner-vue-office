@@ -33,6 +33,7 @@ class Spreadsheet {
     this.data = this.addSheet();
     const rootEl = h('div', `${cssPrefix}`)
       .on('contextmenu', evt => evt.preventDefault());
+    this.rootEl = rootEl;
     // create canvas element
     targetEl.appendChild(rootEl.el);
     this.sheet = new Sheet(rootEl, this.data);
@@ -121,6 +122,19 @@ class Spreadsheet {
   change(cb) {
     this.sheet.on('change', cb);
     return this;
+  }
+
+  destroy() {
+    if (this.sheet && typeof this.sheet.destroy === 'function') {
+      this.sheet.destroy();
+    }
+    if (this.rootEl && this.rootEl.el && this.rootEl.el.parentNode) {
+      this.rootEl.el.parentNode.removeChild(this.rootEl.el);
+    }
+    this.datas = [];
+    this.sheet = null;
+    this.bottombar = null;
+    this.rootEl = null;
   }
 
   static locale(lang, message) {

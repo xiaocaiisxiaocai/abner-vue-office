@@ -22,7 +22,7 @@ export default {
     },
     data() {
         return {
-            pdf: 'http://static.shanhuxueyuan.com/test.pdf' //设置文档地址
+            pdf: 'https://your-domain.com/test.pdf' //设置文档地址
         }
     },
     methods: {

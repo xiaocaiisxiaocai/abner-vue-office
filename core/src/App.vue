@@ -1,27 +1,36 @@
 <script setup>
-import {ref, onMounted} from 'vue';
-import {useRouter, useRoute} from 'vue-router';
+import { ref, onMounted, watch } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
+
 const router = useRouter();
 const route = useRoute();
 const current = ref([]);
 
-onMounted(()=>{
-    console.log(route.path);
-    let hash = location.hash;
+function syncMenu(pathOrHash) {
     let currentRoute = 'docx';
-    if(hash.includes('excel')){
+    if (pathOrHash.includes('excel')) {
         currentRoute = 'excel';
-    }else if(hash.includes('pdf')){
+    } else if (pathOrHash.includes('pdf')) {
         currentRoute = 'pdf';
+    } else if (pathOrHash.includes('pptx')) {
+        currentRoute = 'pptx';
     }
     current.value = [currentRoute];
+}
+
+onMounted(() => {
+    syncMenu(location.hash || route.path || '');
 });
 
-function go({key}){
-     router.push({
-         path: key,
-         query: {...route.query}
-     });
+watch(() => route.path, (newPath) => {
+    syncMenu(newPath || location.hash || '');
+});
+
+function go({ key }) {
+    router.push({
+        path: key,
+        query: { ...route.query }
+    });
 }
 </script>
 
@@ -47,8 +56,7 @@ function go({key}){
 </template>
 
 <style scoped>
-/deep/ .ant-tabs-nav-wrap{
+:deep(.ant-tabs-nav-wrap) {
   padding-left: 20px !important;
 }
-
 </style>

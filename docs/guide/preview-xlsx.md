@@ -1,6 +1,6 @@
-# xlsx文件预览
-::: warning
-目前只支持xlsx文件预览，不支持xls文件。
+# xlsx/xls文件预览
+::: tip
+支持 `.xlsx` 和 `.xls` 文件预览。预览 `.xls` 文件时，需在 `options` 中配置 `xls: true`。
 :::
 
 ## 使用网络地址预览
@@ -37,7 +37,7 @@ export default {
                 beforeTransformData: (workbookData) => {return workbookData}, //底层通过exceljs获取excel文件内容，通过该钩子函数，可以对获取的excel文件内容进行修改，比如某个单元格的数据显示不正确，可以在此自行修改每个单元格的value值。
                 transformData: (workbookData) => {return workbookData}, //将获取到的excel数据进行处理之后且渲染到页面之前，可通过transformData对即将渲染的数据及样式进行修改，此时每个单元格的text值就是即将渲染到页面上的内容
             },
-            excel: 'http://static.shanhuxueyuan.com/demo/excel.xlsx'//设置文档地址
+            excel: 'https://your-domain.com/demo/excel.xlsx'//设置文档地址
         }
     },
     methods: {

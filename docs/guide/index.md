@@ -1,11 +1,11 @@
 # abner-vue-office简介
 
-abner-vue-office是一个支持多种文件(docx、.xlsx、pdf)预览的vue组件库，支持vue2和vue3。
+abner-vue-office是一个支持多种文件（docx、xlsx、xls、pdf、pptx）预览的vue组件库，支持vue2和vue3。
 
 目标是成为使用最简单，功能最强大的文件预览库
 
 ## 功能特色
-- 一站式：提供docx、.xlsx、pdf多种文档的在线预览方案，有它就够了，不用再四处寻找、测试、集成各种库了
+- 一站式：提供docx、xlsx、xls、pdf、pptx多种文档的在线预览方案，有它就够了，不用再四处寻找、测试、集成各种库了
 - 使用简单：只需提供文档的src(网络地址)即可完成文档预览，也支持ArrayBuffer、Blob等多种格式
 - 支持样式：不仅能预览内容，也支持文档样式，最大限度还原office文件内容
 
@@ -20,6 +20,9 @@ npm install @abner-vue-office/excel vue-demi
 
 #pdf文档预览组件
 npm install @abner-vue-office/pdf vue-demi
+
+#pptx文档预览组件
+npm install @abner-vue-office/pptx vue-demi
 ```
 如果是vue2.6版本或以下还需要额外安装 @vue/composition-api
 ```shell
@@ -54,7 +57,7 @@ export default {
     },
     data() {
         return {
-            docx: 'http://static.shanhuxueyuan.com/test6.docx' //设置文档网络地址，可以是相对地址
+            docx: 'https://your-domain.com/test6.docx' //设置文档网络地址，可以是相对地址
         }
     },
     methods: {

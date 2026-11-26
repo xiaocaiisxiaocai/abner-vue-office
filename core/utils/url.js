@@ -1,43 +1,63 @@
-export function getUrl(src, options){
-    if(typeof src === 'string'){
+export function revokeUrl(url) {
+    if (typeof url === 'string' && url.startsWith('blob:')) {
+        URL.revokeObjectURL(url);
+    }
+}
+
+export function getUrl(src, options) {
+    if (typeof src === 'string') {
         return src;
-    }else if(src instanceof Blob){
+    } else if (src instanceof Blob) {
         return URL.createObjectURL(src);
-    }else if(src instanceof ArrayBuffer){
+    } else if (src instanceof ArrayBuffer) {
         return URL.createObjectURL(new Blob([src], options));
-    }else if(src instanceof Response){
-        return URL.createObjectURL(src.blob());
-    }else{
+    } else {
         return src;
     }
 }
 
-export function loadScript(src){
-    return new Promise(((resolve, reject) => {
-        let script = document.createElement('script');
+export async function getUrlAsync(src, options) {
+    if (typeof src === 'string') {
+        return src;
+    } else if (src instanceof Blob) {
+        return URL.createObjectURL(src);
+    } else if (src instanceof ArrayBuffer) {
+        return URL.createObjectURL(new Blob([src], options));
+    } else if (typeof Response !== 'undefined' && src instanceof Response) {
+        return URL.createObjectURL(await src.blob());
+    } else {
+        return src;
+    }
+}
+
+export function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
         script.src = src;
-        script.onload = function (){
+        script.onload = function () {
             resolve();
         };
-        script.onerror = function (){
-            reject();
+        script.onerror = function (err) {
+            reject(err);
         };
         document.body.append(script);
-    }));
+    });
 }
 
-export async function download(filename, data){
-    if(!data){
-        return; 
+export async function download(filename, data) {
+    if (!data) {
+        return;
     }
-   if (data instanceof ArrayBuffer) {
-       data = new Blob([data]);
-    }
-    downloadFile(filename, URL.createObjectURL(data));
+    const blob = data instanceof ArrayBuffer ? new Blob([data]) : data;
+    const objectUrl = URL.createObjectURL(blob);
+    downloadFile(filename, objectUrl);
+    setTimeout(() => {
+        URL.revokeObjectURL(objectUrl);
+    }, 1000);
 }
 
-export function downloadFile(filename, href){
-    let eleLink = document.createElement('a');
+export function downloadFile(filename, href) {
+    const eleLink = document.createElement('a');
     eleLink.download = filename;
     eleLink.style.display = 'none';
     eleLink.href = href;

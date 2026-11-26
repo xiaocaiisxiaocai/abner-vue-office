@@ -27,7 +27,7 @@ import Item from './item';
 
 import { h } from '../element';
 import { cssPrefix } from '../../config';
-import { bind } from '../event';
+import { bind, unbind } from '../event';
 
 function buildDivider() {
   return h('div', `${cssPrefix}-toolbar-divider`);
@@ -196,9 +196,17 @@ export default class Toolbar {
         initBtns2.call(this);
         moreResize.call(this);
       }, 0);
-      bind(window, 'resize', () => {
+      this._onWindowResize = () => {
         moreResize.call(this);
-      });
+      };
+      bind(window, 'resize', this._onWindowResize);
+    }
+  }
+
+  destroy() {
+    if (this._onWindowResize) {
+      unbind(window, 'resize', this._onWindowResize);
+      this._onWindowResize = null;
     }
   }
 

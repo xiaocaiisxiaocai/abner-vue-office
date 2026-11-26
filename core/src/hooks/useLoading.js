@@ -1,19 +1,26 @@
 import { message } from 'ant-design-vue';
-import {ref} from 'vue';
+import { ref } from 'vue';
 
-let loading = ref(false);
-let hide;
-function showLoading(content){
+const loading = ref(false);
+let hide = null;
+
+function showLoading(content) {
+    if (typeof hide === 'function') {
+        hide();
+        hide = null;
+    }
     hide = message.loading(content, 0);
     loading.value = true;
 }
-function hideLoading(){
-    if(loading.value === true){
+
+function hideLoading() {
+    if (loading.value === true && typeof hide === 'function') {
         hide();
+        hide = null;
         loading.value = false;
     }
-
 }
+
 export default {
     loading,
     showLoading,

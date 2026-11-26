@@ -31,7 +31,7 @@ export default {
     },
     data() {
         return {
-            docx: 'http://static.shanhuxueyuan.com/test6.docx' //设置文档网络地址，可以是相对地址
+            docx: 'https://your-domain.com/test6.docx' //设置文档网络地址，可以是相对地址
         }
     },
     methods: {

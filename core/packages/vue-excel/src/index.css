@@ -1,6 +1,3 @@
-body {
-  margin: 0;
-}
 .x-spreadsheet {
   font-size: 13px;
   line-height: normal;
@@ -697,16 +694,16 @@ body {
   display: block;
   opacity: 1;
 }
-form fieldset {
+.x-spreadsheet form fieldset {
   border: none;
 }
-form fieldset label {
+.x-spreadsheet form fieldset label {
   display: block;
   margin-bottom: 0.5em;
   font-size: 1em;
   color: #666;
 }
-form fieldset select {
+.x-spreadsheet form fieldset select {
   font-size: 1.1em;
   width: 100%;
   background-color: #fff;

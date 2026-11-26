@@ -2,6 +2,7 @@
 import { h } from './element';
 import {
   bind,
+  unbind,
   mouseMoveUp,
   bindTouch,
   createEventEmitter,
@@ -715,28 +716,32 @@ function sheetInitEvents() {
     }
   };
 
-  bind(window, 'resize', () => {
+  this._onWindowResize = () => {
     this.reload();
-  });
+  };
+  bind(window, 'resize', this._onWindowResize);
 
-  bind(window, 'click', (evt) => {
+  this._onWindowClick = (evt) => {
     this.focusing = overlayerEl.contains(evt.target);
-  });
+  };
+  bind(window, 'click', this._onWindowClick);
 
-  bind(window, 'paste', (evt) => {
+  this._onWindowPaste = (evt) => {
     if (!this.focusing) return;
     paste.call(this, 'all', evt);
     evt.preventDefault();
-  });
+  };
+  bind(window, 'paste', this._onWindowPaste);
 
-  bind(window, 'copy', (evt) => {
+  this._onWindowCopy = (evt) => {
     if (!this.focusing) return;
     copy.call(this, evt);
     evt.preventDefault();
-  });
+  };
+  bind(window, 'copy', this._onWindowCopy);
 
   // for selector
-  bind(window, 'keydown', (evt) => {
+  this._onWindowKeydown = (evt) => {
     if (!this.focusing) return;
     const keyCode = evt.keyCode || evt.which;
     const {
@@ -882,7 +887,8 @@ function sheetInitEvents() {
         editorSet.call(this);
       }
     }
-  });
+  };
+  bind(window, 'keydown', this._onWindowKeydown);
 }
 
 export default class Sheet {
@@ -1009,5 +1015,28 @@ export default class Sheet {
       left: cols.indexWidth,
       top: rows.height,
     };
+  }
+
+  destroy() {
+    if (this._onWindowResize) unbind(window, 'resize', this._onWindowResize);
+    if (this._onWindowClick) unbind(window, 'click', this._onWindowClick);
+    if (this._onWindowPaste) unbind(window, 'paste', this._onWindowPaste);
+    if (this._onWindowCopy) unbind(window, 'copy', this._onWindowCopy);
+    if (this._onWindowKeydown) unbind(window, 'keydown', this._onWindowKeydown);
+    if (window.xkeydownEsc) {
+      unbind(window, 'keydown', window.xkeydownEsc);
+      delete window.xkeydownEsc;
+    }
+    this._onWindowResize = null;
+    this._onWindowClick = null;
+    this._onWindowPaste = null;
+    this._onWindowCopy = null;
+    this._onWindowKeydown = null;
+    if (this.toolbar && typeof this.toolbar.destroy === 'function') {
+      this.toolbar.destroy();
+    }
+    if (this.eventMap && typeof this.eventMap.removeAllListeners === 'function') {
+      this.eventMap.removeAllListeners();
+    }
   }
 }

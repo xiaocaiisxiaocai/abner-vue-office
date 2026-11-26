@@ -1,4 +1,4 @@
-import hack from './src/hack';
+import './src/hack';
 import AbnerVueOfficeDocx from './src/main.vue';
 
 AbnerVueOfficeDocx.install = function (Vue) {

@@ -1,6 +1,6 @@
 /* global window */
 import { h } from './element';
-import { bind } from './event';
+import { bind, unbind } from './event';
 import tooltip from './tooltip';
 import DropdownFont from './dropdown_font';
 import DropdownFontSize from './dropdown_fontsize';
@@ -173,9 +173,17 @@ export default class Toolbar {
       initBtns2.call(this);
       moreResize.call(this);
     }, 0);
-    bind(window, 'resize', () => {
+    this._onWindowResize = () => {
       moreResize.call(this);
-    });
+    };
+    bind(window, 'resize', this._onWindowResize);
+  }
+
+  destroy() {
+    if (this._onWindowResize) {
+      unbind(window, 'resize', this._onWindowResize);
+      this._onWindowResize = null;
+    }
   }
 
   paintformatActive() {

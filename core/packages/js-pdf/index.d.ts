@@ -1,18 +1,21 @@
 export interface Options {
     staticFileUrl?: string;
+    gap?: number;
     width?: number;
-    data?: BinaryData;
-    httpHeaders?: Object;
+    data?: ArrayBuffer | Uint8Array;
+    httpHeaders?: Record<string, string>;
     withCredentials?: boolean;
     password?: string;
     length?: number;
     docBaseUrl?: string;
     cMapUrl?: string;
     cMapPacked?: boolean;
-    CMapReaderFactory?: Object;
+    CMapReaderFactory?: Record<string, any>;
+    enableXfa?: boolean;
     useSystemFonts?: boolean;
     onError?: (error: any) => void;
     onRendered?: () => void;
+    [key: string]: any;
 }
 
 export interface AbnerJsPdfPreview {
@@ -20,10 +23,11 @@ export interface AbnerJsPdfPreview {
     rerender: () => Promise<any>;
     save: (fileName?: string) => void;
     setOptions: (options: Options) => void;
-    setRequestOptions: (requestOptions?: any) => void;
-    destroy: ()=> void;
+    setRequestOptions: (requestOptions?: Record<string, any>) => void;
+    destroy: () => void;
 }
+
 declare const abnerJsPdf: {
-    init: (container: HTMLElement, options?: Options, requestOptions?: any) => AbnerJsPdfPreview;
+    init: (container: HTMLElement, options?: Options, requestOptions?: Record<string, any>) => AbnerJsPdfPreview;
 };
 export default abnerJsPdf;

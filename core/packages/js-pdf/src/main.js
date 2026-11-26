@@ -1,21 +1,30 @@
-import {workerStr} from './worker.js';
-import {pdfLibJsStr} from './pdf.js';
-import {download as downloadFile, getUrl, loadScript} from '../../../utils/url';
+import { workerStr } from './worker.js';
+import { pdfLibJsStr } from './pdf.js';
+import { download as downloadFile, getUrlAsync, revokeUrl, loadScript } from '../../../utils/url';
 import omit from 'lodash/omit';
-import {debounce} from "lodash/function";
+import debounce from 'lodash/debounce';
 
-const pdfJsLibSrc = `data:text/javascript;base64,${pdfLibJsStr}`;
-const PdfJsWorkerSrc = `data:text/javascript;base64,${workerStr}`;
-let pdfJsLibLoaded = false;
-let workerLoaded = false;
-class AbnerJsPdfPreview{
+let pdfLibLoadPromise = null;
+
+function getPdfJsLibUrl() {
+    return `data:text/javascript;base64,${pdfLibJsStr}`;
+}
+
+function getPdfJsWorkerUrl() {
+    return `data:text/javascript;base64,${workerStr}`;
+}
+
+class AbnerJsPdfPreview {
     container = null;
     wrapper = null;
     wrapperMain = null;
     options = {};
     requestOptions = {};
     pdfDocument = null;
-    loopCheckTimer = null;
+    loadingTask = null;
+    currentObjectUrl = null;
+    renderId = 0;
+    isDestroyed = false;
     totalItems = 0; //pdf总页数
     pageWidth = 0;  //每个canvas dom宽度
     pageHeight = 0; //每个canvas dom高度
@@ -23,10 +32,14 @@ class AbnerJsPdfPreview{
     visibleItems = 6; //可视区域内的页面数量，根据pdf高度重新计算
     canvasWidth = 0; //画布的尺寸-宽
     canvasHeight = 0; //画布的尺寸-高
-    getViewportScale =2; //缩放比例
-    onScroll = debounce( (e) => {
-        const { scrollTop} = e.target;
-        let paddingTop = parseInt(getComputedStyle(this.wrapperMain).paddingTop);
+    getViewportScale = 2; //缩放比例
+
+    onScroll = debounce((e) => {
+        if (this.isDestroyed || !this.wrapperMain || !this.pdfDocument || this.pageHeight <= 0) {
+            return;
+        }
+        const { scrollTop } = e.target;
+        const paddingTop = parseInt(getComputedStyle(this.wrapperMain).paddingTop, 10) || 0;
         const gap = this.options.gap || 10;
         const startIndex = Math.max(
             Math.floor(Math.max((scrollTop - paddingTop), 0) / (this.pageHeight + gap)) - 1,
@@ -34,9 +47,10 @@ class AbnerJsPdfPreview{
         );
         const endIndex = Math.min(startIndex + this.visibleItems - 1, this.totalItems); // 计算结束索引
 
-        this.renderList(startIndex, endIndex); // 渲染列表项
-    }, 60)
-    constructor(container, options={}, requestOptions={}) {
+        this.renderList(startIndex, endIndex, false); // 渲染列表项
+    }, 60);
+
+    constructor(container, options = {}, requestOptions = {}) {
         this.container = container;
         this.options = {
             staticFileUrl: 'https://unpkg.com/pdfjs-dist@3.1.81/',
@@ -46,75 +60,111 @@ class AbnerJsPdfPreview{
         this.createWrapper();
         this.createWrapperMain();
     }
-    createWrapper(){
+
+    createWrapper() {
         this.wrapper = document.createElement('div');
         this.wrapper.className = 'abner-vue-office-pdf';
-        this.wrapper.setAttribute('style', 'text-align: center;overflow-y: auto;position: relative;height:100%');
+        this.wrapper.setAttribute('style', 'text-align: center;overflow: auto;position: relative;height:100%');
         this.container.appendChild(this.wrapper);
         this.wrapper.addEventListener('scroll', this.onScroll);
     }
-    createWrapperMain(){
+
+    createWrapperMain() {
         this.wrapperMain = document.createElement('div');
         this.wrapperMain.className = 'abner-vue-office-pdf-wrapper';
         this.wrapperMain.setAttribute('style', 'background: gray; padding: 30px 0;position: relative;box-sizing: content-box');
         this.wrapper.appendChild(this.wrapperMain);
     }
-    installPdfScript() {
-        return loadScript(pdfJsLibSrc).then(() => {
-            if (window.pdfjsLib && !workerLoaded) {
-                workerLoaded = true;
-                window.pdfjsLib.GlobalWorkerOptions.workerSrc = PdfJsWorkerSrc;
-            } else {
-                return Promise.reject('window.pdfjsLib未找到');
-            }
-        });
-    }
-    waitPdfjsLoad(){
-        return new Promise((resolve)=>{
-            const loopCheck = () =>{
-                if(window.pdfjsLib) {
-                    resolve();
-                }else{
-                    this.loopCheckTimer = setTimeout(loopCheck, 10);
-                }
-            };
-            loopCheck();
-        });
-    }
+
     checkPdfLib() {
         if (window.pdfjsLib) {
+            if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+                window.pdfjsLib.GlobalWorkerOptions.workerSrc = getPdfJsWorkerUrl();
+            }
             return Promise.resolve();
         }
-        if(!pdfJsLibLoaded){
-            pdfJsLibLoaded = true;
-            return this.installPdfScript();
-        }else{
-            return this.waitPdfjsLoad();
+        if (!pdfLibLoadPromise) {
+            pdfLibLoadPromise = loadScript(getPdfJsLibUrl())
+                .then(() => {
+                    if (window.pdfjsLib) {
+                        window.pdfjsLib.GlobalWorkerOptions.workerSrc = getPdfJsWorkerUrl();
+                    } else {
+                        throw new Error('window.pdfjsLib未找到');
+                    }
+                })
+                .catch(err => {
+                    pdfLibLoadPromise = null;
+                    return Promise.reject(err);
+                });
+        }
+        return pdfLibLoadPromise;
+    }
+
+    cleanupPdfResources() {
+        if (this.loadingTask) {
+            try {
+                this.loadingTask.destroy();
+            } catch (e) {
+                // ignore
+            }
+            this.loadingTask = null;
+        }
+        if (this.pdfDocument) {
+            try {
+                this.pdfDocument.destroy();
+            } catch (e) {
+                // ignore
+            }
+            this.pdfDocument = null;
+        }
+        if (this.currentObjectUrl) {
+            revokeUrl(this.currentObjectUrl);
+            this.currentObjectUrl = null;
         }
     }
-    getDocument(src){
-        const loadingTask = window.pdfjsLib.getDocument({
-            url: getUrl(src, { type: 'application/pdf' }),
-            httpHeaders: this.requestOptions && this.requestOptions.headers,
+
+    async getDocument(src, currentId) {
+        const url = await getUrlAsync(src, { type: 'application/pdf' });
+        if (this.isDestroyed || currentId !== this.renderId) {
+            if (url !== src) {
+                revokeUrl(url);
+            }
+            return null;
+        }
+        this.cleanupPdfResources();
+        if (url !== src && typeof url === 'string' && url.startsWith('blob:')) {
+            this.currentObjectUrl = url;
+        }
+        const httpHeaders = (this.requestOptions && this.requestOptions.headers) || this.options.httpHeaders;
+        this.loadingTask = window.pdfjsLib.getDocument({
+            url,
+            ...(httpHeaders ? { httpHeaders } : {}),
             withCredentials: this.requestOptions && this.requestOptions.withCredentials,
             cMapUrl: `${this.options.staticFileUrl.endsWith('/') ? this.options.staticFileUrl : this.options.staticFileUrl + '/'}cmaps/`,
             cMapPacked: true,
             enableXfa: true,
-            ...omit(this.options, ['width', 'staticFileUrl'])
+            ...omit(this.options, ['width', 'staticFileUrl', 'gap', 'httpHeaders'])
         });
-        return loadingTask.promise;
+        return this.loadingTask.promise;
     }
-    renderSinglePage(num, canvas){
+
+    renderSinglePage(num, canvas) {
+        if (this.isDestroyed || !this.pdfDocument) {
+            return Promise.resolve();
+        }
         return this.pdfDocument.getPage(num).then((pdfPage) => {
+            if (this.isDestroyed || !this.pdfDocument) {
+                return;
+            }
             const viewport = pdfPage.getViewport({ scale: this.getViewportScale });
             let outputScale = window.devicePixelRatio > 2 ? 1.5 : 2;
-            if(this.canvasWidth * viewport.height !== this.canvasHeight * viewport.width ){
-                let width = Math.floor(viewport.width * outputScale);
-                let height =  Math.floor(viewport.height * outputScale);
-                let scale =  this.canvasHeight / height;
+            if (this.canvasWidth * viewport.height !== this.canvasHeight * viewport.width) {
+                const width = Math.floor(viewport.width * outputScale);
+                const height = Math.floor(viewport.height * outputScale);
+                const scale = this.canvasHeight / height;
                 outputScale = outputScale * scale;
                 canvas.width = width * scale;
-                canvas.style.width = parseInt(canvas.style.width) * scale + 'px';
+                canvas.style.width = parseInt(canvas.style.width, 10) * scale + 'px';
             }
             const ctx = canvas.getContext('2d');
             const transform = outputScale !== 1
@@ -129,32 +179,33 @@ class AbnerJsPdfPreview{
             return renderTask.promise;
         });
     }
-    getPageSize(pdfDocument){
+
+    getPageSize(pdfDocument) {
         return pdfDocument.getPage(1).then((pdfPage) => {
             const maxWidth = this.options.width || this.wrapper.getBoundingClientRect().width - 20;
             let viewport = pdfPage.getViewport({ scale: 1 });
-            if(viewport.width > maxWidth * 1.5) {
+            if (viewport.width > maxWidth * 1.5) {
                 this.getViewportScale = 0.5;
-            }else if(viewport.width > maxWidth) {
+            } else if (viewport.width > maxWidth) {
                 this.getViewportScale = 1;
-            }else {
+            } else {
                 this.getViewportScale = 2;
             }
             viewport = pdfPage.getViewport({ scale: this.getViewportScale });
 
             const outputScale = window.devicePixelRatio > 2 ? 1.5 : 2;
-            let canvasWidth = Math.floor(viewport.width * outputScale);
-            let canvasHeight = Math.floor(viewport.height * outputScale);
+            const canvasWidth = Math.floor(viewport.width * outputScale);
+            const canvasHeight = Math.floor(viewport.height * outputScale);
             let domWidth = Math.floor(viewport.width);
             let domHeight = Math.floor(viewport.height);
             if (this.options.width) {
-                let scale = this.options.width / domWidth;
+                const scale = this.options.width / domWidth;
                 domWidth = Math.floor(this.options.width);
                 domHeight = Math.floor(domHeight * scale);
             }
-            let wrapperWidth = this.wrapper.getBoundingClientRect().width - 20;
-            if (domWidth > wrapperWidth) {
-                let scale = wrapperWidth / domWidth;
+            const wrapperWidth = this.wrapper.getBoundingClientRect().width - 20;
+            if (domWidth > wrapperWidth && wrapperWidth > 0) {
+                const scale = wrapperWidth / domWidth;
                 domWidth = Math.floor(wrapperWidth);
                 domHeight = Math.floor(domHeight * scale);
             }
@@ -164,16 +215,16 @@ class AbnerJsPdfPreview{
                 height: domHeight,
                 canvasWidth,
                 canvasHeight
-            }
+            };
         });
     }
-    createCanvas(index){
-        let paddingTop = parseInt(getComputedStyle(this.wrapperMain).paddingTop);
 
-        let gap = this.options.gap || 10;
+    createCanvas(index) {
+        const paddingTop = parseInt(getComputedStyle(this.wrapperMain).paddingTop, 10) || 0;
+        const gap = this.options.gap || 10;
         const canvas = document.createElement('canvas');
         canvas.style.position = 'absolute';
-        canvas.style.top = (index -1) * (this.pageHeight + gap) + paddingTop + 'px';
+        canvas.style.top = (index - 1) * (this.pageHeight + gap) + paddingTop + 'px';
         canvas.style.left = '50%';
         canvas.style.transform = 'translate(-50%)';
         canvas.style.backgroundColor = '#fff';
@@ -182,129 +233,161 @@ class AbnerJsPdfPreview{
         canvas.height = this.canvasHeight;
         canvas.style.width = `${this.pageWidth}px`;
         canvas.style.height = `${this.pageHeight}px`;
-        return canvas
+        return canvas;
     }
 
-    clearAllCanvas(){
+    clearAllCanvas() {
         this.wrapperMain && (this.wrapperMain.innerHTML = '');
     }
+
     setOptions(options) {
-        this.options = options;
+        this.options = {
+            staticFileUrl: 'https://unpkg.com/pdfjs-dist@3.1.81/',
+            ...options
+        };
     }
+
     setRequestOptions(requestOptions) {
         this.requestOptions = requestOptions;
     }
-    preview(src){
-        if(!src){
+
+    preview(src) {
+        const currentId = ++this.renderId;
+        if (!src) {
             this.clearAllCanvas();
-            this.options.onError && this.options.onError(new Error('预览地址不能为空'));
-            return;
+            this.cleanupPdfResources();
+            const err = new Error('预览地址不能为空');
+            this.options.onError && this.options.onError(err);
+            return Promise.reject(err);
         }
-        this.checkPdfLib().then(_=>{
-            this.getDocument(src).then(pdfDocument=>{
-                this.pdfDocument && this.pdfDocument.destroy();
+        return this.checkPdfLib().then(() => {
+            if (this.isDestroyed || currentId !== this.renderId) {
+                return;
+            }
+            return this.getDocument(src, currentId).then(pdfDocument => {
+                if (!pdfDocument || this.isDestroyed || currentId !== this.renderId) {
+                    pdfDocument && pdfDocument.destroy();
+                    return;
+                }
                 this.pdfDocument = pdfDocument;
-                this.getPageSize(pdfDocument).then(res =>{
+                return this.getPageSize(pdfDocument).then(res => {
+                    if (this.isDestroyed || currentId !== this.renderId || !this.wrapper || !this.wrapperMain) {
+                        return;
+                    }
                     this.totalItems = pdfDocument.numPages;
-                    this.containerHeight = this.wrapper.getBoundingClientRect().height
+                    this.containerHeight = this.wrapper.getBoundingClientRect().height;
                     this.pageWidth = res.width;
                     this.pageHeight = res.height;
                     this.canvasWidth = res.canvasWidth;
                     this.canvasHeight = res.canvasHeight;
 
-                    let gap = this.options.gap || 10;
-                    this.visibleItems = Math.ceil(this.containerHeight / (this.pageHeight + gap)) + 4; //多渲染4个
-                    let height = (this.pageHeight + gap)  * this.totalItems - gap;
+                    const gap = this.options.gap || 10;
+                    this.visibleItems = Math.ceil(this.containerHeight / Math.max(this.pageHeight + gap, 1)) + 4; //多渲染4个
+                    const height = Math.max((this.pageHeight + gap) * this.totalItems - gap, 0);
                     this.wrapperMain.style.height = height + 'px';
 
                     this.clearAllCanvas();
-                    this.renderList(1, Math.min(this.totalItems, this.visibleItems));
-                }).catch(e=>{
-                    this.clearAllCanvas();
-                    this.options.onError && this.options.onError(e);
+                    return this.renderList(1, Math.min(this.totalItems, this.visibleItems), true);
                 });
-            }).catch(e=>{
+            });
+        }).catch(e => {
+            if (!this.isDestroyed && currentId === this.renderId) {
                 this.clearAllCanvas();
                 this.options.onError && this.options.onError(e);
-            });
-        }).catch(e=>{
-            this.clearAllCanvas();
-            this.options.onError && this.options.onError(e);
+            }
+            return Promise.reject(e);
         });
     }
-    renderList(startIndex, endIndex){
-        let list  = this.wrapperMain;
-        let originNodes = [...list.childNodes]
-        let tasks = [];
-        if(list.childNodes.length === 0){
+
+    renderList(startIndex, endIndex, emitRendered = false) {
+        const list = this.wrapperMain;
+        if (!list || !this.pdfDocument || this.isDestroyed) {
+            return Promise.resolve();
+        }
+        const currentId = this.renderId;
+        const originNodes = [...list.childNodes];
+        const tasks = [];
+        if (originNodes.length === 0) {
             for (let i = startIndex; i <= endIndex; i++) {
-                let canvas = this.createCanvas(i)
+                const canvas = this.createCanvas(i);
                 list.appendChild(canvas);
                 tasks.push(this.renderSinglePage(i, canvas));
             }
-        }else{
-            let min = +originNodes[0].getAttribute('data-id');
-            let max = +originNodes[originNodes.length -1].getAttribute('data-id');
-            if(endIndex < min || startIndex > max){
+        } else {
+            const min = +originNodes[0].getAttribute('data-id');
+            const max = +originNodes[originNodes.length - 1].getAttribute('data-id');
+            if (endIndex < min || startIndex > max) {
                 for (let i = startIndex; i <= endIndex; i++) {
-                    let canvas = this.createCanvas(i)
+                    const canvas = this.createCanvas(i);
                     list.appendChild(canvas);
                     tasks.push(this.renderSinglePage(i, canvas));
                 }
             }
 
-            if(startIndex < min && endIndex >= min){
-                let firstChildNode = originNodes[0]
-                for (let i = min-1; i >= startIndex; i--) {
-                    let canvas = this.createCanvas(i);
+            if (startIndex < min && endIndex >= min) {
+                let firstChildNode = originNodes[0];
+                for (let i = min - 1; i >= startIndex; i--) {
+                    const canvas = this.createCanvas(i);
                     list.insertBefore(canvas, firstChildNode);
                     firstChildNode = canvas;
                     tasks.push(this.renderSinglePage(i, canvas));
                 }
             }
 
-            for (let i = 0; i <= max-min; i++) {
-                let id = +originNodes[i].getAttribute('data-id')
-                if(id < startIndex || id > endIndex){
-                    list.removeChild(originNodes[i])
+            originNodes.forEach(node => {
+                const id = +node.getAttribute('data-id');
+                if (id < startIndex || id > endIndex) {
+                    list.removeChild(node);
                 }
-            }
+            });
 
-            if(endIndex > max && startIndex <= max){
+            if (endIndex > max && startIndex <= max) {
                 for (let i = max + 1; i <= endIndex; i++) {
-                    let canvas = this.createCanvas(i)
+                    const canvas = this.createCanvas(i);
                     list.appendChild(canvas);
                     tasks.push(this.renderSinglePage(i, canvas));
                 }
             }
         }
-        Promise.all(tasks).then(_=>{
-            this.options.onRendered && this.options.onRendered();
-        }).catch(e =>{
-            this.options.onError && this.options.onError(e);
+        return Promise.all(tasks).then(() => {
+            if (emitRendered && !this.isDestroyed && currentId === this.renderId) {
+                this.options.onRendered && this.options.onRendered();
+            }
+        }).catch(e => {
+            if (!this.isDestroyed && currentId === this.renderId) {
+                this.options.onError && this.options.onError(e);
+            }
         });
     }
-    rerender(){
-        this.renderList(1, Math.min(this.totalItems, this.visibleItems));
+
+    rerender() {
+        return this.renderList(1, Math.min(this.totalItems, this.visibleItems), true);
     }
-    save(fileName){
-        this.pdfDocument && this.pdfDocument._transport && this.pdfDocument._transport.getData().then(fileData=>{
-            downloadFile(fileName || `abner-vue-office-js-pdf-${new Date().getTime()}.pdf`,fileData.buffer);
+
+    save(fileName) {
+        this.pdfDocument && this.pdfDocument._transport && this.pdfDocument._transport.getData().then(fileData => {
+            downloadFile(fileName || `abner-vue-office-js-pdf-${new Date().getTime()}.pdf`, fileData.buffer);
         });
     }
-    destroy(){
-        this.wrapper.removeEventListener('scroll', this.onScroll);
-        this.container.removeChild(this.wrapper);
+
+    destroy() {
+        this.isDestroyed = true;
+        this.onScroll.cancel();
+        if (this.wrapper) {
+            this.wrapper.removeEventListener('scroll', this.onScroll);
+            if (this.wrapper.parentNode) {
+                this.wrapper.parentNode.removeChild(this.wrapper);
+            }
+        }
+        this.cleanupPdfResources();
         this.container = null;
         this.wrapper = null;
         this.wrapperMain = null;
         this.options = {};
         this.requestOptions = {};
-        this.pdfDocument && this.pdfDocument.destroy();
-        this.pdfDocument = null;
-        this.loopCheckTimer && clearTimeout(this.loopCheckTimer);
     }
 }
-export function init(container, options, requestOptions){
+
+export function init(container, options, requestOptions) {
     return new AbnerJsPdfPreview(container, options, requestOptions);
 }

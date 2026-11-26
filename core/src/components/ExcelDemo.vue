@@ -81,7 +81,6 @@ function cellsSelected(event){
           :src="slotProps.src"
           :options="{beforeTransformData, transformData, xls: slotProps.xls}"
           style="flex: 1;height: 0"
-          v-loading="true"
           @rendered="onRendered"
           @error="onError"
           @switchSheet="switchSheet"

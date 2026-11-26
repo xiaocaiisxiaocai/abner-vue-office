@@ -1,10 +1,11 @@
 import * as Excel from 'exceljs/dist/exceljs';
-import {getUrl} from '../../../utils/url';
 import tinycolor from 'tinycolor2';
-import {cloneDeep, get, find} from 'lodash';
-import {getDarkColor, getLightColor} from './color';
+import cloneDeep from 'lodash/cloneDeep';
+import get from 'lodash/get';
+import find from 'lodash/find';
+import { getDarkColor, getLightColor } from './color';
 import dayjs from 'dayjs';
-import {read, write} from 'xlsx';
+import { read, write } from 'xlsx';
 
 const themeColor = [
     '#FFFFFF',
@@ -89,21 +90,33 @@ const indexedColor = [
 
 let defaultColWidth = 80;
 let defaultRowHeight = 24;
-export function getData(src, options={}) {
-    return requestExcel(getUrl(src), options);
+export function getData(src, options = {}) {
+    if (src instanceof ArrayBuffer) {
+        return Promise.resolve(src);
+    }
+    if (src instanceof Blob) {
+        return src.arrayBuffer();
+    }
+    if (typeof Response !== 'undefined' && src instanceof Response) {
+        return src.arrayBuffer();
+    }
+    if (typeof src === 'string') {
+        return requestExcel(src, options);
+    }
+    return Promise.reject(new Error('不支持的 src 格式'));
 }
 
 function requestExcel(src, options) {
-    return new Promise(function(resolve, reject) {
+    return new Promise(function (resolve, reject) {
         const xhr = new XMLHttpRequest();
         xhr.open(options.method || 'GET', src, true);
         xhr.responseType = options.responseType || 'arraybuffer';
-        xhr.onload = function() {
-          if (xhr.status === 200) {
-            resolve(xhr.response);
-          } else {
-            reject(xhr.status);
-          }
+        xhr.onload = function () {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(xhr.response);
+            } else {
+                reject(xhr.status);
+            }
         };
         xhr.onerror = function() {
           reject(xhr.status);
@@ -214,24 +227,31 @@ function getCellText(cell){
             
         case 3: //字符串
             return value;
-        case 4: //日期
-            switch (numFmt){
+        case 4: { //日期
+            const formatExcelDate = (val, fmt) => {
+                if (val instanceof Date) {
+                    return dayjs(val).add(val.getTimezoneOffset(), 'minute').format(fmt);
+                }
+                return dayjs(val).format(fmt);
+            };
+            switch (numFmt) {
                 case 'yyyy-mm-dd;@':
-                    return dayjs(value).format('YYYY-MM-DD');
+                    return formatExcelDate(value, 'YYYY-MM-DD');
                 case 'mm-dd-yy':
-                    return dayjs(value).format('YYYY/MM/DD');
+                    return formatExcelDate(value, 'YYYY/MM/DD');
                 case '[$-F800]dddd, mmmm dd, yyyy':
-                    return dayjs(value).format('YYYY年M月D日 ddd');
+                    return formatExcelDate(value, 'YYYY年M月D日 ddd');
                 case 'm"月"d"日";@':
-                    return dayjs(value).format('M月D日');
+                    return formatExcelDate(value, 'M月D日');
                 case 'yyyy/m/d h:mm;@':
                 case 'm/d/yy "h":mm':
-                    return dayjs(value).subtract(8, 'hour').format('YYYY/M/DD HH:mm');
+                    return formatExcelDate(value, 'YYYY/M/DD HH:mm');
                 case 'h:mm;@':
-                    return dayjs(value).format('HH:mm');
+                    return formatExcelDate(value, 'HH:mm');
                 default:
-                    return dayjs(value).format('YYYY-MM-DD');
+                    return formatExcelDate(value, 'YYYY-MM-DD');
             }
+        }
 
         case 5: //超链接
             return value.text;
@@ -363,7 +383,6 @@ function getStyle(cell){
 
 export function transferExcelToSpreadSheet(workbook, options){
     let workbookData = [];
-    console.log(workbook, 'workbook');
     let sheets = [];
     workbook.eachSheet((sheet) => {
         sheets.push(sheet);
@@ -421,9 +440,10 @@ export function transferExcelToSpreadSheet(workbook, options){
         }
 
         let tempRowsKeys = Object.keys(sheetData.rows);
+        const maxRowLen = tempRowsKeys.length ? +tempRowsKeys[tempRowsKeys.length - 1] + 1 : 0;
 
-        sheetData.rows.len = Math.max(+tempRowsKeys[tempRowsKeys.length-1] + 1,
-            options.hasOwnProperty('minRowLength') ? options.minRowLength : 100);
+        sheetData.rows.len = Math.max(maxRowLen,
+            Object.prototype.hasOwnProperty.call(options, 'minRowLength') ? options.minRowLength : 100);
 
         if(sheet._columns && sheet._columns.length > effectiveMaxColLen + 1){
             sheet._columns = sheet._columns.slice(0, effectiveMaxColLen + 1)

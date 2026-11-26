@@ -408,6 +408,8 @@
   border-right: 1px solid #e8eaed;
 }
 .x-spreadsheet-menu {
+  display: flex;
+  overflow-x: auto;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -692,16 +694,16 @@
   display: block;
   opacity: 1;
 }
-form fieldset {
+.x-spreadsheet form fieldset {
   border: none;
 }
-form fieldset label {
+.x-spreadsheet form fieldset label {
   display: block;
   margin-bottom: 0.5em;
   font-size: 1em;
   color: #666;
 }
-form fieldset select {
+.x-spreadsheet form fieldset select {
   font-size: 1.1em;
   width: 100%;
   background-color: #fff;

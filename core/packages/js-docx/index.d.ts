@@ -1,3 +1,11 @@
+export interface RequestOptions {
+    method?: string;
+    headers?: Record<string, string>;
+    withCredentials?: boolean;
+    credentials?: RequestCredentials;
+    [key: string]: any;
+}
+
 export interface Options {
     inWrapper?: boolean;
     ignoreWidth?: boolean;
@@ -16,16 +24,18 @@ export interface Options {
     useBase64URL?: boolean;
     useMathMLPolyfill?: boolean;
     renderChanges?: boolean;
+    showChanges?: boolean;
 }
 
 export interface AbnerJsDocxPreview {
     preview: (src: string | ArrayBuffer | Blob) => Promise<any>;
     save: (fileName?: string) => void;
     setOptions: (options: Options) => void;
-    setRequestOptions: (requestOptions?: any) => void;
-    destroy: ()=> void;
+    setRequestOptions: (requestOptions?: RequestOptions) => void;
+    destroy: () => void;
 }
+
 declare const abnerJsDocx: {
-    init: (container: HTMLElement, options?: Options, requestOptions?: any) => AbnerJsDocxPreview;
+    init: (container: HTMLElement, options?: Options, requestOptions?: RequestOptions) => AbnerJsDocxPreview;
 };
 export default abnerJsDocx;

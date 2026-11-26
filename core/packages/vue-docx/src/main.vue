@@ -1,7 +1,7 @@
 <script>
-import {defineComponent, ref, onMounted, watch} from 'vue-demi';
+import { defineComponent, ref, onMounted, onBeforeUnmount, watch } from 'vue-demi';
 import docx from './docx';
-import {download as downloadFile} from '../../../utils/url';
+import { download as downloadFile } from '../../../utils/url';
 
 export default defineComponent({
     name: 'AbnerVueOfficeDocx',
@@ -11,26 +11,47 @@ export default defineComponent({
             type: Object,
             default: () => ({})
         },
-        options:{
+        options: {
             type: Object,
             default: () => ({})
         }
     },
     emits: ['rendered', 'error'],
-    setup(props, {emit}) {
+    setup(props, { emit }) {
         const rootRef = ref(null);
         let fileData = null;
+        let isUnmounted = false;
+        let renderId = 0;
+
         function init() {
-            let container = rootRef.value;
+            const container = rootRef.value;
+            if (!container) {
+                return;
+            }
+            const currentId = ++renderId;
             docx.getData(props.src, props.requestOptions).then(async res => {
+                if (isUnmounted || currentId !== renderId || !rootRef.value) {
+                    return;
+                }
                 fileData = await docx.getBlob(res);
+                if (isUnmounted || currentId !== renderId || !rootRef.value) {
+                    return;
+                }
                 docx.render(fileData, container, props.options).then(() => {
-                    emit('rendered');
+                    if (!isUnmounted && currentId === renderId) {
+                        emit('rendered');
+                    }
                 }).catch(e => {
+                    if (isUnmounted || currentId !== renderId || !rootRef.value) {
+                        return;
+                    }
                     docx.render('', container, props.options);
                     emit('error', e);
                 });
             }).catch(e => {
+                if (isUnmounted || currentId !== renderId || !rootRef.value) {
+                    return;
+                }
                 docx.render('', container, props.options);
                 emit('error', e);
             });
@@ -42,18 +63,29 @@ export default defineComponent({
             }
         });
 
+        onBeforeUnmount(() => {
+            isUnmounted = true;
+            fileData = null;
+        });
+
         watch(() => props.src, () => {
             if (props.src) {
                 init();
             } else {
+                const currentId = ++renderId;
+                fileData = null;
                 docx.render('', rootRef.value, props.options).then(() => {
-                    emit('rendered');
+                    if (!isUnmounted && currentId === renderId) {
+                        emit('rendered');
+                    }
                 });
             }
         });
-        function save(fileName){
-            downloadFile(fileName || `abner-vue-office-docx-${new Date().getTime()}.docx`,fileData);
+
+        function save(fileName) {
+            downloadFile(fileName || `abner-vue-office-docx-${new Date().getTime()}.docx`, fileData);
         }
+
         return {
             rootRef,
             save
