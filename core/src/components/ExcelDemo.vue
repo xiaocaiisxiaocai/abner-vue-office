@@ -22,10 +22,10 @@ function transformData(data){
 const defaultSrc = location.origin +
     (location.pathname + '/').replace('//', '/')
     + 'static/test-files/test.xlsx';
-const docxRef = ref();
+const excelRef = ref();
 
 function beforeTransformData(data){
-    console.log('beforeTransformData', data, docxRef);
+    console.log('beforeTransformData', data, excelRef);
 
     data._worksheets.forEach(worksheet=>{
         let line = 0;
@@ -78,7 +78,7 @@ function cellsSelected(event){
   >
     <template  v-slot="slotProps">
       <AbnerVueOfficeExcel
-          ref="docxRef"
+          ref="excelRef"
           :src="slotProps.src"
           :options="{beforeTransformData, transformData, xls: slotProps.xls}"
           style="flex: 1;height: 0"

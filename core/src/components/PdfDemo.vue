@@ -13,9 +13,7 @@ function onError(e){
 const defaultSrc = location.origin + 
     (location.pathname + '/').replace('//', '/') 
     + 'static/test-files/test.pdf';
-const docxRef = ref();
-
-window.docxRef = docxRef;
+const pdfRef = ref();
 
 const requestOptions = {
     headers: {
@@ -35,7 +33,7 @@ const requestOptions = {
   >
     <template  v-slot="slotProps">
       <AbnerVueOfficePdf
-          ref="docxRef"
+          ref="pdfRef"
           :src="slotProps.src"
           style="flex: 1;height: 0"
           :request-options="requestOptions"

@@ -17,8 +17,8 @@ class AbnerJsDocxPreview {
             throw new Error('container is required');
         }
         this.container = container;
-        this.options = options;
-        this.requestOptions = requestOptions;
+        this.options = { ...(options || {}) };
+        this.requestOptions = { ...(requestOptions || {}) };
         this.createWrapper();
     }
 
@@ -31,32 +31,46 @@ class AbnerJsDocxPreview {
         this.container.appendChild(this.wrapper);
     }
 
-    setOptions(options) {
-        this.options = options;
+    setOptions(options = {}) {
+        this.options = {
+            ...(this.options || {}),
+            ...(options || {})
+        };
     }
 
-    setRequestOptions(requestOptions) {
-        this.requestOptions = requestOptions;
+    setRequestOptions(requestOptions = {}) {
+        this.requestOptions = { ...(requestOptions || {}) };
     }
 
     async preview(src) {
         const currentId = ++this.renderId;
+        const shouldCommit = () => !this.isDestroyed && currentId === this.renderId && !!this.wrapperMain;
+        if (!src) {
+            this.fileData = null;
+            if (this.wrapperMain) {
+                await docx.render('', this.wrapperMain, this.options, shouldCommit).catch(() => {});
+            }
+            throw new Error('预览地址不能为空');
+        }
         try {
             const res = await docx.getData(src, this.requestOptions);
-            if (this.isDestroyed || currentId !== this.renderId || !this.wrapperMain) {
+            if (!shouldCommit()) {
                 return;
             }
             const blob = await docx.getBlob(res);
-            if (this.isDestroyed || currentId !== this.renderId || !this.wrapperMain) {
+            if (!shouldCommit()) {
                 return;
             }
-            this.fileData = blob || null;
-            await docx.render(this.fileData, this.wrapperMain, this.options);
+            if (!blob) {
+                throw new Error('Unsupported docx data');
+            }
+            this.fileData = blob;
+            await docx.render(blob, this.wrapperMain, this.options, shouldCommit);
         } catch (err) {
             if (!this.isDestroyed && currentId === this.renderId) {
                 this.fileData = null;
                 if (this.wrapperMain) {
-                    await docx.render('', this.wrapperMain, this.options).catch(() => {});
+                    await docx.render('', this.wrapperMain, this.options, shouldCommit).catch(() => {});
                 }
                 throw err;
             }
@@ -76,8 +90,8 @@ class AbnerJsDocxPreview {
         this.container = null;
         this.wrapper = null;
         this.wrapperMain = null;
-        this.options = null;
-        this.requestOptions = null;
+        this.options = {};
+        this.requestOptions = {};
         this.fileData = null;
     }
 }

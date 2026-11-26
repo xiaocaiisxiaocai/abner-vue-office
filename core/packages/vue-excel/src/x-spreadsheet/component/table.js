@@ -10,11 +10,13 @@ import {
 // gobal var
 const cellPaddingWidth = 5;
 const tableFixedHeaderCleanStyle = { fillStyle: '#f4f5f8' };
-const tableGridStyle = {
-  fillStyle: '#fff',
-  lineWidth: thinLineWidth,
-  strokeStyle: '#e6e6e6',
-};
+function tableGridStyle() {
+  return {
+    fillStyle: '#fff',
+    lineWidth: thinLineWidth(),
+    strokeStyle: '#e6e6e6',
+  };
+}
 function tableFixedHeaderStyle() {
   return {
     textAlign: 'center',
@@ -80,7 +82,7 @@ export function renderCell(draw, data, rindex, cindex, yoffset = 0) {
     } else {
       cellText = cell.text != null ? cell.text : '';
     }
-    if (style.format) {
+    if (style.format && formatm[style.format]) {
       // console.log(data.formatm, '>>', cell.format);
       cellText = formatm[style.format].render(cellText);
     }
@@ -263,7 +265,7 @@ function renderContentGrid({
   const { settings } = data;
 
   draw.save();
-  draw.attr(tableGridStyle)
+  draw.attr(tableGridStyle())
     .translate(fw + tx, fh + ty);
   // const sumWidth = cols.sumWidth(sci, eci + 1);
   // const sumHeight = rows.sumHeight(sri, eri + 1);

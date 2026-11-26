@@ -5,14 +5,15 @@
   "scripts": {
     "dev": "node script/bak-vue.js && vite",
     "build": "node script/bak-vue.js && vite build",
-    "lib": "node script/bak-vue.js bak && lerna run build --concurrency=1 && node script/bak-vue.js",
-    "lib:js-excel": "node script/bak-vue.js bak && lerna run build --scope @abner-vue-office/js-excel && node script/bak-vue.js",
-    "lib:js-docx": "node script/bak-vue.js bak && lerna run build --scope @abner-vue-office/js-docx && node script/bak-vue.js",
-    "lib:vue-excel": "node script/bak-vue.js bak && lerna run build --scope @abner-vue-office/excel && node script/bak-vue.js",
-    "lib:vue-docx": "node script/bak-vue.js bak && lerna run build --scope @abner-vue-office/docx && node script/bak-vue.js",
-    "lib:js-pdf": "node script/bak-vue.js bak && lerna run build --scope @abner-vue-office/js-pdf && node script/bak-vue.js",
-    "lib:vue-pdf": "node script/bak-vue.js bak && lerna run build --scope @abner-vue-office/pdf && node script/bak-vue.js",
-    "lib:vue-pptx": "node script/bak-vue.js bak && lerna run build --scope @abner-vue-office/pptx && node script/bak-vue.js"
+    "test": "node --test tests/*.test.mjs",
+    "lib": "node script/run-lib.js --concurrency=1",
+    "lib:js-excel": "node script/run-lib.js --scope @abner-vue-office/js-excel",
+    "lib:js-docx": "node script/run-lib.js --scope @abner-vue-office/js-docx",
+    "lib:vue-excel": "node script/run-lib.js --scope @abner-vue-office/excel",
+    "lib:vue-docx": "node script/run-lib.js --scope @abner-vue-office/docx",
+    "lib:js-pdf": "node script/run-lib.js --scope @abner-vue-office/js-pdf",
+    "lib:vue-pdf": "node script/run-lib.js --scope @abner-vue-office/pdf",
+    "lib:vue-pptx": "node script/run-lib.js --scope @abner-vue-office/pptx"
   },
   "dependencies": {
     "@babel/plugin-transform-runtime": "^7.23.6",

@@ -16,6 +16,9 @@ export default function (defaultSrc) {
         reader.onload = (loadEvent) => {
             src.value = loadEvent.target.result;
         };
+        reader.onerror = (err) => {
+            console.warn(err);
+        };
         reader.readAsArrayBuffer(file);
         return false;
     }

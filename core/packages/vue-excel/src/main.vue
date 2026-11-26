@@ -14,7 +14,23 @@ const defaultOptions = {
 export default defineComponent({
     name: 'AbnerVueOfficeExcel',
     props: {
-        src: [String, ArrayBuffer, Blob],
+        src: {
+            validator(val) {
+                if (val == null || typeof val === 'string') {
+                    return true;
+                }
+                if (val instanceof ArrayBuffer || ArrayBuffer.isView(val)) {
+                    return true;
+                }
+                if (typeof Blob !== 'undefined' && val instanceof Blob) {
+                    return true;
+                }
+                if (typeof Response !== 'undefined' && val instanceof Response) {
+                    return true;
+                }
+                return false;
+            }
+        },
         requestOptions: {
             type: Object,
             default: () => ({})
@@ -66,20 +82,21 @@ export default defineComponent({
             if (isUnmounted || currentId !== renderId || !xs) {
                 return;
             }
+            const opts = props.options || {};
             fileData = buffer;
-            readExcelData(buffer, props.options.xls).then(workbook => {
+            readExcelData(buffer, opts.xls).then(workbook => {
                 if (isUnmounted || currentId !== renderId || !xs) {
                     return;
                 }
                 if (!workbook._worksheets || workbook._worksheets.length === 0) {
                     throw new Error('未获取到数据，可能文件格式不正确或文件已损坏');
                 }
-                if (props.options.beforeTransformData && typeof props.options.beforeTransformData === 'function') {
-                    workbook = props.options.beforeTransformData(workbook);
+                if (opts.beforeTransformData && typeof opts.beforeTransformData === 'function') {
+                    workbook = opts.beforeTransformData(workbook);
                 }
-                let { workbookData, medias, workbookSource } = transferExcelToSpreadSheet(workbook, { ...defaultOptions, ...props.options });
-                if (props.options.transformData && typeof props.options.transformData === 'function') {
-                    workbookData = props.options.transformData(workbookData);
+                let { workbookData, medias, workbookSource } = transferExcelToSpreadSheet(workbook, { ...defaultOptions, ...opts });
+                if (opts.transformData && typeof opts.transformData === 'function') {
+                    workbookData = opts.transformData(workbookData);
                 }
                 clearSwapTimer();
                 mediasSource = medias;
@@ -126,10 +143,12 @@ export default defineComponent({
             if (isUnmounted || !rootRef.value) {
                 return;
             }
+            const opts = props.options || {};
             xs = new Spreadsheet(rootRef.value, {
                 mode: 'read',
+                evalPaused: true,
                 showToolbar: false,
-                showContextmenu: props.options.showContextmenu || false,
+                showContextmenu: opts.showContextmenu || false,
                 view: {
                     height: () => wrapperRef.value && wrapperRef.value.clientHeight || 300,
                     width: () => wrapperRef.value && wrapperRef.value.clientWidth || 1200,
@@ -192,7 +211,7 @@ export default defineComponent({
                     mediasSource,
                     workbookDataSource._worksheets[targetSheetIndex],
                     offset,
-                    props.options,
+                    props.options || {},
                     () => !isUnmounted && targetRenderId === renderId && targetSheetIndex === sheetIndex
                 );
             }, 200, {
@@ -210,7 +229,7 @@ export default defineComponent({
                 offset = args[0];
             };
             const canvas = rootRef.value.querySelector('canvas');
-            ctx = canvas.getContext('2d');
+            ctx = canvas ? canvas.getContext('2d') : null;
             if (props.src) {
                 loadExcelFromSrc();
             }

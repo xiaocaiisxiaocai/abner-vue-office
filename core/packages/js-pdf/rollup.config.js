@@ -10,18 +10,17 @@ export default {
             file: 'lib/index.js',
             name: 'abnerJsPdf',
             format: 'es',
-            plugins: [getBabelOutputPlugin({ presets: ['@babel/preset-env'] })]
+            plugins: [getBabelOutputPlugin({ presets: ['@babel/preset-env'] }), terser()]
         },
         {
             file: 'lib/index.umd.js',
             name: 'abnerJsPdf',
             format: 'umd',
-            plugins: [getBabelOutputPlugin({ allowAllFormats: true, presets: ['@babel/preset-env'] })]
+            plugins: [getBabelOutputPlugin({ allowAllFormats: true, presets: ['@babel/preset-env'] }), terser()]
         }
     ],
     plugins: [
         nodeResolve({ browser: true, preferBuiltins: false }),
-        commonjs(),
-        terser()
+        commonjs()
     ]
 };

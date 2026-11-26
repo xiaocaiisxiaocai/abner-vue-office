@@ -21,7 +21,7 @@ const infixExprToSuffixExpr = (src) => {
         subStrs.push(c);
       } else if (c === '"') {
         i += 1;
-        while (src.charAt(i) !== '"') {
+        while (i < src.length && src.charAt(i) !== '"') {
           subStrs.push(src.charAt(i));
           i += 1;
         }
@@ -188,6 +188,9 @@ const evalSuffixExpr = (srcStack, formulaMap, cellRender, cellList) => {
       for (let j = 0; j < len; j += 1) {
         params.push(stack.pop());
       }
+      if (!formulaMap[formula] || typeof formulaMap[formula].render !== 'function') {
+        return '';
+      }
       stack.push(formulaMap[formula].render(params.reverse()));
     } else {
       if (cellList.includes(expr)) {
@@ -205,15 +208,20 @@ const evalSuffixExpr = (srcStack, formulaMap, cellRender, cellList) => {
 };
 
 const cellRender = (src, formulaMap, getCellText, cellList = []) => {
-  if (src[0] === '=') {
+  if (typeof src === 'string' && src[0] === '=') {
     const stack = infixExprToSuffixExpr(src.substring(1));
     if (stack.length <= 0) return src;
-    return evalSuffixExpr(
-      stack,
-      formulaMap,
-      (x, y) => cellRender(getCellText(x, y), formulaMap, getCellText, cellList),
-      cellList,
-    );
+    try {
+      const evaluated = evalSuffixExpr(
+        stack,
+        formulaMap,
+        (x, y) => cellRender(getCellText(x, y), formulaMap, getCellText, cellList),
+        cellList,
+      );
+      return evaluated === '' ? src : evaluated;
+    } catch (e) {
+      return src;
+    }
   }
   return src;
 };

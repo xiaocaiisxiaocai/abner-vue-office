@@ -27,7 +27,23 @@ function getPdfJsWorkerUrl() {
 export default defineComponent({
     name: 'AbnerVueOfficePdf',
     props: {
-        src: [String, ArrayBuffer, Blob],
+        src: {
+            validator(val) {
+                if (val == null || typeof val === 'string') {
+                    return true;
+                }
+                if (val instanceof ArrayBuffer || ArrayBuffer.isView(val)) {
+                    return true;
+                }
+                if (typeof Blob !== 'undefined' && val instanceof Blob) {
+                    return true;
+                }
+                if (typeof Response !== 'undefined' && val instanceof Response) {
+                    return true;
+                }
+                return false;
+            }
+        },
         requestOptions: {
             type: Object,
             default: () => ({})
@@ -52,6 +68,8 @@ export default defineComponent({
         let currentObjectUrl = null;
         let isUnmounted = false;
         let renderId = 0;
+        let libRequestId = 0;
+        const activeRenderTasks = new Set();
 
         const containerRef = ref(null); //最外层容器
         const wrapperRef = ref(null); //canvas渲染外层容器
@@ -66,14 +84,47 @@ export default defineComponent({
 
         let getViewportScale = 2;
 
+        function getOptions() {
+            return props.options || {};
+        }
+
+        function getGap() {
+            const g = getOptions().gap;
+            return typeof g === 'number' && Number.isFinite(g) && g >= 0 ? g : 10;
+        }
+
+        function isValidScale(val) {
+            return typeof val === 'number' && Number.isFinite(val) && val > 0;
+        }
+
         function resolveDefaultScale() {
-            const val = props.options.defaultScale ?? props.defaultScale ?? 1;
-            return typeof val === 'number' && val > 0 ? val : 1;
+            const optScale = getOptions().defaultScale;
+            if (isValidScale(optScale)) {
+                return optScale;
+            }
+            if (isValidScale(props.defaultScale)) {
+                return props.defaultScale;
+            }
+            return 1;
         }
 
         const userScale = ref(resolveDefaultScale());
 
+        function cancelRenderTasks() {
+            activeRenderTasks.forEach(task => {
+                if (task && typeof task.cancel === 'function') {
+                    try {
+                        task.cancel();
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+            });
+            activeRenderTasks.clear();
+        }
+
         function cleanupPdfResources() {
+            cancelRenderTasks();
             if (loadingTask) {
                 try {
                     loadingTask.destroy();
@@ -99,6 +150,7 @@ export default defineComponent({
         onBeforeUnmount(() => {
             isUnmounted = true;
             ++renderId;
+            ++libRequestId;
             onScrollPdf.cancel();
             cleanupPdfResources();
         });
@@ -107,13 +159,27 @@ export default defineComponent({
             return userScale.value;
         }
 
+        function scheduleInit() {
+            const currentLibReqId = ++libRequestId;
+            return checkPdfLib().then(() => {
+                if (isUnmounted || currentLibReqId !== libRequestId) {
+                    return;
+                }
+                return init();
+            }).catch(e => {
+                if (!isUnmounted && currentLibReqId === libRequestId) {
+                    emit('error', e);
+                }
+            });
+        }
+
         function setScale(scale) {
-            if (typeof scale !== 'number' || scale <= 0) {
+            if (!isValidScale(scale)) {
                 return;
             }
             userScale.value = scale;
             if (pdfDocument) {
-                const currentId = renderId;
+                const currentId = ++renderId;
                 nextTick(() => {
                     layoutAndRender(currentId).catch(e => {
                         if (!isUnmounted && currentId === renderId) {
@@ -122,17 +188,13 @@ export default defineComponent({
                     });
                 });
             } else if (props.src) {
-                checkPdfLib().then(init).catch(e => {
-                    if (!isUnmounted) {
-                        emit('error', e);
-                    }
-                });
+                scheduleInit();
             }
         }
 
         function checkPdfLib() {
             if (window.pdfjsLib) {
-                if (!window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+                if (window.pdfjsLib.GlobalWorkerOptions && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
                     window.pdfjsLib.GlobalWorkerOptions.workerSrc = getPdfJsWorkerUrl();
                 }
                 return Promise.resolve();
@@ -144,7 +206,9 @@ export default defineComponent({
                         revokeUrl(libUrl);
                         pdfJsLibBlobUrl = null;
                         if (window.pdfjsLib) {
-                            window.pdfjsLib.GlobalWorkerOptions.workerSrc = getPdfJsWorkerUrl();
+                            if (window.pdfjsLib.GlobalWorkerOptions && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+                                window.pdfjsLib.GlobalWorkerOptions.workerSrc = getPdfJsWorkerUrl();
+                            }
                         } else {
                             throw new Error('window.pdfjsLib未找到');
                         }
@@ -160,6 +224,7 @@ export default defineComponent({
         }
 
         function clearCanvas() {
+            cancelRenderTasks();
             if (wrapperRef.value) {
                 wrapperRef.value.innerHTML = '';
             }
@@ -180,7 +245,7 @@ export default defineComponent({
                 canvasWidth = res.canvasWidth;
                 canvasHeight = res.canvasHeight;
 
-                const gap = props.options.gap || 10;
+                const gap = getGap();
                 visibleItems = Math.ceil(containerHeight / Math.max(pageHeight + gap, 1)) + 4; //多渲染4个
                 const height = Math.max((pageHeight + gap) * totalItems - gap, 0);
                 wrapperRef.value.style.height = height + 'px';
@@ -194,7 +259,7 @@ export default defineComponent({
                     Math.max(totalItems, 1)
                 );
                 const endIndex = Math.min(startIndex + visibleItems - 1, totalItems);
-                renderList(startIndex, endIndex, true);
+                return renderList(startIndex, endIndex, true, currentId);
             });
         }
 
@@ -219,15 +284,23 @@ export default defineComponent({
                     currentObjectUrl = url;
                 }
 
-                const httpHeaders = (props.requestOptions && props.requestOptions.headers) || props.options.httpHeaders;
+                const reqOpts = props.requestOptions || {};
+                const opts = getOptions();
+                const httpHeaders = reqOpts.headers || opts.httpHeaders;
+                const withCredentials = reqOpts.withCredentials !== undefined
+                    ? Boolean(reqOpts.withCredentials)
+                    : reqOpts.credentials === 'include';
+                const staticBase = typeof props.staticFileUrl === 'string' && props.staticFileUrl
+                    ? props.staticFileUrl
+                    : 'https://unpkg.com/pdfjs-dist@3.1.81/';
                 loadingTask = window.pdfjsLib.getDocument({
                     url,
                     ...(httpHeaders ? { httpHeaders } : {}),
-                    withCredentials: props.requestOptions && props.requestOptions.withCredentials,
-                    cMapUrl: `${props.staticFileUrl.endsWith('/') ? props.staticFileUrl : props.staticFileUrl + '/'}cmaps/`,
+                    withCredentials,
+                    cMapUrl: `${staticBase.endsWith('/') ? staticBase : staticBase + '/'}cmaps/`,
                     cMapPacked: true,
                     enableXfa: true,
-                    ...omit(props.options, ['width', 'gap', 'defaultScale', 'httpHeaders'])
+                    ...omit(opts, ['width', 'gap', 'defaultScale', 'httpHeaders'])
                 });
                 const pdf = await loadingTask.promise;
                 if (isUnmounted || currentId !== renderId) {
@@ -242,6 +315,7 @@ export default defineComponent({
             } catch (e) {
                 if (!isUnmounted && currentId === renderId) {
                     clearCanvas();
+                    cleanupPdfResources();
                     emit('error', e);
                 }
             }
@@ -252,11 +326,13 @@ export default defineComponent({
                 if (isUnmounted || !wrapperRef.value || !containerRef.value) {
                     return null;
                 }
+                const opts = getOptions();
                 const baseContainerWidth = Math.max((containerRef.value.clientWidth || wrapperRef.value.getBoundingClientRect().width || 820) - 20, 100);
-                const baseWidth = props.options.width || baseContainerWidth;
+                const baseWidth = opts.width || baseContainerWidth;
                 const targetWidth = baseWidth * userScale.value;
                 const baseViewport = pdfPage.getViewport({ scale: 1 });
-                getViewportScale = Math.max(0.1, targetWidth / baseViewport.width);
+                const baseViewportWidth = baseViewport.width > 0 ? baseViewport.width : 1;
+                getViewportScale = Math.max(0.1, targetWidth / baseViewportWidth);
 
                 const viewport = pdfPage.getViewport({ scale: getViewportScale });
                 const outputScale = window.devicePixelRatio > 2 ? 1.5 : 2;
@@ -276,24 +352,24 @@ export default defineComponent({
         }
 
         const onScrollPdf = debounce(function (e) {
-            if (isUnmounted || !wrapperRef.value || !pdfDocument || pageHeight <= 0) {
+            if (isUnmounted || !wrapperRef.value || !pdfDocument || pageHeight <= 0 || totalItems <= 0) {
                 return;
             }
             const { scrollTop } = e.target;
             const paddingTop = parseInt(getComputedStyle(wrapperRef.value).paddingTop, 10) || 0;
-            const gap = props.options.gap || 10;
-            const startIndex = Math.max(
-                Math.floor(Math.max((scrollTop - paddingTop), 0) / (pageHeight + gap)) - 1,
-                1
+            const gap = getGap();
+            const startIndex = Math.min(
+                Math.max(Math.floor(Math.max((scrollTop - paddingTop), 0) / Math.max(pageHeight + gap, 1)) - 1, 1),
+                totalItems
             );
             const endIndex = Math.min(startIndex + visibleItems - 1, totalItems); // 计算结束索引
 
-            renderList(startIndex, endIndex, false); // 渲染列表项
+            renderList(startIndex, endIndex, false, renderId); // 渲染列表项
         }, 60);
 
         function createCanvas(index) {
             const paddingTop = parseInt(getComputedStyle(wrapperRef.value).paddingTop, 10) || 0;
-            const gap = props.options.gap || 10;
+            const gap = getGap();
             const canvas = document.createElement('canvas');
             canvas.style.position = 'absolute';
             canvas.style.top = (index - 1) * (pageHeight + gap) + paddingTop + 'px';
@@ -308,19 +384,18 @@ export default defineComponent({
             return canvas;
         }
 
-        function renderList(startIndex, endIndex, emitRendered = false) {
+        function renderList(startIndex, endIndex, emitRendered = false, currentId = renderId) {
             const list = wrapperRef.value;
-            if (!list || !pdfDocument || isUnmounted) {
-                return;
+            if (!list || !pdfDocument || isUnmounted || currentId !== renderId) {
+                return Promise.resolve();
             }
-            const currentId = renderId;
-            const originNodes = [...list.childNodes];
+            const originNodes = [...list.children];
             const tasks = [];
             if (originNodes.length === 0) {
                 for (let i = startIndex; i <= endIndex; i++) {
                     const canvas = createCanvas(i);
                     list.appendChild(canvas);
-                    tasks.push(renderPage(i, canvas));
+                    tasks.push(renderPage(i, canvas, currentId));
                 }
             } else {
                 const min = +originNodes[0].getAttribute('data-id');
@@ -329,7 +404,7 @@ export default defineComponent({
                     for (let i = startIndex; i <= endIndex; i++) {
                         const canvas = createCanvas(i);
                         list.appendChild(canvas);
-                        tasks.push(renderPage(i, canvas));
+                        tasks.push(renderPage(i, canvas, currentId));
                     }
                 }
 
@@ -339,7 +414,7 @@ export default defineComponent({
                         const canvas = createCanvas(i);
                         list.insertBefore(canvas, firstChildNode);
                         firstChildNode = canvas;
-                        tasks.push(renderPage(i, canvas));
+                        tasks.push(renderPage(i, canvas, currentId));
                     }
                 }
 
@@ -354,11 +429,11 @@ export default defineComponent({
                     for (let i = max + 1; i <= endIndex; i++) {
                         const canvas = createCanvas(i);
                         list.appendChild(canvas);
-                        tasks.push(renderPage(i, canvas));
+                        tasks.push(renderPage(i, canvas, currentId));
                     }
                 }
             }
-            Promise.all(tasks).then(() => {
+            return Promise.all(tasks).then(() => {
                 if (emitRendered && !isUnmounted && currentId === renderId) {
                     emit('rendered');
                 }
@@ -369,23 +444,23 @@ export default defineComponent({
             });
         }
 
-        function renderPage(num, canvas) {
-            if (!pdfDocument || isUnmounted) {
+        function renderPage(num, canvas, currentId = renderId) {
+            if (!pdfDocument || isUnmounted || currentId !== renderId) {
                 return Promise.resolve();
             }
             return pdfDocument.getPage(num).then((pdfPage) => {
-                if (!pdfDocument || isUnmounted) {
+                if (!pdfDocument || isUnmounted || currentId !== renderId) {
                     return;
                 }
                 const viewport = pdfPage.getViewport({ scale: getViewportScale });
                 let outputScale = window.devicePixelRatio > 2 ? 1.5 : 2;
-                if (canvasWidth * viewport.height !== canvasHeight * viewport.width) {
-                    const width = Math.floor(viewport.width * outputScale);
-                    const height = Math.floor(viewport.height * outputScale);
-                    if (height > 0 && viewport.height > 0) {
-                        const scale = canvasHeight / height;
+                const scaledWidth = Math.floor(viewport.width * outputScale);
+                const scaledHeight = Math.floor(viewport.height * outputScale);
+                if (scaledHeight !== canvasHeight || scaledWidth !== canvasWidth) {
+                    if (scaledHeight > 0 && viewport.height > 0 && pageHeight > 0) {
+                        const scale = canvasHeight / scaledHeight;
                         outputScale = outputScale * scale;
-                        canvas.width = Math.floor(width * scale);
+                        canvas.width = Math.floor(scaledWidth * scale);
                         canvas.style.width = Math.floor(pageHeight * (viewport.width / viewport.height)) + 'px';
                     }
                 }
@@ -400,7 +475,15 @@ export default defineComponent({
                     transform,
                     viewport
                 });
-                return renderTask.promise;
+                activeRenderTasks.add(renderTask);
+                return renderTask.promise.catch(err => {
+                    if (isUnmounted || currentId !== renderId) {
+                        return;
+                    }
+                    return Promise.reject(err);
+                }).finally(() => {
+                    activeRenderTasks.delete(renderTask);
+                });
             });
         }
 
@@ -408,7 +491,7 @@ export default defineComponent({
             if (isUnmounted || !pdfDocument) {
                 return Promise.resolve();
             }
-            const currentId = renderId;
+            const currentId = ++renderId;
             return layoutAndRender(currentId).catch(e => {
                 if (!isUnmounted && currentId === renderId) {
                     emit('error', e);
@@ -418,34 +501,31 @@ export default defineComponent({
 
         onMounted(() => {
             if (props.src) {
-                checkPdfLib().then(init).catch(e => {
-                    if (!isUnmounted) {
-                        emit('error', e);
-                    }
-                });
+                scheduleInit();
             }
         });
 
         watch(() => props.src, () => {
             if (!props.src) {
                 ++renderId;
+                ++libRequestId;
                 clearCanvas();
                 cleanupPdfResources();
                 emit('error', new Error('src不能为空'));
                 return;
             }
-            checkPdfLib().then(init).catch(e => {
-                if (!isUnmounted) {
-                    emit('error', e);
-                }
-            });
+            scheduleInit();
         });
 
-        watch(() => props.defaultScale, (newVal) => {
-            if (typeof newVal === 'number' && newVal > 0 && newVal !== userScale.value) {
-                setScale(newVal);
+        watch(
+            () => [props.defaultScale, props.options && props.options.defaultScale],
+            () => {
+                const resolved = resolveDefaultScale();
+                if (resolved !== userScale.value) {
+                    setScale(resolved);
+                }
             }
-        });
+        );
 
         function save(fileName) {
             if (!pdfDocument || typeof pdfDocument.getData !== 'function') {
@@ -456,6 +536,10 @@ export default defineComponent({
                     fileName || `abner-vue-office-pdf-${new Date().getTime()}.pdf`,
                     new Blob([fileData], { type: 'application/pdf' })
                 );
+            }).catch(e => {
+                if (!isUnmounted) {
+                    emit('error', e);
+                }
             });
         }
 

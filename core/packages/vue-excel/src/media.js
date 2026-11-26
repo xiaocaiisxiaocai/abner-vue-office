@@ -23,7 +23,7 @@ export function renderImage(ctx, medias, sheet, offset, options = {}, shouldDraw
 }
 
 const clipWidth = 60; //左侧序号列宽
-const clipHeight = 25; //顶部序号行高
+const clipHeight = 24; //顶部序号行高
 const defaultColWidth = 80;
 const defaultRowHeight = 24;
 

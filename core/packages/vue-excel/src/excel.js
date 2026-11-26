@@ -96,41 +96,52 @@ export function getData(src, options = {}) {
     if (ArrayBuffer.isView(src)) {
         return Promise.resolve(src.buffer.slice(src.byteOffset, src.byteOffset + src.byteLength));
     }
-    if (src instanceof Blob) {
+    if (typeof Blob !== 'undefined' && src instanceof Blob) {
         return src.arrayBuffer();
     }
     if (typeof Response !== 'undefined' && src instanceof Response) {
         return src.arrayBuffer();
     }
     if (typeof src === 'string') {
-        return requestExcel(src, options);
+        return requestExcel(src, options || {});
     }
     return Promise.reject(new Error('不支持的 src 格式'));
 }
 
-function requestExcel(src, options) {
+function requestExcel(src, options = {}) {
+    const opts = options || {};
     return new Promise(function (resolve, reject) {
         const xhr = new XMLHttpRequest();
-        xhr.open(options.method || 'GET', src, true);
-        xhr.responseType = options.responseType || 'arraybuffer';
+        xhr.open(opts.method || 'GET', src, true);
+        xhr.responseType = opts.responseType || 'arraybuffer';
         xhr.onload = function () {
             if (xhr.status >= 200 && xhr.status < 300) {
                 resolve(xhr.response);
             } else {
-                reject(xhr.status);
+                const err = new Error(`HTTP error! status: ${xhr.status}`);
+                err.status = xhr.status;
+                reject(err);
             }
         };
         xhr.onerror = function() {
-          reject(xhr.status);
+            const err = new Error(`Network error! status: ${xhr.status}`);
+            err.status = xhr.status;
+            reject(err);
         };
-        xhr.withCredentials = options.withCredentials || false;
-        if(options.headers) {
-            Object.keys(options.headers).forEach(function(key) {
-                xhr.setRequestHeader(key, options.headers[key]);
+        xhr.onabort = function() {
+            reject(new Error('Request aborted'));
+        };
+        xhr.ontimeout = function() {
+            reject(new Error('Request timeout'));
+        };
+        xhr.withCredentials = Boolean(opts.withCredentials || opts.credentials === 'include');
+        if (opts.headers) {
+            Object.keys(opts.headers).forEach(function(key) {
+                xhr.setRequestHeader(key, opts.headers[key]);
             });
         }
 
-        xhr.send(options.body);
+        xhr.send(opts.body);
     });
 }
 
@@ -150,10 +161,12 @@ export function readExcelData(buffer, xls){
 }
 
 
-function transferColumns(excelSheet, spreadSheet, options){
-    const columns = excelSheet.columns || [];
-    for(let i = 0; i < columns.length; i++){
-        const col = columns[i];
+function transferColumns(excelSheet, spreadSheet, options, effectiveMaxColLen = 0){
+    const rawColumns = excelSheet.columns || [];
+    const targetLen = Math.max(effectiveMaxColLen, options.minColLength || 0);
+    const limit = Math.min(rawColumns.length, targetLen);
+    for(let i = 0; i < limit; i++){
+        const col = rawColumns[i];
         spreadSheet.cols[i.toString()] = {};
         if(!col) {
             spreadSheet.cols[i.toString()].width = defaultColWidth + (options.widthOffset || 0);
@@ -165,8 +178,15 @@ function transferColumns(excelSheet, spreadSheet, options){
             spreadSheet.cols[i.toString()].width = defaultColWidth + (options.widthOffset || 0);
         }
     }
+    if (options.widthOffset) {
+        for (let i = limit; i < targetLen; i++) {
+            spreadSheet.cols[i.toString()] = {
+                width: defaultColWidth + options.widthOffset
+            };
+        }
+    }
 
-    spreadSheet.cols.len = Math.max(Object.keys(spreadSheet.cols).length, options.minColLength || 0);
+    spreadSheet.cols.len = Math.max(Object.keys(spreadSheet.cols).length, targetLen);
 }
 
 function formatExcelDate(val, fmt) {
@@ -176,96 +196,182 @@ function formatExcelDate(val, fmt) {
     return dayjs(val).format(fmt);
 }
 
-function getCellText(cell){
-    //console.log(cell);
-    let {numFmt, value, type} = cell;
-    switch (type){
-        case 2: //数字
-            try {
-                if (typeof value !== 'number') {
-                    return value != null ? String(value) : '';
-                }
-                const cellNumFmt = cell.style && cell.style.numFmt;
-                if(cellNumFmt){
-                    if(cellNumFmt.includes('%')){
-                        let precision = cellNumFmt.match(/\.(\d+)%/);
-                        if(precision){
-                            return (value * 100).toFixed(precision[1].length) + '%';
-                        }else {
-                            return parseFloat((value * 100).toFixed(12)) + '%';
-                        }
-                    }else if(/0(\.0+)?/.test(cellNumFmt)){
-                        let prefix = '';
-                        if(cellNumFmt.startsWith('$')){
-                            prefix = '$';
-                        }else if(cellNumFmt.startsWith('"¥') || cellNumFmt.startsWith('¥')){
-                            prefix = '¥';
-                        }
+function splitNumFmtSections(fmt) {
+    const sections = [];
+    let current = '';
+    let inQuotes = false;
+    let escaped = false;
+    for (let i = 0; i < fmt.length; i++) {
+        const ch = fmt[i];
+        if (escaped) {
+            current += ch;
+            escaped = false;
+            continue;
+        }
+        if (ch === '\\') {
+            current += ch;
+            escaped = true;
+            continue;
+        }
+        if (ch === '"') {
+            inQuotes = !inQuotes;
+            current += ch;
+            continue;
+        }
+        if (ch === ';' && !inQuotes) {
+            sections.push(current);
+            current = '';
+            continue;
+        }
+        current += ch;
+    }
+    sections.push(current);
+    return sections;
+}
 
-                        if(value === 0 && cellNumFmt.startsWith('_')){
-                            return '-';
-                        }
-                        let precision = cellNumFmt.match(/0\.(0+)/);
-                        if(precision){
-                            precision = precision[1].length;
-                        }else{
-                            precision = 0;
-                        }
+function extractTrailingQuotedSuffix(section) {
+    const lastDigitIdx = Math.max(section.lastIndexOf('0'), section.lastIndexOf('#'), section.lastIndexOf('?'));
+    if (lastDigitIdx === -1) {
+        return '';
+    }
+    const tail = section.slice(lastDigitIdx + 1);
+    const match = tail.match(/"([^"]+)"/);
+    return match ? match[1] : '';
+}
 
-                        let result = value.toFixed(precision) + '';
-                        if(cellNumFmt.includes('#,##')){
-                            //千分位
-                            result = result.split('.');
-                            let number = result[0].split('').reverse();
-                            let newNumber = [];
-                            for(let i = 0; i< number.length; i++){
-                                newNumber.push(number[i]);
-                                if((i+1) % 3 === 0 && i < number.length - 1 && number[i+1] !== '-'){
-                                    newNumber.push(',');
-                                }
-
-                            }
-                            result[0] = newNumber.reverse().join('');
-                            result = result.join('.');
-                        }
-                        const suffixMatch = cellNumFmt.match(/[0#][^"]*?"([^"]+)"[^"]*$/);
-                        const suffix = suffixMatch ? suffixMatch[1] : '';
-                        return prefix + result + suffix;
-                    }
-
-                }
-                return value + '';
-            }catch (e){
-                return value != null ? String(value) : '';
+function formatNumberValue(value, cellNumFmt) {
+    try {
+        if (typeof value !== 'number') {
+            return value != null ? String(value) : '';
+        }
+        if (cellNumFmt && typeof cellNumFmt === 'string') {
+            const sections = splitNumFmtSections(cellNumFmt);
+            let section = sections[0] || '';
+            let useAbsForNegSection = false;
+            if (value < 0 && sections[1]) {
+                section = sections[1];
+                useAbsForNegSection = true;
+            } else if (value === 0 && sections[2]) {
+                section = sections[2];
             }
 
-        case 3: //字符串
-            return value;
-        case 4: { //日期
-            switch (numFmt) {
-                case 'yyyy-mm-dd;@':
-                    return formatExcelDate(value, 'YYYY-MM-DD');
-                case 'mm-dd-yy':
-                    return formatExcelDate(value, 'YYYY/MM/DD');
-                case '[$-F800]dddd, mmmm dd, yyyy':
-                    return formatExcelDate(value, 'YYYY年M月D日 ddd');
-                case 'm"月"d"日";@':
-                    return formatExcelDate(value, 'M月D日');
-                case 'yyyy/m/d h:mm;@':
-                case 'm/d/yy "h":mm':
-                    return formatExcelDate(value, 'YYYY/M/DD HH:mm');
-                case 'h:mm;@':
-                    return formatExcelDate(value, 'HH:mm');
-                default:
-                    if (numFmt && /h{1,2}:m{1,2}:s{1,2}/i.test(numFmt)) {
-                        return formatExcelDate(value, /y|d/i.test(numFmt) ? 'YYYY-MM-DD HH:mm:ss' : 'HH:mm:ss');
+            if (value === 0 && !/[0#?]/.test(section)) {
+                const zeroQuoted = section.match(/"([^"]+)"/);
+                if (zeroQuoted) {
+                    return zeroQuoted[1];
+                }
+                return section.includes('-') ? '-' : '';
+            }
+            if (value === 0 && sections[0].startsWith('_')) {
+                return '-';
+            }
+
+            const currencyMatch = section.match(/\[\$([^-\]]+)/);
+            let bracketCurrency = '';
+            if (currencyMatch && currencyMatch[1]) {
+                bracketCurrency = currencyMatch[1];
+            }
+            const cleanSection = section.replace(/\[[^\]]*\]/g, '');
+
+            if (cleanSection.includes('%')) {
+                const precision = cleanSection.match(/\.(\d+)%/);
+                const scaled = value * 100;
+                if (precision) {
+                    return scaled.toFixed(precision[1].length) + '%';
+                }
+                return parseFloat(scaled.toFixed(12)) + '%';
+            }
+
+            if (/[0#?]/.test(cleanSection)) {
+                const isParenNeg = useAbsForNegSection && /\(.*[0#?].*\)/.test(cleanSection);
+                const hasExplicitMinus = useAbsForNegSection && /-/.test(cleanSection.split('"')[0]);
+                const numVal = useAbsForNegSection ? Math.abs(value) : value;
+
+                let prefix = '';
+                const firstDigitIdx = cleanSection.search(/[0#?]/);
+                const leadingPart = firstDigitIdx > 0 ? cleanSection.slice(0, firstDigitIdx) : '';
+                if (bracketCurrency) {
+                    prefix = bracketCurrency;
+                } else if (leadingPart.includes('$')) {
+                    prefix = '$';
+                } else if (leadingPart.includes('¥')) {
+                    prefix = '¥';
+                } else if (leadingPart.includes('￥')) {
+                    prefix = '￥';
+                }
+
+                const precisionMatch = cleanSection.match(/[0#]\.(0+)/);
+                const precision = precisionMatch ? precisionMatch[1].length : 0;
+
+                let result = numVal.toFixed(precision);
+                if (cleanSection.includes('#,##') || cleanSection.includes('0,0')) {
+                    const parts = result.split('.');
+                    const digits = parts[0].split('').reverse();
+                    const formatted = [];
+                    for (let i = 0; i < digits.length; i++) {
+                        formatted.push(digits[i]);
+                        if ((i + 1) % 3 === 0 && i < digits.length - 1 && digits[i + 1] !== '-') {
+                            formatted.push(',');
+                        }
                     }
-                    if (numFmt && /h{1,2}:m{1,2}/i.test(numFmt)) {
-                        return formatExcelDate(value, /y|d/i.test(numFmt) ? 'YYYY-MM-DD HH:mm' : 'HH:mm');
-                    }
-                    return formatExcelDate(value, 'YYYY-MM-DD');
+                    parts[0] = formatted.reverse().join('');
+                    result = parts.join('.');
+                }
+                const suffix = extractTrailingQuotedSuffix(cleanSection);
+                if (isParenNeg) {
+                    return `(${prefix}${result}${suffix})`;
+                }
+                if (value < 0 && hasExplicitMinus && !result.startsWith('-')) {
+                    return `-${prefix}${result}${suffix}`;
+                }
+                return `${prefix}${result}${suffix}`;
             }
         }
+        return String(value);
+    } catch (e) {
+        return value != null ? String(value) : '';
+    }
+}
+
+function formatExcelDateByNumFmt(val, numFmt) {
+    switch (numFmt) {
+        case 'yyyy-mm-dd;@':
+            return formatExcelDate(val, 'YYYY-MM-DD');
+        case 'mm-dd-yy':
+            return formatExcelDate(val, 'YYYY/MM/DD');
+        case '[$-F800]dddd, mmmm dd, yyyy':
+            return formatExcelDate(val, 'YYYY年M月D日 ddd');
+        case 'm"月"d"日";@':
+            return formatExcelDate(val, 'M月D日');
+        case 'yyyy/m/d h:mm;@':
+        case 'm/d/yy "h":mm':
+            return formatExcelDate(val, 'YYYY/M/DD HH:mm');
+        case 'h:mm;@':
+            return formatExcelDate(val, 'HH:mm');
+        default: {
+            const cleanFmt = typeof numFmt === 'string' ? numFmt.replace(/\[[^\]]*\]/g, '') : '';
+            if (cleanFmt && /h{1,2}:m{1,2}:s{1,2}/i.test(cleanFmt)) {
+                return formatExcelDate(val, /y|d/i.test(cleanFmt) ? 'YYYY-MM-DD HH:mm:ss' : 'HH:mm:ss');
+            }
+            if (cleanFmt && /h{1,2}:m{1,2}/i.test(cleanFmt)) {
+                return formatExcelDate(val, /y|d/i.test(cleanFmt) ? 'YYYY-MM-DD HH:mm' : 'HH:mm');
+            }
+            return formatExcelDate(val, 'YYYY-MM-DD');
+        }
+    }
+}
+
+function getCellText(cell){
+    const { numFmt, value, type } = cell;
+    const cellNumFmt = (cell.style && cell.style.numFmt) || numFmt;
+    switch (type){
+        case 2: //数字
+            return formatNumberValue(value, cellNumFmt);
+
+        case 3: //字符串
+            return value != null ? String(value) : '';
+        case 4: //日期
+            return formatExcelDateByNumFmt(value, numFmt);
 
         case 5: //超链接
             if (!value) {
@@ -283,10 +389,13 @@ function getCellText(cell){
                 return get(value, 'result.error');
             }
             if (value.result instanceof Date) {
-                const fmt = numFmt && /h{1,2}:m{1,2}/i.test(numFmt)
-                    ? (/y|d/i.test(numFmt) ? 'YYYY-MM-DD HH:mm' : 'HH:mm')
-                    : 'YYYY-MM-DD';
-                return formatExcelDate(value.result, fmt);
+                return formatExcelDateByNumFmt(value.result, cellNumFmt);
+            }
+            if (typeof value.result === 'number') {
+                return formatNumberValue(value.result, cellNumFmt);
+            }
+            if (typeof value.result === 'boolean') {
+                return String(value.result).toUpperCase();
             }
             if (value.result && typeof value.result === 'object' && Array.isArray(value.result.richText)) {
                 return value.result.richText.map(item => item.text || '').join('');
@@ -299,8 +408,16 @@ function getCellText(cell){
             return cell.text || '';
         case 9: //Boolean
             return String(cell.text ?? value ?? '').toUpperCase();
+        case 10: //Error
+            return (value && value.error) || (cell.text && cell.text.error) || '';
         default:
-            return value;
+            if (value == null) {
+                return '';
+            }
+            if (typeof value === 'object') {
+                return value.error || value.text || '';
+            }
+            return String(value);
     }
 }
 function transferArgbColor(originColor){
@@ -407,7 +524,7 @@ function getStyle(cell){
                 bordColor = originBorder.color;
             }else if(originBorder.color){
                 if(originBorder.color.argb){
-                    bordColor = transferArgbColor(originBorder.color.argb);
+                    bordColor = transferArgbColor(originBorder.color.argb) || '#000000';
                 }else if(Object.prototype.hasOwnProperty.call(originBorder.color, 'theme')){
                     bordColor = transferThemeColor(originBorder.color.theme, originBorder.color.tint);
                 }else if(typeof originBorder.color.indexed === 'number'){
@@ -426,17 +543,18 @@ function getStyle(cell){
     return style;
 }
 
-export function transferExcelToSpreadSheet(workbook, options){
+export function transferExcelToSpreadSheet(workbook, options = {}){
+    const opts = options || {};
     let workbookData = [];
     let sheets = [];
     workbook.eachSheet((sheet) => {
         sheets.push(sheet);
-        //console.log(sheet,'sheet');
         // 构造x-data-spreadsheet 的 sheet 数据源结构
         let sheetData = { name: sheet.name,styles : [], rows: {},cols:{}, merges:[],media:[] };
         // 收集合并单元格信息
         const mergeMap = new Map();
         const styleMap = new Map();
+        let effectiveMaxColLen = 0; //真正有数据的列长度，有时excel会展示一堆没数据的列
         for(let mergeRange in sheet._merges) {
             sheetData.merges.push(sheet._merges[mergeRange].shortRange);
             let mergeAddress = {};
@@ -448,26 +566,31 @@ export function transferExcelToSpreadSheet(workbook, options){
             mergeAddress.YRange = sheet._merges[mergeRange].model.bottom - sheet._merges[mergeRange].model.top;
             // X轴方向跨度
             mergeAddress.XRange = sheet._merges[mergeRange].model.right - sheet._merges[mergeRange].model.left;
+            effectiveMaxColLen = Math.max(effectiveMaxColLen, sheet._merges[mergeRange].model.right || 0);
             mergeMap.set(mergeAddress.startAddress, mergeAddress);
         }
 
-        let effectiveMaxColLen = 0; //真正有数据的列长度，有时excel会展示一堆没数据的列
         // 遍历行
-        (sheet._rows || []).forEach((row,spreadSheetRowIndex) =>{
-
+        (sheet._rows || []).forEach((row, spreadSheetRowIndex) =>{
+            if (!row) {
+                return;
+            }
             sheetData.rows[spreadSheetRowIndex] = { cells: {} };
             if(row._hidden){
                 sheetData.rows[spreadSheetRowIndex].height = 0.1;
-                row._cells = [];
+                return;
             }else if(row.height){
-                sheetData.rows[spreadSheetRowIndex].height = row.height + (options.heightOffset || 0);
+                sheetData.rows[spreadSheetRowIndex].height = row.height + (opts.heightOffset || 0);
             }else{
-                sheetData.rows[spreadSheetRowIndex].height = defaultRowHeight + (options.heightOffset || 0);
+                sheetData.rows[spreadSheetRowIndex].height = defaultRowHeight + (opts.heightOffset || 0);
             }
             //includeEmpty = false 不包含空白单元格
             (row._cells || []).forEach((cell, spreadSheetColIndex) =>{
+                if (!cell) {
+                    return;
+                }
                 sheetData.rows[spreadSheetRowIndex].cells[spreadSheetColIndex] = {};
-                effectiveMaxColLen = Math.max(effectiveMaxColLen, spreadSheetColIndex);
+                effectiveMaxColLen = Math.max(effectiveMaxColLen, spreadSheetColIndex + 1);
 
                 if (cell.isMerged && cell.master && cell.master.address !== cell._address) {
                     return;
@@ -490,18 +613,24 @@ export function transferExcelToSpreadSheet(workbook, options){
         });
         if(sheet._media){
             sheetData.media = sheet._media;
+            (sheet._media || []).forEach(media => {
+                const brCol = media && media.range && media.range.br && media.range.br.nativeCol;
+                const tlCol = media && media.range && media.range.tl && media.range.tl.nativeCol;
+                if (typeof brCol === 'number') {
+                    effectiveMaxColLen = Math.max(effectiveMaxColLen, brCol + 1);
+                } else if (typeof tlCol === 'number') {
+                    effectiveMaxColLen = Math.max(effectiveMaxColLen, tlCol + 1);
+                }
+            });
         }
 
         let tempRowsKeys = Object.keys(sheetData.rows);
         const maxRowLen = tempRowsKeys.length ? +tempRowsKeys[tempRowsKeys.length - 1] + 1 : 0;
 
         sheetData.rows.len = Math.max(maxRowLen,
-            Object.prototype.hasOwnProperty.call(options, 'minRowLength') ? options.minRowLength : 100);
+            Object.prototype.hasOwnProperty.call(opts, 'minRowLength') ? opts.minRowLength : 100);
 
-        if(sheet._columns && sheet._columns.length > effectiveMaxColLen + 1){
-            sheet._columns = sheet._columns.slice(0, effectiveMaxColLen + 1);
-        }
-        transferColumns(sheet,sheetData, options);
+        transferColumns(sheet, sheetData, opts, effectiveMaxColLen);
         workbookData.push(sheetData);
     });
     // console.log(workbookData, 'workbookData');

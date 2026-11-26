@@ -1018,14 +1018,25 @@ export default class Sheet {
   }
 
   destroy() {
-    if (this._onWindowResize) unbind(window, 'resize', this._onWindowResize);
-    if (this._onWindowClick) unbind(window, 'click', this._onWindowClick);
-    if (this._onWindowPaste) unbind(window, 'paste', this._onWindowPaste);
-    if (this._onWindowCopy) unbind(window, 'copy', this._onWindowCopy);
-    if (this._onWindowKeydown) unbind(window, 'keydown', this._onWindowKeydown);
-    if (window.xkeydownEsc) {
-      unbind(window, 'keydown', window.xkeydownEsc);
-      delete window.xkeydownEsc;
+    if (this.contextMenu && typeof this.contextMenu.hide === 'function') {
+      this.contextMenu.hide();
+    }
+    if (this.sortFilter && typeof this.sortFilter.hide === 'function') {
+      this.sortFilter.hide();
+    }
+    if (this.modalValidation && typeof this.modalValidation.hide === 'function') {
+      this.modalValidation.hide();
+    }
+    if (typeof window !== 'undefined') {
+      if (this._onWindowResize) unbind(window, 'resize', this._onWindowResize);
+      if (this._onWindowClick) unbind(window, 'click', this._onWindowClick);
+      if (this._onWindowPaste) unbind(window, 'paste', this._onWindowPaste);
+      if (this._onWindowCopy) unbind(window, 'copy', this._onWindowCopy);
+      if (this._onWindowKeydown) unbind(window, 'keydown', this._onWindowKeydown);
+      if (window.xkeydownEsc) {
+        unbind(window, 'keydown', window.xkeydownEsc);
+        delete window.xkeydownEsc;
+      }
     }
     this._onWindowResize = null;
     this._onWindowClick = null;

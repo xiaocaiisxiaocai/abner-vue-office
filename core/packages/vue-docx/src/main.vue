@@ -6,7 +6,23 @@ import { download as downloadFile } from '../../../utils/url';
 export default defineComponent({
     name: 'AbnerVueOfficeDocx',
     props: {
-        src: [String, ArrayBuffer, Blob],
+        src: {
+            validator(val) {
+                if (val == null || typeof val === 'string') {
+                    return true;
+                }
+                if (val instanceof ArrayBuffer || ArrayBuffer.isView(val)) {
+                    return true;
+                }
+                if (typeof Blob !== 'undefined' && val instanceof Blob) {
+                    return true;
+                }
+                if (typeof Response !== 'undefined' && val instanceof Response) {
+                    return true;
+                }
+                return false;
+            }
+        },
         requestOptions: {
             type: Object,
             default: () => ({})
@@ -29,32 +45,37 @@ export default defineComponent({
                 return;
             }
             const currentId = ++renderId;
+            const shouldCommit = () => !isUnmounted && currentId === renderId && !!rootRef.value;
             docx.getData(props.src, props.requestOptions).then(async res => {
-                if (isUnmounted || currentId !== renderId || !rootRef.value) {
+                if (!shouldCommit()) {
                     return;
                 }
-                fileData = await docx.getBlob(res);
-                if (isUnmounted || currentId !== renderId || !rootRef.value) {
+                const blob = await docx.getBlob(res);
+                if (!shouldCommit()) {
                     return;
                 }
-                docx.render(fileData, container, props.options).then(() => {
+                if (!blob) {
+                    throw new Error('Unsupported docx data');
+                }
+                fileData = blob;
+                docx.render(blob, container, props.options, shouldCommit).then(() => {
                     if (!isUnmounted && currentId === renderId) {
                         emit('rendered');
                     }
                 }).catch(e => {
-                    if (isUnmounted || currentId !== renderId || !rootRef.value) {
+                    if (!shouldCommit()) {
                         return;
                     }
                     fileData = null;
-                    docx.render('', container, props.options);
+                    docx.render('', container, props.options, shouldCommit).catch(() => {});
                     emit('error', e);
                 });
             }).catch(e => {
-                if (isUnmounted || currentId !== renderId || !rootRef.value) {
+                if (!shouldCommit()) {
                     return;
                 }
                 fileData = null;
-                docx.render('', container, props.options);
+                docx.render('', container, props.options, shouldCommit).catch(() => {});
                 emit('error', e);
             });
         }
@@ -67,6 +88,7 @@ export default defineComponent({
 
         onBeforeUnmount(() => {
             isUnmounted = true;
+            ++renderId;
             fileData = null;
         });
 
@@ -75,9 +97,10 @@ export default defineComponent({
                 init();
             } else {
                 const currentId = ++renderId;
+                const shouldCommit = () => !isUnmounted && currentId === renderId;
                 fileData = null;
-                docx.render('', rootRef.value, props.options).then(() => {
-                    if (!isUnmounted && currentId === renderId) {
+                docx.render('', rootRef.value, props.options, shouldCommit).then(() => {
+                    if (shouldCommit()) {
                         emit('rendered');
                     }
                 });

@@ -37,8 +37,8 @@ class AbnerJsExcelPreview {
             throw new Error('container is required');
         }
         this.container = container;
-        this.options = { ...defaultOptions, ...options };
-        this.requestOptions = requestOptions;
+        this.options = { ...defaultOptions, ...(options || {}) };
+        this.requestOptions = { ...(requestOptions || {}) };
         this.createWrapper();
         this.initSpreadsheet();
         this.hack();
@@ -56,6 +56,7 @@ class AbnerJsExcelPreview {
     initSpreadsheet() {
         this.xs = new Spreadsheet(this.wrapperMain, {
             mode: 'read',
+            evalPaused: true,
             showToolbar: false,
             showContextmenu: this.options.showContextmenu || false,
             view: {
@@ -150,7 +151,7 @@ class AbnerJsExcelPreview {
         };
 
         const canvas = this.wrapperMain.querySelector('canvas');
-        this.ctx = canvas.getContext('2d');
+        this.ctx = canvas ? canvas.getContext('2d') : null;
     }
 
     clearSwapTimer() {
@@ -202,7 +203,6 @@ class AbnerJsExcelPreview {
         }).catch(e => {
             if (!this.isDestroyed && currentId === this.renderId) {
                 this.fileData = null;
-                this.resetEmptyState();
             }
             return Promise.reject(e);
         });
@@ -220,12 +220,17 @@ class AbnerJsExcelPreview {
         this.options = { ...defaultOptions, ...(this.options || {}), ...options };
     }
 
-    setRequestOptions(requestOptions) {
-        this.requestOptions = requestOptions;
+    setRequestOptions(requestOptions = {}) {
+        this.requestOptions = { ...(requestOptions || {}) };
     }
 
     async preview(src) {
         const currentId = ++this.renderId;
+        if (!src) {
+            this.fileData = null;
+            this.resetEmptyState();
+            throw new Error('预览地址不能为空');
+        }
         try {
             const res = await getData(src, this.requestOptions);
             if (this.isDestroyed || currentId !== this.renderId) {

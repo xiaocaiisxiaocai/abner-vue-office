@@ -20,7 +20,9 @@ onMounted(() => {
             console.log('渲染完成');
         }
     });
-    window.myPdfPreview.preview(`${baseUrl}static/test-files/test.pdf`);
+    window.myPdfPreview.preview(`${baseUrl}static/test-files/test.pdf`).catch(err => {
+        console.log('err', err);
+    });
 });
 
 onBeforeUnmount(() => {

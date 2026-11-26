@@ -124,6 +124,14 @@ class Spreadsheet {
   }
 
   destroy() {
+    if (this.bottombar) {
+      if (this.bottombar.contextMenu && typeof this.bottombar.contextMenu.hide === 'function') {
+        this.bottombar.contextMenu.hide();
+      }
+      if (this.bottombar.moreEl && typeof this.bottombar.moreEl.hide === 'function') {
+        this.bottombar.moreEl.hide();
+      }
+    }
     if (this.sheet && typeof this.sheet.destroy === 'function') {
       this.sheet.destroy();
     }

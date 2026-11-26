@@ -12,8 +12,12 @@ const props = defineProps({
 });
 
 const { type, inputSrc, src, xls, beforeUpload } = usePreview(props.defaultSrc);
-watch(src, () => {
-    useLoading.showLoading();
+watch(src, (val) => {
+    if (val) {
+        useLoading.showLoading();
+    } else {
+        useLoading.hideLoading();
+    }
 }, {
     immediate: true
 });

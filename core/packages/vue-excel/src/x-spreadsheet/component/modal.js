@@ -40,7 +40,7 @@ export default class Modal {
     if (this.dimmer && this.dimmer.el && this.dimmer.el.parentNode) {
       this.dimmer.el.parentNode.removeChild(this.dimmer.el);
     }
-    if (window.xkeydownEsc) {
+    if (typeof window !== 'undefined' && window.xkeydownEsc) {
       unbind(window, 'keydown', window.xkeydownEsc);
       delete window.xkeydownEsc;
     }

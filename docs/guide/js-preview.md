@@ -154,20 +154,47 @@ export interface Options {
     cMapUrl?: string;
     cMapPacked?: boolean;
     CMapReaderFactory?: Object;
+    enableXfa?: boolean;
     useSystemFonts?: boolean;
+    onError?: (error: any) => void;
+    onRendered?: () => void;
 }
 ```
 
 ### preview方法
 调用preview方法进行文件的预览。
 
-preview方法接收参数支持三种： 文件url地址、文件ArrayBuffer格式数据、文件blob格式。
+preview方法接收参数支持：`string | ArrayBuffer | ArrayBufferView | Blob`（文件 URL 地址、`ArrayBuffer`、`Uint8Array` 等 TypedArray、`Blob`）。
 
 ```ts
-preview: (src: string | ArrayBuffer | Blob) => Promise<any>
+preview: (src: string | ArrayBuffer | ArrayBufferView | Blob) => Promise<any>
 ```
 
 url格式适合有文件静态地址的情况，ArrayBuffer格式适合文件上传前的预览。
+
+### setOptions方法
+
+更新预览配置（浅合并，调用后可配合 `rerender` 或下一次 `preview` 生效）。
+
+```ts
+setOptions: (options: Options) => void;
+```
+
+### setRequestOptions方法
+
+更新远程文件请求的 `requestOptions`（如 `headers`、`withCredentials` 等）。
+
+```ts
+setRequestOptions: (requestOptions?: Record<string, any>) => void;
+```
+
+### rerender方法 [js-pdf]
+
+`@abner-vue-office/js-pdf` 支持在容器尺寸变化或 `setOptions` 后调用 `rerender()` 重新计算分页并渲染。
+
+```ts
+rerender: () => Promise<any>;
+```
 
 ### save方法
 
@@ -176,6 +203,10 @@ url格式适合有文件静态地址的情况，ArrayBuffer格式适合文件上
 ```ts
  save: (fileName?: string) => void;
 ```
+
+### 浏览器 `<script>` 直接引入
+
+如不通过构建工具打包，可直接使用各包的 `./lib/index.umd.js`（全局挂载 `window.abnerJsDocx` / `window.abnerJsExcel` / `window.abnerJsPdf`）及对应 `./lib/index.css`。
 
 ### destroy方法
 

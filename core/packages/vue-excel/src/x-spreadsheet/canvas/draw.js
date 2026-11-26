@@ -1,6 +1,6 @@
 /* global window */
 function dpr() {
-  return window.devicePixelRatio || 1;
+  return (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
 }
 
 function thinLineWidth() {
@@ -271,7 +271,7 @@ class Draw {
 
   border(style, color) {
     const { ctx } = this;
-    ctx.lineWidth = thinLineWidth;
+    ctx.lineWidth = thinLineWidth();
     ctx.strokeStyle = color;
     // console.log('style:', style);
     if (style === 'medium') {

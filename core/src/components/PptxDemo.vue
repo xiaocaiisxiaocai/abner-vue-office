@@ -13,7 +13,7 @@ function onError(e){
 const defaultSrc = location.origin + 
     (location.pathname + '/').replace('//', '/') 
     + 'static/test-files/test.pptx';
-const docxRef = ref();
+const pptxRef = ref();
 
 const pptxWidth = Math.min(960, window.innerWidth);
 const requestOptions = {
@@ -31,7 +31,7 @@ const requestOptions = {
     <template  v-slot="slotProps">
        <div style="flex: 1;height: 0; background: black">
            <AbnerVueOfficePptx
-               ref="docxRef"
+               ref="pptxRef"
                :src="slotProps.src"
                :request-options="requestOptions"
                style="height: calc(100vh - 100px)"

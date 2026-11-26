@@ -2,9 +2,9 @@
 
 ## src
 
-- 类型：String, ArrayBuffer, Blob
+- 类型：`String | ArrayBuffer | ArrayBufferView | Blob`
 
-文档地址，文件在CDN或服务器上的地址，或者是通过FileReader读取的文件ArrayBuffer或者Blob格式。
+文档地址或二进制内容，可为文件在 CDN 或服务器上的地址，或者通过 `FileReader` 读取的 `ArrayBuffer`、`Uint8Array` 等 `ArrayBufferView`、`Blob` 格式。
 
 ## request-options
 - 类型：Object
@@ -105,3 +105,14 @@ const options = {
 pdf渲染时可能会请求一些bcmap文件，这些文件默认从 https://unpkg.com/pdfjs-dist@3.1.81/ 加载，但是可能存在网络不通问题，如果遇到这种问题，可以将这些文件放到自己静态目录，然后修改该属性，告诉组件去这里请求bcmap文件。
 
 涉及的文件存放在当前github项目中 `core/public/static/cmaps` 目录下，可将 `cmaps` 目录复制到你的静态服务目录下，然后修改 `staticFileUrl` 为 `cmaps` 文件夹对应的父地址，必须以 `http` 或 `https` 开头，如 `https://example.com/static/`
+
+## defaultScale [pdf特有属性]
+- 类型：`Number`（默认 `1`）
+
+设置 PDF 预览的默认缩放比例（优先级低于 `options.defaultScale`）。
+
+## 组件方法（通过 ref 调用）
+
+- `save(fileName?: string)`：四个 Vue 组件均支持导出下载当前已加载文档。
+- `rerender(): Promise<void>`：`@abner-vue-office/pdf` 与 `@abner-vue-office/pptx` 支持根据当前容器或配置重新渲染。
+- `getScale(): number` / `setScale(scale: number): void`：`@abner-vue-office/pdf` 支持读取与动态设置缩放比例。

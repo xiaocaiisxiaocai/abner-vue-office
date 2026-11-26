@@ -25,7 +25,6 @@ class SelectorElement {
           this.inputChange(evt.target.value);
         });
       this.el.child(this.hideInputDiv = h('div', 'hide-input').child(this.hideInput));
-      this.el.child(this.hideInputDiv = h('div', 'hide-input').child(this.hideInput));
     }
     startZIndex += 1;
   }

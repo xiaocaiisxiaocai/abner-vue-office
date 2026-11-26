@@ -19,7 +19,11 @@ onMounted(() => {
     myDocxPreview.preview(`${baseUrl}static/test-files/test.docx`).then(() => {
         console.log('docx preview done');
         switchTimer = setTimeout(() => {
-            myDocxPreview && myDocxPreview.preview(`${baseUrl}static/test-files/test2.docx`);
+            if (myDocxPreview) {
+                myDocxPreview.preview(`${baseUrl}static/test-files/test2.docx`).catch(err => {
+                    console.log('err', err);
+                });
+            }
         }, 3000);
     }).catch(err => {
         console.log('err', err);

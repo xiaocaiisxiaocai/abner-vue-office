@@ -41,9 +41,6 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "peerDependencies": {
-    "core-js": "^3.0.0"
-  },
   "dependencies": {
   }
 }

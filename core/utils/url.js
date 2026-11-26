@@ -40,7 +40,7 @@ export function normalizeFetchOptions(options) {
     }
     delete fetchOptions.withCredentials;
     delete fetchOptions.responseType;
-    if ((!fetchOptions.method || /^(get|head)$/i.test(fetchOptions.method)) && fetchOptions.body == null) {
+    if (!fetchOptions.method || /^(get|head)$/i.test(fetchOptions.method)) {
         delete fetchOptions.body;
     }
     return fetchOptions;
@@ -59,7 +59,8 @@ export function loadScript(src) {
             }
             reject(new Error(`Failed to load script: ${src}`));
         };
-        document.body.append(script);
+        const target = document.body || document.head || document.documentElement;
+        target.appendChild(script);
     });
 }
 
@@ -68,11 +69,14 @@ export async function download(filename, data) {
         return;
     }
     const blob = (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) ? new Blob([data]) : data;
+    if (typeof Blob === 'undefined' || !(blob instanceof Blob)) {
+        return;
+    }
     const objectUrl = URL.createObjectURL(blob);
     downloadFile(filename, objectUrl);
     setTimeout(() => {
         URL.revokeObjectURL(objectUrl);
-    }, 1000);
+    }, 10000);
 }
 
 export function downloadFile(filename, href) {

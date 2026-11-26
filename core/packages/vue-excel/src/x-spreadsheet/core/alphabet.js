@@ -12,13 +12,10 @@ const alphabets = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', '
 export function stringAt(index) {
   let str = '';
   let cindex = index;
-  while (cindex >= alphabets.length) {
-    cindex /= alphabets.length;
-    cindex -= 1;
-    str += alphabets[parseInt(cindex, 10) % alphabets.length];
+  while (cindex >= 0) {
+    str = alphabets[cindex % alphabets.length] + str;
+    cindex = Math.floor(cindex / alphabets.length) - 1;
   }
-  const last = index % alphabets.length;
-  str += alphabets[last];
   return str;
 }
 

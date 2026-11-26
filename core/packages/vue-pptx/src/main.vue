@@ -6,7 +6,23 @@ import { download as downloadFile, normalizeFetchOptions } from '../../../utils/
 export default defineComponent({
     name: 'AbnerVueOfficePptx',
     props: {
-        src: [String, ArrayBuffer, Blob],
+        src: {
+            validator(val) {
+                if (val == null || typeof val === 'string') {
+                    return true;
+                }
+                if (val instanceof ArrayBuffer || ArrayBuffer.isView(val)) {
+                    return true;
+                }
+                if (typeof Blob !== 'undefined' && val instanceof Blob) {
+                    return true;
+                }
+                if (typeof Response !== 'undefined' && val instanceof Response) {
+                    return true;
+                }
+                return false;
+            }
+        },
         requestOptions: {
             type: Object,
             default: () => ({})
@@ -24,15 +40,20 @@ export default defineComponent({
         let renderId = 0;
         const rootRef = ref(null);
 
-        function init() {
-            const container = rootRef.value;
-            if (!container) {
-                return;
+        function destroyViewer(viewer) {
+            if (viewer && typeof viewer.destroy === 'function') {
+                viewer.destroy();
             }
-            const width = props.options.width || container.getBoundingClientRect().width || 960;
-            const height = props.options.height || container.getBoundingClientRect().height || 540;
-            pptxViewer = initPptxPreviewer(container, {
-                ...props.options,
+        }
+
+        function createViewer(targetEl) {
+            const container = rootRef.value;
+            const opts = props.options || {};
+            const rect = container ? container.getBoundingClientRect() : { width: 960, height: 540 };
+            const width = opts.width || rect.width || 960;
+            const height = opts.height || rect.height || 540;
+            return initPptxPreviewer(targetEl, {
+                ...opts,
                 width,
                 height
             });
@@ -53,55 +74,73 @@ export default defineComponent({
             if (ArrayBuffer.isView(src)) {
                 return Promise.resolve(src.buffer.slice(src.byteOffset, src.byteOffset + src.byteLength));
             }
-            if (src instanceof Blob) {
+            if (typeof Blob !== 'undefined' && src instanceof Blob) {
+                return src.arrayBuffer();
+            }
+            if (typeof Response !== 'undefined' && src instanceof Response) {
                 return src.arrayBuffer();
             }
             return Promise.reject(new Error('不支持的 src 格式'));
+        }
+
+        function renderArrayBuffer(arrayBuffer, currentId) {
+            if (isUnmounted || currentId !== renderId || !rootRef.value) {
+                return Promise.resolve();
+            }
+            const stageEl = document.createElement('div');
+            const viewer = createViewer(stageEl);
+            return viewer.preview(arrayBuffer).then((pptx) => {
+                if (isUnmounted || currentId !== renderId || !rootRef.value) {
+                    destroyViewer(viewer);
+                    return;
+                }
+                destroyViewer(pptxViewer);
+                rootRef.value.innerHTML = '';
+                while (stageEl.firstChild) {
+                    rootRef.value.appendChild(stageEl.firstChild);
+                }
+                pptxViewer = viewer;
+                fileData = arrayBuffer;
+                emit('rendered', pptx);
+            }).catch(e => {
+                destroyViewer(viewer);
+                if (!isUnmounted && currentId === renderId) {
+                    destroyViewer(pptxViewer);
+                    pptxViewer = null;
+                    fileData = null;
+                    if (rootRef.value) {
+                        rootRef.value.innerHTML = '';
+                    }
+                    emit('error', e);
+                }
+            });
         }
 
         function preview() {
             if (!props.src) {
                 ++renderId;
                 fileData = null;
+                destroyViewer(pptxViewer);
+                pptxViewer = null;
                 if (rootRef.value) {
                     rootRef.value.innerHTML = '';
                 }
-                if (pptxViewer && typeof pptxViewer.destroy === 'function') {
-                    pptxViewer.destroy();
-                }
-                pptxViewer = null;
-                return;
-            }
-            if (!pptxViewer) {
-                init();
+                return Promise.resolve();
             }
             const currentId = ++renderId;
-            getPptxData(props.src).then(arrayBuffer => {
-                if (isUnmounted || currentId !== renderId || !pptxViewer) {
+            return getPptxData(props.src).then(arrayBuffer => {
+                if (isUnmounted || currentId !== renderId || !rootRef.value) {
                     return;
                 }
-                fileData = arrayBuffer;
-                pptxViewer.preview(arrayBuffer).then((pptx) => {
-                    if (!isUnmounted && currentId === renderId) {
-                        emit('rendered', pptx);
-                    }
-                }).catch(e => {
-                    if (!isUnmounted && currentId === renderId) {
-                        fileData = null;
-                        if (rootRef.value) {
-                            rootRef.value.innerHTML = '';
-                        }
-                        pptxViewer = null;
-                        emit('error', e);
-                    }
-                });
+                return renderArrayBuffer(arrayBuffer, currentId);
             }).catch(e => {
                 if (!isUnmounted && currentId === renderId) {
+                    destroyViewer(pptxViewer);
+                    pptxViewer = null;
                     fileData = null;
                     if (rootRef.value) {
                         rootRef.value.innerHTML = '';
                     }
-                    pptxViewer = null;
                     emit('error', e);
                 }
             });
@@ -111,34 +150,14 @@ export default defineComponent({
             if (isUnmounted || !rootRef.value) {
                 return Promise.resolve();
             }
-            if (pptxViewer && typeof pptxViewer.destroy === 'function') {
-                pptxViewer.destroy();
-            }
-            pptxViewer = null;
-            rootRef.value.innerHTML = '';
             if (!props.src) {
-                return Promise.resolve();
+                return preview();
             }
-            init();
             if (fileData) {
                 const currentId = ++renderId;
-                return pptxViewer.preview(fileData).then((pptx) => {
-                    if (!isUnmounted && currentId === renderId) {
-                        emit('rendered', pptx);
-                    }
-                }).catch(e => {
-                    if (!isUnmounted && currentId === renderId) {
-                        fileData = null;
-                        if (rootRef.value) {
-                            rootRef.value.innerHTML = '';
-                        }
-                        pptxViewer = null;
-                        emit('error', e);
-                    }
-                });
+                return renderArrayBuffer(fileData, currentId);
             }
-            preview();
-            return Promise.resolve();
+            return preview();
         }
 
         function save(fileName) {
@@ -153,9 +172,8 @@ export default defineComponent({
 
         onBeforeUnmount(() => {
             isUnmounted = true;
-            if (pptxViewer && typeof pptxViewer.destroy === 'function') {
-                pptxViewer.destroy();
-            }
+            ++renderId;
+            destroyViewer(pptxViewer);
             if (rootRef.value) {
                 rootRef.value.innerHTML = '';
             }
