@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { getDarkColor, getLightColor } from '../packages/vue-excel/src/color.js';
 import { readOnlyInput } from '../packages/vue-excel/src/hack.js';
 import {
@@ -11,6 +12,9 @@ import {
     loadStrippedModule,
     runWithDomGlobals
 } from './helpers/load-module.mjs';
+
+const require = createRequire(import.meta.url);
+const xlsx = require('xlsx');
 
 const excelMod = loadExcelModule();
 const { stringAt, expr2xy, xy2expr } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/alphabet.js');
@@ -170,13 +174,128 @@ test('excel.js correctly formats multi-section numFmt, currency, dates, formulas
     assert.deepEqual(sheet.styles[row0[16].style].border.top, ['thin', '#000000']);
 });
 
-test('excel.js reads real fixture test.xlsx without error', async () => {
+test('excel.js reads real fixture test.xlsx and .xls binary via xlsx fallback', async () => {
     const raw = fs.readFileSync(path.join(CORE_DIR, 'public/static/test-files/test.xlsx'));
     const ab = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
     const wb = await excelMod.readExcelData(ab, false);
     const { workbookData } = excelMod.transferExcelToSpreadSheet(wb, { minColLength: 20, minRowLength: 100 });
     assert.ok(workbookData.length >= 1);
     assert.ok(Object.keys(workbookData[0].rows).length > 1);
+
+    const xlsWb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(xlsWb, xlsx.utils.aoa_to_sheet([['Item', 'Price'], ['Pen', 12.5]]), 'Orders');
+    const xlsBytes = xlsx.write(xlsWb, { bookType: 'xls', type: 'array' });
+    const xlsAb = new Uint8Array(xlsBytes).buffer;
+    const parsedXls = await excelMod.readExcelData(xlsAb, true);
+    const xlsTransferred = excelMod.transferExcelToSpreadSheet(parsedXls, { minColLength: 0, minRowLength: 0 });
+    assert.equal(xlsTransferred.workbookData[0].name, 'Orders');
+    assert.equal(xlsTransferred.workbookData[0].rows[0].cells[0].text, 'Item');
+    assert.equal(xlsTransferred.workbookData[0].rows[1].cells[1].text, '12.5');
+});
+
+test('excel.js formatNumberValue, getCellText, getStyle, and transferExcelToSpreadSheet handle all edge cases', () => {
+    assert.equal(excelMod.formatNumberValue(12.3, '#,##0.##'), '12.3');
+    assert.equal(excelMod.formatNumberValue(12, '#,##0.##'), '12');
+    assert.equal(excelMod.formatNumberValue(12.345, '0.0#'), '12.35');
+    assert.equal(excelMod.formatNumberValue(42, '000000'), '000042');
+    assert.equal(excelMod.formatNumberValue(-100, '"¥"-#,##0.00'), '-¥100.00');
+    assert.equal(excelMod.formatNumberValue(-100, '"¥"#,##0.00'), '-¥100.00');
+    assert.equal(excelMod.formatNumberValue(25, '"RMB "#,##0.00'), 'RMB 25.00');
+    assert.equal(excelMod.formatNumberValue(15, '€#,##0.00'), '€15.00');
+    assert.equal(excelMod.formatNumberValue(15, '£#,##0.00'), '£15.00');
+    assert.equal(excelMod.formatNumberValue(50, '0.00"%"'), '50.00%');
+    assert.equal(excelMod.formatNumberValue(0.125, '0.0#%'), '12.5%');
+    assert.equal(excelMod.formatNumberValue(-0.0001, '0.00'), '0.00');
+    assert.equal(excelMod.formatNumberValue(0, '_(* #,##0.00_);_(* (#,##0.00);_(* "-"??_);_(@_)'), '-');
+    assert.equal(excelMod.formatNumberValue(0, '_(* #,##0.00_);_(* (#,##0.00);_(* 0.00_)'), '0.00');
+    assert.equal(excelMod.formatNumberValue(0, '_(#,##0.00_)'), '0.00');
+    assert.equal(excelMod.formatNumberValue(123, 'General'), '123');
+    assert.equal(excelMod.formatNumberValue(NaN, '0.00'), 'NaN');
+    assert.equal(excelMod.formatNumberValue(Infinity, '0.00'), 'Infinity');
+
+    assert.equal(excelMod.formatExcelDate(null, 'YYYY-MM-DD'), '');
+    assert.equal(excelMod.formatExcelDate('not-a-date', 'YYYY-MM-DD'), '');
+    assert.equal(
+        excelMod.getCellText({ type: 4, value: new Date(Date.UTC(2025, 4, 2, 14, 5, 0)), style: { numFmt: 'h:mm;@' } }),
+        '14:05'
+    );
+    assert.equal(
+        excelMod.getCellText({ type: 5, value: { text: { richText: [{ text: 'Go ' }, { text: 'Home' }] } } }),
+        'Go Home'
+    );
+    assert.equal(excelMod.getCellText({ type: 5, value: { hyperlink: 'https://example.com' } }), 'https://example.com');
+    assert.equal(excelMod.getCellText({ type: 5, value: null }), '');
+    assert.equal(excelMod.getCellText({ type: 6, value: { result: { error: '#N/A' } } }), '#N/A');
+    assert.equal(excelMod.getCellText({ type: 6, value: { result: { richText: [{ text: 'A' }, { text: 'B' }] } } }), 'AB');
+    assert.equal(excelMod.getCellText({ type: 6, value: { result: undefined } }), '');
+    assert.equal(excelMod.getCellText({ type: 8, text: '', value: { richText: [{ text: 'Rich' }, { text: 'Text' }] } }), 'RichText');
+    assert.equal(excelMod.getCellText({ type: 9, value: false }), 'FALSE');
+    assert.equal(excelMod.getCellText({ type: 9, value: true }), 'TRUE');
+    assert.equal(excelMod.getCellText({ type: 0, value: { text: 'objText' } }), 'objText');
+    assert.equal(excelMod.getCellText({ type: 0, value: null }), '');
+
+    const styled = excelMod.getStyle({
+        style: {
+            fill: { fgColor: { theme: 4, tint: -0.25 } },
+            font: { size: 16, color: { argb: 'FF112233' } },
+            alignment: { horizontal: 'center', vertical: 'top', wrapText: true },
+            border: {
+                left: null,
+                right: { style: 'medium', color: '#445566' },
+                bottom: { color: { theme: 99 } }
+            }
+        }
+    });
+    assert.equal(styled.align, 'center');
+    assert.equal(styled.valign, 'top');
+    assert.equal(styled.textwrap, true);
+    assert.equal(styled.color, '#112233');
+    assert.equal(styled.font.size, 12);
+    assert.deepEqual(styled.border.right, ['medium', '#445566']);
+    assert.deepEqual(styled.border.bottom, ['thin', '#C7C9CC']);
+    assert.equal(styled.border.left, undefined);
+
+    const wbEdge = {
+        media: [],
+        eachSheet(cb) {
+            cb(this._worksheets[0]);
+        },
+        _worksheets: [{
+            name: 'Edge',
+            _merges: {
+                A1: {
+                    shortRange: 'A1:B10',
+                    tl: 'A1',
+                    br: 'B10',
+                    model: { top: 1, left: 1, bottom: 10, right: 2 }
+                }
+            },
+            columns: [{ _hidden: true }, { width: 15 }, null],
+            _media: [{ range: { tl: { nativeCol: 0, nativeRow: 0 }, br: { nativeCol: 2, nativeRow: 14 } } }],
+            _rows: [{
+                _cells: [
+                    { type: 3, value: 'Master', style: {}, _address: 'A1' },
+                    { type: 3, value: 'Slave', isMerged: true, master: { address: 'A1' }, style: {}, _address: 'B1' }
+                ]
+            }]
+        }]
+    };
+    const resUndefinedOpts = excelMod.transferExcelToSpreadSheet(wbEdge, {
+        minRowLength: undefined,
+        minColLength: NaN,
+        widthOffset: 5,
+        heightOffset: 2
+    });
+    const edgeSheet = resUndefinedOpts.workbookData[0];
+    assert.equal(Number.isNaN(edgeSheet.rows.len), false);
+    assert.equal(edgeSheet.rows.len, 100);
+    assert.equal(edgeSheet.cols['0'].width, 0.1);
+    assert.equal(edgeSheet.cols['1'].width, 95);
+    assert.equal(edgeSheet.rows[0].cells[1].text, undefined);
+
+    const resZeroRows = excelMod.transferExcelToSpreadSheet(wbEdge, { minRowLength: 0, minColLength: 0 });
+    assert.equal(resZeroRows.workbookData[0].rows.len, 15);
+    assert.equal(resZeroRows.workbookData[0].cols.len, 3);
 });
 
 test('x-spreadsheet alphabet, cell formula fallback/unclosed quote, and DataProxy zero-text', async () => {

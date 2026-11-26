@@ -1,4 +1,4 @@
-export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob;
+export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob | Response;
 
 export interface ExcelCellEvent {
     cell: any;

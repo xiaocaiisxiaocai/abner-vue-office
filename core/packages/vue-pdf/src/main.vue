@@ -187,7 +187,7 @@ export default defineComponent({
                         }
                     });
                 });
-            } else if (props.src) {
+            } else if (props.src && containerRef.value) {
                 scheduleInit();
             }
         }
@@ -230,7 +230,7 @@ export default defineComponent({
             }
         }
 
-        function layoutAndRender(currentId) {
+        function layoutAndRender(currentId, rethrow = false) {
             if (isUnmounted || currentId !== renderId || !pdfDocument || !wrapperRef.value || !containerRef.value) {
                 return Promise.resolve();
             }
@@ -259,7 +259,7 @@ export default defineComponent({
                     Math.max(totalItems, 1)
                 );
                 const endIndex = Math.min(startIndex + visibleItems - 1, totalItems);
-                return renderList(startIndex, endIndex, true, currentId);
+                return renderList(startIndex, endIndex, true, currentId, rethrow);
             });
         }
 
@@ -311,7 +311,7 @@ export default defineComponent({
                 if (containerRef.value) {
                     containerRef.value.scrollTop = 0;
                 }
-                await layoutAndRender(currentId);
+                await layoutAndRender(currentId, true);
             } catch (e) {
                 if (!isUnmounted && currentId === renderId) {
                     clearCanvas();
@@ -384,7 +384,7 @@ export default defineComponent({
             return canvas;
         }
 
-        function renderList(startIndex, endIndex, emitRendered = false, currentId = renderId) {
+        function renderList(startIndex, endIndex, emitRendered = false, currentId = renderId, rethrow = false) {
             const list = wrapperRef.value;
             if (!list || !pdfDocument || isUnmounted || currentId !== renderId) {
                 return Promise.resolve();
@@ -438,6 +438,9 @@ export default defineComponent({
                     emit('rendered');
                 }
             }).catch(e => {
+                if (rethrow) {
+                    return Promise.reject(e);
+                }
                 if (!isUnmounted && currentId === renderId) {
                     emit('error', e);
                 }
@@ -506,6 +509,9 @@ export default defineComponent({
         });
 
         watch(() => props.src, () => {
+            if (!containerRef.value) {
+                return;
+            }
             if (!props.src) {
                 ++renderId;
                 ++libRequestId;
@@ -532,6 +538,9 @@ export default defineComponent({
                 return;
             }
             pdfDocument.getData().then(fileData => {
+                if (isUnmounted) {
+                    return;
+                }
                 downloadFile(
                     fileName || `abner-vue-office-pdf-${new Date().getTime()}.pdf`,
                     new Blob([fileData], { type: 'application/pdf' })

@@ -7,9 +7,9 @@ export function revokeUrl(url) {
 export function getUrl(src, options) {
     if (typeof src === 'string') {
         return src;
-    } else if (src instanceof Blob) {
+    } else if (typeof Blob !== 'undefined' && src instanceof Blob) {
         return URL.createObjectURL(src);
-    } else if (src instanceof ArrayBuffer || ArrayBuffer.isView(src)) {
+    } else if (typeof Blob !== 'undefined' && (src instanceof ArrayBuffer || ArrayBuffer.isView(src))) {
         return URL.createObjectURL(new Blob([src], options));
     } else {
         return src;
@@ -19,9 +19,9 @@ export function getUrl(src, options) {
 export async function getUrlAsync(src, options) {
     if (typeof src === 'string') {
         return src;
-    } else if (src instanceof Blob) {
+    } else if (typeof Blob !== 'undefined' && src instanceof Blob) {
         return URL.createObjectURL(src);
-    } else if (src instanceof ArrayBuffer || ArrayBuffer.isView(src)) {
+    } else if (typeof Blob !== 'undefined' && (src instanceof ArrayBuffer || ArrayBuffer.isView(src))) {
         return URL.createObjectURL(new Blob([src], options));
     } else if (typeof Response !== 'undefined' && src instanceof Response) {
         return URL.createObjectURL(await src.blob());
@@ -40,7 +40,7 @@ export function normalizeFetchOptions(options) {
     }
     delete fetchOptions.withCredentials;
     delete fetchOptions.responseType;
-    if (!fetchOptions.method || /^(get|head)$/i.test(fetchOptions.method)) {
+    if (!fetchOptions.method || (typeof fetchOptions.method === 'string' && /^(get|head)$/i.test(fetchOptions.method.trim()))) {
         delete fetchOptions.body;
     }
     return fetchOptions;
@@ -60,12 +60,16 @@ export function loadScript(src) {
             reject(new Error(`Failed to load script: ${src}`));
         };
         const target = document.body || document.head || document.documentElement;
+        if (!target) {
+            reject(new Error(`Failed to load script: ${src}`));
+            return;
+        }
         target.appendChild(script);
     });
 }
 
 export async function download(filename, data) {
-    if (!data) {
+    if (!data || typeof document === 'undefined') {
         return;
     }
     const blob = (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) ? new Blob([data]) : data;
@@ -80,11 +84,20 @@ export async function download(filename, data) {
 }
 
 export function downloadFile(filename, href) {
+    if (typeof document === 'undefined') {
+        return;
+    }
+    const target = document.body || document.documentElement;
+    if (!target) {
+        return;
+    }
     const eleLink = document.createElement('a');
     eleLink.download = filename;
     eleLink.style.display = 'none';
     eleLink.href = href;
-    document.body.appendChild(eleLink);
+    target.appendChild(eleLink);
     eleLink.click();
-    document.body.removeChild(eleLink);
+    if (eleLink.parentNode) {
+        eleLink.parentNode.removeChild(eleLink);
+    }
 }

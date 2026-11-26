@@ -337,7 +337,10 @@ class Rows {
   }
 
   setData(d) {
-    if (d.len) {
+    if (!d || typeof d !== 'object') {
+      return;
+    }
+    if (d.len !== undefined) {
       this.len = d.len;
       delete d.len;
     }

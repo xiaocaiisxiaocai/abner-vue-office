@@ -1,4 +1,4 @@
-export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob;
+export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob | Response;
 
 export interface PdfOptions {
     width?: number;
@@ -21,7 +21,7 @@ export interface PdfOptions {
 export type Options = PdfOptions;
 
 export interface PdfProps {
-    src: OfficeSource;
+    src?: OfficeSource | null;
     staticFileUrl?: string;
     requestOptions?: Record<string, any>;
     options?: PdfOptions;

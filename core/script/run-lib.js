@@ -12,17 +12,15 @@ try {
         stdio: 'inherit'
     });
     if (bakResult.status !== 0) {
-        process.exit(bakResult.status || 1);
+        exitCode = typeof bakResult.status === 'number' ? bakResult.status : 1;
+    } else {
+        const lernaCli = require.resolve('lerna/cli', { paths: [coreDir] });
+        const runResult = spawnSync(process.execPath, [lernaCli, 'run', 'build', ...lernaArgs], {
+            cwd: coreDir,
+            stdio: 'inherit'
+        });
+        exitCode = typeof runResult.status === 'number' ? runResult.status : 1;
     }
-
-    const lernaCmd = process.platform === 'win32' ? 'lerna.cmd' : 'lerna';
-    const lernaBin = path.resolve(coreDir, 'node_modules/.bin', lernaCmd);
-    const runResult = spawnSync(lernaBin, ['run', 'build', ...lernaArgs], {
-        cwd: coreDir,
-        stdio: 'inherit',
-        shell: process.platform === 'win32'
-    });
-    exitCode = typeof runResult.status === 'number' ? runResult.status : 1;
 } finally {
     spawnSync(process.execPath, [bakVueScript], {
         cwd: coreDir,

@@ -239,9 +239,12 @@ function overlayerMousescroll(evt) {
   const temp = Math.max(tempY, tempX);
   // console.log('event:', evt);
   // detail for windows/mac firefox vertical scroll
-  if (/Firefox/i.test(window.navigator.userAgent)) throttle(moveY(evt.detail), 50);
-  if (temp === tempX) throttle(moveX(deltaX), 50);
-  if (temp === tempY) throttle(moveY(deltaY), 50);
+  if (typeof window !== 'undefined' && window.navigator && /Firefox/i.test(window.navigator.userAgent) && evt.detail) {
+    throttle(moveY(evt.detail), 50);
+  }
+  if (temp === 0) return;
+  if (deltaX !== 0 && temp === tempX) throttle(moveX(deltaX), 50);
+  if (deltaY !== 0 && temp === tempY) throttle(moveY(deltaY), 50);
 }
 
 function overlayerTouch(direction, distance) {
@@ -556,6 +559,7 @@ function insertDeleteRowColumn(type) {
 
 function toolbarChange(type, value) {
   const { data } = this;
+  if (data.settings.mode === 'read') return;
   if (type === 'undo') {
     this.undo();
   } else if (type === 'redo') {
@@ -756,12 +760,16 @@ function sheetInitEvents() {
       switch (keyCode) {
         case 90:
           // undo: ctrl + z
-          this.undo();
+          if (this.data.settings.mode !== 'read') {
+            this.undo();
+          }
           evt.preventDefault();
           break;
         case 89:
           // redo: ctrl + y
-          this.redo();
+          if (this.data.settings.mode !== 'read') {
+            this.redo();
+          }
           evt.preventDefault();
           break;
         case 67:
@@ -777,7 +785,9 @@ function sheetInitEvents() {
           break;
         case 85:
           // ctrl + u
-          toolbar.trigger('underline');
+          if (this.data.settings.mode !== 'read') {
+            toolbar.trigger('underline');
+          }
           evt.preventDefault();
           break;
         case 86:
@@ -812,11 +822,15 @@ function sheetInitEvents() {
           break;
         case 66:
           // ctrl + B
-          toolbar.trigger('bold');
+          if (this.data.settings.mode !== 'read') {
+            toolbar.trigger('bold');
+          }
           break;
         case 73:
           // ctrl + I
-          toolbar.trigger('italic');
+          if (this.data.settings.mode !== 'read') {
+            toolbar.trigger('italic');
+          }
           break;
         default:
           break;
@@ -981,17 +995,20 @@ export default class Sheet {
   // freeze rows or cols
   freeze(ri, ci) {
     const { data } = this;
+    if (data.settings.mode === 'read') return this;
     data.setFreeze(ri, ci);
     sheetReset.call(this);
     return this;
   }
 
   undo() {
+    if (this.data.settings.mode === 'read') return;
     this.data.undo();
     sheetReset.call(this);
   }
 
   redo() {
+    if (this.data.settings.mode === 'read') return;
     this.data.redo();
     sheetReset.call(this);
   }

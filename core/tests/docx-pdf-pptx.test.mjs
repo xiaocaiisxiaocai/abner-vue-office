@@ -9,11 +9,66 @@ const require = createRequire(import.meta.url);
 const debounce = require('lodash/debounce');
 const omit = require('lodash/omit');
 
-test('usePreview isXlsName distinguishes .xls from .xlsx accurately', () => {
+test('usePreview, useLoading, and docx hack.js work in browser and SSR safely', async () => {
     assert.equal(isXlsName('report.xls'), true);
     assert.equal(isXlsName('https://example.com/report.XLS?token=1#hash'), true);
     assert.equal(isXlsName('report.xlsx'), false);
     assert.equal(isXlsName(null), false);
+
+    await runWithDomGlobals({ window: undefined }, async () => {
+        await import(`../packages/vue-docx/src/hack.js?ssr=${Date.now()}`);
+        await import(`../packages/js-docx/src/hack.js?ssr=${Date.now()}`);
+    });
+
+    const mockWin = {};
+    await runWithDomGlobals({ window: mockWin }, async () => {
+        await import(`../packages/vue-docx/src/hack.js?browser=${Date.now()}`);
+        assert.equal(typeof mockWin.setImmediate, 'function');
+        const customImm = () => 99;
+        mockWin.setImmediate = customImm;
+        await import(`../packages/js-docx/src/hack.js?preserve=${Date.now()}`);
+        assert.equal(mockWin.setImmediate, customImm);
+    });
+
+    let hideCalls = 0;
+    const shown = [];
+    const useLoading = loadStrippedModule('src/hooks/useLoading.js', {
+        message: {
+            loading: (content) => {
+                shown.push(content);
+                return () => hideCalls++;
+            }
+        },
+        ref: v => ({ value: v })
+    });
+    useLoading.hideLoading();
+    assert.equal(hideCalls, 0);
+    useLoading.showLoading('Loading 1');
+    useLoading.showLoading('Loading 2');
+    assert.equal(hideCalls, 1);
+    assert.equal(useLoading.loading.value, true);
+    useLoading.hideLoading();
+    assert.equal(hideCalls, 2);
+    assert.equal(useLoading.loading.value, false);
+
+    class MockFileReader {
+        readAsArrayBuffer(file) {
+            MockFileReader.last = this;
+            this.file = file;
+        }
+    }
+    const usePreviewFactory = loadStrippedModule('src/hooks/usePreview.js', { ref: v => ({ value: v }) });
+    await runWithDomGlobals({ FileReader: MockFileReader }, () => {
+        const state = usePreviewFactory('https://example.com/init.xls');
+        assert.equal(state.xls.value, true);
+        const keep = state.beforeUpload({ name: 'upload.xlsx' });
+        assert.equal(keep, false);
+        assert.equal(state.xls.value, false);
+        const buf = new ArrayBuffer(8);
+        MockFileReader.last.onload({ target: { result: buf } });
+        assert.equal(state.src.value, buf);
+        MockFileReader.last.onerror(new Error('read fail'));
+    });
 });
 
 test('vue-docx/src/docx.js validates data and serializes container commits', async () => {
@@ -49,7 +104,6 @@ test('vue-docx/src/docx.js validates data and serializes container commits', asy
 
 test('js-docx/src/main.js constructor, setOptions merge, error handling, and destroy', async () => {
     const { mockDocument } = createDomMocks();
-    const container = mockDocument.createElement('div');
     const mockDocxApi = {
         getData: async (src) => {
             if (src === 'slow') {
@@ -88,18 +142,52 @@ test('js-docx/src/main.js constructor, setOptions merge, error handling, and des
     assert.throws(() => init(null), /container is required/);
 
     await runWithDomGlobals({ document: mockDocument }, async () => {
-        const instance = init(container, { inWrapper: true }, { withCredentials: true });
-        instance.setOptions({ ignoreFonts: true });
-        assert.deepEqual(instance.options, { inWrapper: true, ignoreFonts: true });
+        const downloaded = [];
+        const { init: init2 } = await (async () => {
+            const modSrc = `
+                ${(await import('node:fs')).readFileSync(path.resolve('packages/js-docx/src/main.js'), 'utf8')
+        .replace(/^\s*import\s+[\s\S]*?;\s*$/gm, '')
+        .replace(/export\s+function\s+init/g, 'function init')}
+                return { init };
+            `;
+            return new Function('docx', 'downloadFile', modSrc)(mockDocxApi, (name, data) => downloaded.push({ name, data }));
+        })();
 
-        await assert.rejects(instance.preview(''), /预览地址不能为空/);
-        await assert.rejects(instance.preview({ bad: 1 }), /Unsupported docx data/);
+        const containerOk = mockDocument.createElement('div');
+        const inst = init2(containerOk, { inWrapper: true }, { method: 'GET' });
+        inst.setOptions({ ignoreFonts: true });
+        inst.setRequestOptions({ headers: { 'X-Auth': '1' } });
+        assert.deepEqual(inst.options, { inWrapper: true, ignoreFonts: true });
+        assert.deepEqual(inst.requestOptions, { headers: { 'X-Auth': '1' } });
 
-        const pendingSlow = instance.preview('slow');
-        instance.destroy();
-        await pendingSlow;
-        assert.equal(instance.isDestroyed, true);
-        assert.equal(container.children.length, 0);
+        await assert.rejects(inst.preview(''), /预览地址不能为空/);
+        await assert.rejects(inst.preview({ bad: 1 }), /Unsupported docx data/);
+
+        const freshBlob = new Blob(['fresh-doc']);
+        await inst.preview(freshBlob);
+        assert.match(containerOk.innerHTML || containerOk.children[0].children[0].innerHTML, /ignoreFonts/);
+        inst.save('custom.docx');
+        assert.equal(downloaded[0].name, 'custom.docx');
+        assert.equal(downloaded[0].data, freshBlob);
+
+        let getDataCalls = 0;
+        const slowInst = init2(mockDocument.createElement('div'));
+        const slowP = slowInst.preview('slow');
+        const fastBlob = new Blob(['winner']);
+        await slowInst.preview(fastBlob);
+        await slowP;
+        assert.equal(slowInst.fileData, fastBlob);
+
+        slowInst.destroy();
+        mockDocxApi.getData = async () => {
+            getDataCalls++;
+            return freshBlob;
+        };
+        await slowInst.preview('after-destroy');
+        assert.equal(getDataCalls, 0);
+        assert.equal(slowInst.isDestroyed, true);
+        assert.deepEqual(slowInst.options, {});
+        assert.deepEqual(slowInst.requestOptions, {});
     });
 });
 
@@ -186,6 +274,48 @@ test('js-pdf/src/main.js handles gap:0, superseded preview, destroy during getPa
         shouldFailPage = true;
         await assert.rejects(pdf.preview('fast-doc'), /page render boom/);
         assert.equal(errors.length, 1);
+
+        shouldFailPage = false;
+        const downloads = [];
+        const pdf3 = init(mockDocument.createElement('div'), {
+            staticFileUrl: '',
+            onError: e => errors.push(e)
+        });
+        pdf3.setOptions({ width: 320, staticFileUrl: '' });
+        assert.equal(pdf3.options.staticFileUrl, 'https://unpkg.com/pdfjs-dist@3.1.81/');
+        pdf3.setRequestOptions({ credentials: 'include', headers: { Token: 'abc' } });
+
+        await pdf3.preview('fast-doc');
+        pdf3.setOptions({ gap: 20 });
+        await pdf3.rerender();
+        assert.equal(pdf3.getGap(), 20);
+
+        pdf3.wrapper.scrollTop = 2000;
+        pdf3.renderList(2, 3, false, pdf3.renderId, false);
+        pdf3.renderList(1, 2, false, pdf3.renderId, false);
+        assert.ok(pdf3.wrapperMain.children.length >= 2);
+
+        const origGetPage = pdf3.pdfDocument.getPage;
+        pdf3.pdfDocument.getPage = async () => ({
+            getViewport: ({ scale }) => ({ width: 400 * scale, height: 150 * scale }),
+            render: () => ({ cancel() {}, promise: Promise.resolve() })
+        });
+        await pdf3.renderSinglePage(2, pdf3.wrapperMain.children[0], pdf3.renderId);
+        pdf3.pdfDocument.getPage = origGetPage;
+
+        pdf3.save('custom.pdf');
+        await new Promise(r => setTimeout(r, 5));
+        pdf3.pdfDocument.getData = async () => {
+            throw new Error('save failed');
+        };
+        pdf3.save();
+        await new Promise(r => setTimeout(r, 5));
+        assert.ok(errors.some(e => e.message === 'save failed'));
+
+        pdf3.destroy();
+        await pdf3.rerender();
+        await pdf3.preview('after-destroy');
+        assert.equal(downloads.length, 0);
         pdf.destroy();
     });
 

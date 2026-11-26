@@ -2,9 +2,9 @@
 
 ## src
 
-- 类型：`String | ArrayBuffer | ArrayBufferView | Blob`
+- 类型：`String | ArrayBuffer | ArrayBufferView | Blob | Response`
 
-文档地址或二进制内容，可为文件在 CDN 或服务器上的地址，或者通过 `FileReader` 读取的 `ArrayBuffer`、`Uint8Array` 等 `ArrayBufferView`、`Blob` 格式。
+文档地址或二进制内容，可为文件在 CDN 或服务器上的地址，或者通过 `FileReader`、`fetch` 读取的 `ArrayBuffer`、`Uint8Array` 等 `ArrayBufferView`、`Blob`、`Response` 格式。
 
 ## request-options
 - 类型：Object

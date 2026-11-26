@@ -8,6 +8,7 @@ import {
     loadScript,
     download
 } from '../utils/url.js';
+import { isTest } from '../utils/test.js';
 import { createDomMocks, runWithDomGlobals } from './helpers/load-module.mjs';
 
 test('normalizeFetchOptions sanitizes credentials, responseType, and GET/HEAD body', () => {
@@ -34,6 +35,11 @@ test('normalizeFetchOptions sanitizes credentials, responseType, and GET/HEAD bo
 
     const headNull = normalizeFetchOptions({ method: 'head', body: null });
     assert.equal('body' in headNull, false);
+
+    const spaceGet = normalizeFetchOptions({ method: ' GET ', body: 'bad' });
+    assert.equal('body' in spaceGet, false);
+    const spaceHead = normalizeFetchOptions({ method: ' Head ', body: '' });
+    assert.equal('body' in spaceHead, false);
 
     const postReq = normalizeFetchOptions({
         method: 'POST',
@@ -160,9 +166,66 @@ test('download ignores non-Blob inputs and triggers anchor click for valid paylo
             assert.equal(clicked[0].href, 'blob:download-1');
             assert.equal(revokeDelay, 10000);
             assert.deepEqual(revoked, ['blob:download-1']);
+
+            await download('ab.docx', new Uint8Array([9, 8]).buffer);
+            await download('blob.docx', new Blob(['hi']));
+            assert.equal(clicked.length, 3);
+        });
+
+        await runWithDomGlobals({ document: undefined }, async () => {
+            await download('ssr.docx', new Uint8Array([1]));
+        });
+
+        const noBodyDoc = {
+            body: null,
+            head: mockDocument.head,
+            documentElement: mockDocument.documentElement,
+            createElement: mockDocument.createElement.bind(mockDocument)
+        };
+        const origCreateElNoBody = noBodyDoc.createElement;
+        noBodyDoc.createElement = (tag) => {
+            const el = origCreateElNoBody(tag);
+            if (tag === 'a') {
+                el.click = () => clicked.push({ download: el.download, href: el.href });
+            }
+            return el;
+        };
+        await runWithDomGlobals({ document: noBodyDoc, setTimeout: immediateTimer }, async () => {
+            await download('fallback.docx', new Blob(['ok']));
+            assert.equal(clicked[clicked.length - 1].download, 'fallback.docx');
         });
     } finally {
         URL.createObjectURL = origCreate;
         URL.revokeObjectURL = origRevoke;
     }
+});
+
+test('getUrl/getUrlAsync are SSR safe when Blob/Response are undefined and loadScript rejects without DOM mount target', async () => {
+    await runWithDomGlobals({ Blob: undefined, Response: undefined }, async () => {
+        assert.equal(getUrl('https://example.com/a.docx'), 'https://example.com/a.docx');
+        assert.equal(await getUrlAsync('https://example.com/b.pdf'), 'https://example.com/b.pdf');
+        const u8 = new Uint8Array([1, 2]);
+        const ab = new ArrayBuffer(4);
+        assert.equal(getUrl(u8), u8);
+        assert.equal(await getUrlAsync(ab), ab);
+    });
+
+    const emptyDoc = {
+        body: null,
+        head: null,
+        documentElement: null,
+        createElement: () => ({})
+    };
+    await runWithDomGlobals({ document: emptyDoc }, async () => {
+        await assert.rejects(loadScript('https://example.com/no-target.js'), /Failed to load script/);
+    });
+});
+
+test('utils/test.js isTest checks location.href accurately', async () => {
+    await runWithDomGlobals({ location: { href: 'http://localhost:5173/#/docx?test=1' } }, () => {
+        assert.equal(isTest(), true);
+    });
+    await runWithDomGlobals({ location: { href: 'http://localhost:5173/#/docx' } }, () => {
+        assert.equal(isTest(), false);
+    });
 });

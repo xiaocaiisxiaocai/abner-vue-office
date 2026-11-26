@@ -134,6 +134,9 @@ const evalSubExpr = (subExpr, cellRender) => {
     return ret * Number(expr);
   }
   const [x, y] = expr2xy(expr);
+  if (Number.isNaN(x) || Number.isNaN(y) || x < 0 || y < 0) {
+    throw new Error(`Invalid cell reference: ${expr}`);
+  }
   return ret * cellRender(x, y);
 };
 

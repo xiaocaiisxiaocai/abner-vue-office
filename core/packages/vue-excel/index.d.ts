@@ -1,4 +1,4 @@
-export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob;
+export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob | Response;
 
 export interface ExcelCellEvent {
     cell: any;
@@ -28,7 +28,7 @@ export interface ExcelOptions {
 export type Options = ExcelOptions;
 
 export interface ExcelProps {
-    src: OfficeSource;
+    src?: OfficeSource | null;
     requestOptions?: Record<string, any>;
     options?: ExcelOptions;
     onRendered?: () => void;

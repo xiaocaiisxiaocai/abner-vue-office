@@ -50,15 +50,21 @@ export default class Dropdown extends Element {
   show() {
     const { contentEl } = this;
     contentEl.show();
-    this.parent().active();
-    bindClickoutside(this.parent(), () => {
-      this.hide();
-    });
+    if (this.el && this.el.parentNode) {
+      const parentEl = this.parent();
+      parentEl.active();
+      bindClickoutside(parentEl, () => {
+        this.hide();
+      });
+    }
   }
 
   hide() {
-    this.parent().active(false);
     this.contentEl.hide();
-    unbindClickoutside(this.parent());
+    if (this.el && this.el.parentNode) {
+      const parentEl = this.parent();
+      parentEl.active(false);
+      unbindClickoutside(parentEl);
+    }
   }
 }

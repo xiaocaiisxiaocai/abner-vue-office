@@ -45,7 +45,7 @@ function getRowHeight(sheet, index, heightOffset = 0) {
     return baseHeight + (heightOffset || 0);
 }
 
-function getImageMimeType(extension) {
+export function getImageMimeType(extension) {
     const ext = String(extension || '').toLowerCase();
     const mimeMap = {
         jpg: 'image/jpeg',
@@ -62,9 +62,9 @@ function getImageMimeType(extension) {
     return mimeMap[ext] || (ext ? `image/${ext}` : 'image/png');
 }
 
-function calcPosition(sheet, range, offset, options) {
-    const dpr = window.devicePixelRatio || 1;
-    const { widthOffset, heightOffset } = options;
+export function calcPosition(sheet, range, offset, options) {
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    const { widthOffset, heightOffset } = options || {};
     const { tl, br, ext } = range || {};
     const { nativeCol = 0, nativeColOff = 0, nativeRow = 0, nativeRowOff = 0 } = tl || {};
 
@@ -128,7 +128,7 @@ function drawImage(ctx, index, data, position, shouldDraw) {
     if (!ctx || !data) {
         return;
     }
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
     getImage(ctx, index, data).then(image => {
         if (typeof shouldDraw === 'function' && !shouldDraw()) {
             return;
@@ -171,26 +171,28 @@ function drawImage(ctx, index, data, position, shouldDraw) {
 }
 
 function getImage(ctx, index, data) {
-    return new Promise((resolve, reject) => {
-        if (!data || !data.buffer) {
-            return reject(new Error('Invalid image data'));
-        }
-        const cache = getCache(ctx);
-        if (cache[index]) {
-            return resolve(cache[index]);
-        }
+    if (!data || !data.buffer) {
+        return Promise.reject(new Error('Invalid image data'));
+    }
+    const cache = getCache(ctx);
+    if (cache[index]) {
+        return cache[index];
+    }
+    const promise = new Promise((resolve, reject) => {
         const blob = new Blob([data.buffer], { type: getImageMimeType(data.extension) });
         const url = URL.createObjectURL(blob);
         const image = new Image();
         image.onload = function () {
-            cache[index] = image;
             URL.revokeObjectURL(url);
             resolve(image);
         };
         image.onerror = function (e) {
             URL.revokeObjectURL(url);
+            delete cache[index];
             reject(e);
         };
         image.src = url;
     });
+    cache[index] = promise;
+    return promise;
 }

@@ -163,10 +163,24 @@ test('all Vue bundles load cleanly in SSR (no window/document/navigator/Blob) an
     }
 });
 
-test('js-* bundles satisfy Babel/terser, CSS isolation, and worker embedding checks', () => {
+test('js-* and vue-* bundles satisfy Babel/terser, external isolation, CSS, and worker embedding checks', () => {
     for (const rel of ['packages/js-docx/lib/index.js', 'packages/js-docx/lib/index.umd.js']) {
         const code = fs.readFileSync(path.join(CORE_DIR, rel), 'utf8');
         assert.equal(/core-js\/modules\//.test(code), false, `${rel} leaked core-js import/require`);
+    }
+
+    for (const p of ['vue-docx', 'vue-excel', 'vue-pdf', 'vue-pptx']) {
+        for (const v of ['v2', 'v3']) {
+            const code = fs.readFileSync(path.join(CORE_DIR, `packages/${p}/lib/${v}/index.js`), 'utf8');
+            const requires = [...new Set([...code.matchAll(/require\(['"]([^'"]+)['"]\)/g)].map(m => m[1]))];
+            for (const req of requires) {
+                assert.ok(
+                    ['vue', 'vue-demi', 'util'].includes(req),
+                    `Unexpected require("${req}") in ${p}/lib/${v}/index.js`
+                );
+            }
+            assert.equal(/require\(['"](@babel\/runtime|core-js\/modules)/.test(code), false, `${p}/${v} leaked runtime dependency`);
+        }
     }
 
     for (const rel of [
@@ -225,4 +239,50 @@ test('strict TypeScript check passes on all 7 package .d.ts files', () => {
             stdio: 'pipe'
         }
     );
+
+    const tmpTsDir = fs.mkdtempSync(path.join(CORE_DIR, '.tmp-dts-check-'));
+    const consumerFile = path.join(tmpTsDir, 'consumer.ts');
+    try {
+        fs.writeFileSync(
+            consumerFile,
+            [
+                `import VueDocx, { DocxProps } from '${path.join(CORE_DIR, 'packages/vue-docx/lib/index').replace(/\\/g, '/')}';`,
+                `import VueExcel, { ExcelProps } from '${path.join(CORE_DIR, 'packages/vue-excel/lib/index').replace(/\\/g, '/')}';`,
+                `import VuePdf, { PdfProps } from '${path.join(CORE_DIR, 'packages/vue-pdf/lib/index').replace(/\\/g, '/')}';`,
+                `import VuePptx, { PptxProps } from '${path.join(CORE_DIR, 'packages/vue-pptx/lib/index').replace(/\\/g, '/')}';`,
+                `import jsDocx from '${path.join(CORE_DIR, 'packages/js-docx/lib/index').replace(/\\/g, '/')}';`,
+                `import jsExcel from '${path.join(CORE_DIR, 'packages/js-excel/lib/index').replace(/\\/g, '/')}';`,
+                `import jsPdf from '${path.join(CORE_DIR, 'packages/js-pdf/lib/index').replace(/\\/g, '/')}';`,
+                'const p1: DocxProps = { src: null };',
+                'const p2: ExcelProps = { src: new Response("a") };',
+                'const p3: PdfProps = { src: new Uint8Array([1]) };',
+                'const p4: PptxProps = {};',
+                'void [VueDocx, VueExcel, VuePdf, VuePptx, jsDocx, jsExcel, jsPdf, p1, p2, p3, p4];'
+            ].join('\n'),
+            'utf8'
+        );
+        execFileSync(
+            process.execPath,
+            [
+                tscJs,
+                '--noEmit',
+                '--strict',
+                '--moduleResolution',
+                'node',
+                '--target',
+                'es2020',
+                '--lib',
+                'es2020,dom',
+                '--typeRoots',
+                './_no_types',
+                consumerFile
+            ],
+            {
+                cwd: CORE_DIR,
+                stdio: 'pipe'
+            }
+        );
+    } finally {
+        fs.rmSync(tmpTsDir, { recursive: true, force: true });
+    }
 });

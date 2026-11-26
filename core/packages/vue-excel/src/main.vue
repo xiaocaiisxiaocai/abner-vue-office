@@ -92,11 +92,17 @@ export default defineComponent({
                     throw new Error('未获取到数据，可能文件格式不正确或文件已损坏');
                 }
                 if (opts.beforeTransformData && typeof opts.beforeTransformData === 'function') {
-                    workbook = opts.beforeTransformData(workbook);
+                    const nextWb = opts.beforeTransformData(workbook);
+                    if (nextWb !== undefined) {
+                        workbook = nextWb;
+                    }
                 }
                 let { workbookData, medias, workbookSource } = transferExcelToSpreadSheet(workbook, { ...defaultOptions, ...opts });
                 if (opts.transformData && typeof opts.transformData === 'function') {
-                    workbookData = opts.transformData(workbookData);
+                    const nextData = opts.transformData(workbookData);
+                    if (nextData !== undefined) {
+                        workbookData = nextData;
+                    }
                 }
                 clearSwapTimer();
                 mediasSource = medias;
@@ -220,7 +226,7 @@ export default defineComponent({
             const tableRender = xs.sheet.table.render;
             xs.sheet.table.render = function (...args) {
                 xs && xs.sheet && tableRender.apply(xs.sheet.table, args);
-                renderImageDebounce();
+                renderImageDebounce && renderImageDebounce();
             };
 
             const setOffset = xs.sheet.editor.setOffset;
@@ -248,6 +254,11 @@ export default defineComponent({
             xs = null;
             ctx = null;
             fileData = null;
+            mediasSource = [];
+            workbookDataSource = {
+                _worksheets: []
+            };
+            offset = null;
         });
 
         watch(() => props.src, () => {

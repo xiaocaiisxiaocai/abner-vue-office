@@ -103,7 +103,7 @@ export default defineComponent({
                     if (shouldCommit()) {
                         emit('rendered');
                     }
-                });
+                }).catch(() => {});
             }
         });
 

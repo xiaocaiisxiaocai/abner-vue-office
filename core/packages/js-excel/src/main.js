@@ -112,7 +112,7 @@ class AbnerJsExcelPreview {
                 }
                 that.renderImageDebounce && that.renderImageDebounce.cancel();
                 that.xs.reRender();
-                that.options && that.options.switchSheet && that.options.switchSheet(index);
+                that.options && typeof that.options.switchSheet === 'function' && that.options.switchSheet(index);
             });
         };
 
@@ -141,7 +141,7 @@ class AbnerJsExcelPreview {
         const tableRender = this.xs.sheet.table.render;
         this.xs.sheet.table.render = function (...args) {
             that.xs && that.xs.sheet && tableRender.apply(that.xs.sheet.table, args);
-            that.renderImageDebounce();
+            that.renderImageDebounce && that.renderImageDebounce();
         };
 
         const setOffset = this.xs.sheet.editor.setOffset;
@@ -185,11 +185,17 @@ class AbnerJsExcelPreview {
                 throw new Error('未获取到数据，可能文件格式不正确或文件已损坏');
             }
             if (this.options.beforeTransformData && typeof this.options.beforeTransformData === 'function') {
-                workbook = this.options.beforeTransformData(workbook);
+                const nextWb = this.options.beforeTransformData(workbook);
+                if (nextWb !== undefined) {
+                    workbook = nextWb;
+                }
             }
             let { workbookData, medias, workbookSource } = transferExcelToSpreadSheet(workbook, this.options);
             if (this.options.transformData && typeof this.options.transformData === 'function') {
-                workbookData = this.options.transformData(workbookData);
+                const nextData = this.options.transformData(workbookData);
+                if (nextData !== undefined) {
+                    workbookData = nextData;
+                }
             }
             this.clearSwapTimer();
             this.mediasSource = medias;
@@ -199,7 +205,7 @@ class AbnerJsExcelPreview {
             clearCache(this.ctx);
             this.renderImageDebounce && this.renderImageDebounce.cancel();
             this.xs.loadData(workbookData);
-            this.options.switchSheet && this.options.switchSheet(0);
+            typeof this.options.switchSheet === 'function' && this.options.switchSheet(0);
         }).catch(e => {
             if (!this.isDestroyed && currentId === this.renderId) {
                 this.fileData = null;
@@ -209,10 +215,12 @@ class AbnerJsExcelPreview {
     }
 
     hack() {
-        this.observerCallback = debounce(() => readOnlyInput(this.wrapperMain), 200);
-        this.observer = new MutationObserver(this.observerCallback);
-        const observerConfig = { attributes: true, childList: true, subtree: true };
-        this.observer.observe(this.wrapperMain, observerConfig);
+        if (typeof MutationObserver !== 'undefined') {
+            this.observerCallback = debounce(() => readOnlyInput(this.wrapperMain), 200);
+            this.observer = new MutationObserver(this.observerCallback);
+            const observerConfig = { attributes: true, childList: true, subtree: true };
+            this.observer.observe(this.wrapperMain, observerConfig);
+        }
         readOnlyInput(this.wrapperMain);
     }
 
@@ -225,6 +233,9 @@ class AbnerJsExcelPreview {
     }
 
     async preview(src) {
+        if (this.isDestroyed) {
+            return;
+        }
         const currentId = ++this.renderId;
         if (!src) {
             this.fileData = null;
@@ -275,8 +286,8 @@ class AbnerJsExcelPreview {
         this.wrapperMain = null;
         this.ctx = null;
         this.xs = null;
-        this.options = null;
-        this.requestOptions = null;
+        this.options = {};
+        this.requestOptions = {};
         this.mediasSource = null;
         this.workbookDataSource = null;
         this.fileData = null;

@@ -6,9 +6,12 @@ export function unbind(target, name, fn) {
   target.removeEventListener(name, fn);
 }
 export function unbindClickoutside(el) {
-  if (el.xclickoutside) {
-    unbind(window.document.body, 'click', el.xclickoutside);
-    delete el.xclickoutside;
+  const dom = el && el.el ? el.el : el;
+  if (dom && dom.xclickoutside) {
+    if (typeof window !== 'undefined' && window.document && window.document.body) {
+      unbind(window.document.body, 'click', dom.xclickoutside);
+    }
+    delete dom.xclickoutside;
   }
 }
 
@@ -16,17 +19,26 @@ export function unbindClickoutside(el) {
 // the right mouse button: mousedown → contenxtmenu → mouseup
 // the right mouse button in firefox(>65.0): mousedown → contenxtmenu → mouseup → click on window
 export function bindClickoutside(el, cb) {
-  el.xclickoutside = (evt) => {
+  const dom = el && el.el ? el.el : el;
+  if (!dom || typeof window === 'undefined' || !window.document || !window.document.body) {
+    return;
+  }
+  unbindClickoutside(el);
+  dom.xclickoutside = (evt) => {
     // ignore double click
     // console.log('evt:', evt);
-    if (evt.detail === 2 || el.contains(evt.target)) return;
+    const containsTarget = (el && typeof el.contains === 'function' && el.contains(evt.target))
+      || (typeof dom.contains === 'function' && dom.contains(evt.target));
+    if (evt.detail === 2 || containsTarget) return;
     if (cb) cb(el);
     else {
-      el.hide();
+      if (el && typeof el.hide === 'function') {
+        el.hide();
+      }
       unbindClickoutside(el);
     }
   };
-  bind(window.document.body, 'click', el.xclickoutside);
+  bind(window.document.body, 'click', dom.xclickoutside);
 }
 export function mouseMoveUp(target, movefunc, upfunc) {
   bind(target, 'mousemove', movefunc);

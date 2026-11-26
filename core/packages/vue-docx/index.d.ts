@@ -1,4 +1,4 @@
-export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob;
+export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob | Response;
 
 export interface RequestOptions {
     method?: string;
@@ -32,7 +32,7 @@ export interface DocxOptions {
 export type Options = DocxOptions;
 
 export interface DocxProps {
-    src: OfficeSource;
+    src?: OfficeSource | null;
     requestOptions?: RequestOptions;
     options?: DocxOptions;
     onRendered?: () => void;

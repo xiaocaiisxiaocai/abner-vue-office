@@ -192,7 +192,8 @@ export default class Toolbar {
       this.el.hide();
     } else {
       this.reset();
-      setTimeout(() => {
+      this._resizeTimer = setTimeout(() => {
+        this._resizeTimer = null;
         initBtns2.call(this);
         moreResize.call(this);
       }, 0);
@@ -204,6 +205,10 @@ export default class Toolbar {
   }
 
   destroy() {
+    if (this._resizeTimer) {
+      clearTimeout(this._resizeTimer);
+      this._resizeTimer = null;
+    }
     if (this._onWindowResize) {
       unbind(window, 'resize', this._onWindowResize);
       this._onWindowResize = null;

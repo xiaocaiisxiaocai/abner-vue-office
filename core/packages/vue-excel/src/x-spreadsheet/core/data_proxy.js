@@ -1223,6 +1223,9 @@ export default class DataProxy {
   }
 
   setData(d) {
+    if (!d || typeof d !== 'object') {
+      return this;
+    }
     Object.keys(d).forEach((property) => {
       if (property === 'merges' || property === 'rows'
         || property === 'cols' || property === 'validations') {

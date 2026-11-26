@@ -163,7 +163,10 @@ export function readExcelData(buffer, xls){
 
 function transferColumns(excelSheet, spreadSheet, options, effectiveMaxColLen = 0){
     const rawColumns = excelSheet.columns || [];
-    const targetLen = Math.max(effectiveMaxColLen, options.minColLength || 0);
+    const minColLen = typeof options.minColLength === 'number' && Number.isFinite(options.minColLength) && options.minColLength >= 0
+        ? options.minColLength
+        : 0;
+    const targetLen = Math.max(effectiveMaxColLen, minColLen);
     const limit = Math.min(rawColumns.length, targetLen);
     for(let i = 0; i < limit; i++){
         const col = rawColumns[i];
@@ -190,10 +193,16 @@ function transferColumns(excelSheet, spreadSheet, options, effectiveMaxColLen = 
 }
 
 function formatExcelDate(val, fmt) {
-    if (val instanceof Date) {
-        return dayjs(val).add(val.getTimezoneOffset(), 'minute').format(fmt);
+    if (val == null) {
+        return '';
     }
-    return dayjs(val).format(fmt);
+    const parsed = val instanceof Date
+        ? dayjs(val).add(val.getTimezoneOffset(), 'minute')
+        : dayjs(val);
+    if (!parsed.isValid()) {
+        return '';
+    }
+    return parsed.format(fmt);
 }
 
 function splitNumFmtSections(fmt) {
@@ -244,6 +253,9 @@ function formatNumberValue(value, cellNumFmt) {
         if (typeof value !== 'number') {
             return value != null ? String(value) : '';
         }
+        if (!Number.isFinite(value)) {
+            return String(value);
+        }
         if (cellNumFmt && typeof cellNumFmt === 'string') {
             const sections = splitNumFmtSections(cellNumFmt);
             let section = sections[0] || '';
@@ -255,36 +267,58 @@ function formatNumberValue(value, cellNumFmt) {
                 section = sections[2];
             }
 
-            if (value === 0 && !/[0#?]/.test(section)) {
-                const zeroQuoted = section.match(/"([^"]+)"/);
-                if (zeroQuoted) {
-                    return zeroQuoted[1];
-                }
-                return section.includes('-') ? '-' : '';
-            }
-            if (value === 0 && sections[0].startsWith('_')) {
-                return '-';
-            }
-
             const currencyMatch = section.match(/\[\$([^-\]]+)/);
             let bracketCurrency = '';
             if (currencyMatch && currencyMatch[1]) {
                 bracketCurrency = currencyMatch[1];
             }
             const cleanSection = section.replace(/\[[^\]]*\]/g, '');
+            const patternOnly = cleanSection.replace(/"[^"]*"/g, '').replace(/[_*\\]./g, '');
 
-            if (cleanSection.includes('%')) {
-                const precision = cleanSection.match(/\.(\d+)%/);
-                const scaled = value * 100;
-                if (precision) {
-                    return scaled.toFixed(precision[1].length) + '%';
+            if (value === 0 && !/[0#]/.test(patternOnly)) {
+                const zeroQuoted = cleanSection.match(/"([^"]+)"/);
+                if (zeroQuoted) {
+                    return zeroQuoted[1];
                 }
-                return parseFloat(scaled.toFixed(12)) + '%';
+                return patternOnly.includes('-') ? '-' : '';
             }
 
-            if (/[0#?]/.test(cleanSection)) {
-                const isParenNeg = useAbsForNegSection && /\(.*[0#?].*\)/.test(cleanSection);
-                const hasExplicitMinus = useAbsForNegSection && /-/.test(cleanSection.split('"')[0]);
+            const isParenNeg = useAbsForNegSection && /\(.*[0#?].*\)/.test(patternOnly);
+            const hasExplicitMinus = useAbsForNegSection && /-/.test(patternOnly);
+            const isPercent = patternOnly.includes('%');
+
+            if (isPercent) {
+                const rawScaled = (useAbsForNegSection ? Math.abs(value) : value) * 100;
+                const pctDecMatch = patternOnly.match(/\.([0#?]+)/);
+                let pctResult;
+                if (pctDecMatch) {
+                    const maxDec = pctDecMatch[1].length;
+                    const minDec = (pctDecMatch[1].match(/0/g) || []).length;
+                    pctResult = rawScaled.toFixed(maxDec);
+                    if (maxDec > minDec && pctResult.includes('.')) {
+                        const [intPart, fracPart] = pctResult.split('.');
+                        let trimmedFrac = fracPart;
+                        while (trimmedFrac.length > minDec && trimmedFrac.endsWith('0')) {
+                            trimmedFrac = trimmedFrac.slice(0, -1);
+                        }
+                        pctResult = trimmedFrac.length > 0 ? `${intPart}.${trimmedFrac}` : intPart;
+                    }
+                } else {
+                    pctResult = String(parseFloat(rawScaled.toFixed(12)));
+                }
+                if (/^-[0]+(\.[0]+)?$/.test(pctResult)) {
+                    pctResult = pctResult.slice(1);
+                }
+                if (isParenNeg) {
+                    return `(${pctResult}%)`;
+                }
+                if (value < 0 && hasExplicitMinus && !pctResult.startsWith('-')) {
+                    return `-${pctResult}%`;
+                }
+                return `${pctResult}%`;
+            }
+
+            if (/[0#]/.test(patternOnly)) {
                 const numVal = useAbsForNegSection ? Math.abs(value) : value;
 
                 let prefix = '';
@@ -292,19 +326,53 @@ function formatNumberValue(value, cellNumFmt) {
                 const leadingPart = firstDigitIdx > 0 ? cleanSection.slice(0, firstDigitIdx) : '';
                 if (bracketCurrency) {
                     prefix = bracketCurrency;
-                } else if (leadingPart.includes('$')) {
-                    prefix = '$';
-                } else if (leadingPart.includes('¥')) {
-                    prefix = '¥';
-                } else if (leadingPart.includes('￥')) {
-                    prefix = '￥';
+                } else {
+                    const quotedPrefix = leadingPart.match(/"([^"]+)"/);
+                    if (quotedPrefix && quotedPrefix[1]) {
+                        prefix = quotedPrefix[1];
+                    } else if (leadingPart.includes('$')) {
+                        prefix = '$';
+                    } else if (leadingPart.includes('¥')) {
+                        prefix = '¥';
+                    } else if (leadingPart.includes('￥')) {
+                        prefix = '￥';
+                    } else if (leadingPart.includes('€')) {
+                        prefix = '€';
+                    } else if (leadingPart.includes('£')) {
+                        prefix = '£';
+                    }
                 }
 
-                const precisionMatch = cleanSection.match(/[0#]\.(0+)/);
-                const precision = precisionMatch ? precisionMatch[1].length : 0;
+                const decMatch = patternOnly.match(/[0#?]\.([0#?]+)/);
+                const maxDec = decMatch ? decMatch[1].length : 0;
+                const minDec = decMatch ? (decMatch[1].match(/0/g) || []).length : 0;
 
-                let result = numVal.toFixed(precision);
-                if (cleanSection.includes('#,##') || cleanSection.includes('0,0')) {
+                let result = numVal.toFixed(maxDec);
+                if (maxDec > minDec && result.includes('.')) {
+                    const [intPart, fracPart] = result.split('.');
+                    let trimmedFrac = fracPart;
+                    while (trimmedFrac.length > minDec && trimmedFrac.endsWith('0')) {
+                        trimmedFrac = trimmedFrac.slice(0, -1);
+                    }
+                    result = trimmedFrac.length > 0 ? `${intPart}.${trimmedFrac}` : intPart;
+                }
+                if (/^-[0]+(\.[0]+)?$/.test(result)) {
+                    result = result.slice(1);
+                }
+
+                const intPattern = patternOnly.split('.')[0];
+                const intZeroCount = (intPattern.match(/0/g) || []).length;
+                if (!patternOnly.includes(',') && intZeroCount > 1) {
+                    const parts = result.split('.');
+                    const neg = parts[0].startsWith('-');
+                    const absDigits = neg ? parts[0].slice(1) : parts[0];
+                    if (absDigits.length < intZeroCount) {
+                        parts[0] = (neg ? '-' : '') + absDigits.padStart(intZeroCount, '0');
+                        result = parts.join('.');
+                    }
+                }
+
+                if (patternOnly.includes('#,##') || patternOnly.includes('0,0') || patternOnly.includes('#,#')) {
                     const parts = result.split('.');
                     const digits = parts[0].split('').reverse();
                     const formatted = [];
@@ -317,11 +385,15 @@ function formatNumberValue(value, cellNumFmt) {
                     parts[0] = formatted.reverse().join('');
                     result = parts.join('.');
                 }
+
                 const suffix = extractTrailingQuotedSuffix(cleanSection);
                 if (isParenNeg) {
                     return `(${prefix}${result}${suffix})`;
                 }
-                if (value < 0 && hasExplicitMinus && !result.startsWith('-')) {
+                if (result.startsWith('-')) {
+                    return `-${prefix}${result.slice(1)}${suffix}`;
+                }
+                if (value < 0 && hasExplicitMinus && !/^0(\.0+)?$/.test(result)) {
                     return `-${prefix}${result}${suffix}`;
                 }
                 return `${prefix}${result}${suffix}`;
@@ -371,7 +443,7 @@ function getCellText(cell){
         case 3: //字符串
             return value != null ? String(value) : '';
         case 4: //日期
-            return formatExcelDateByNumFmt(value, numFmt);
+            return formatExcelDateByNumFmt(value, cellNumFmt);
 
         case 5: //超链接
             if (!value) {
@@ -405,9 +477,18 @@ function getCellText(cell){
             }
             return String(value.result);
         case 8: //富文本
+            if (typeof cell.text === 'string' && cell.text.length > 0) {
+                return cell.text;
+            }
+            if (value && Array.isArray(value.richText)) {
+                return value.richText.map(item => item.text || '').join('');
+            }
             return cell.text || '';
         case 9: //Boolean
-            return String(cell.text ?? value ?? '').toUpperCase();
+        {
+            const boolVal = value !== undefined && value !== null ? value : cell.text;
+            return boolVal !== undefined && boolVal !== null ? String(boolVal).toUpperCase() : '';
+        }
         case 10: //Error
             return (value && value.error) || (cell.text && cell.text.error) || '';
         default:
@@ -555,7 +636,11 @@ export function transferExcelToSpreadSheet(workbook, options = {}){
         const mergeMap = new Map();
         const styleMap = new Map();
         let effectiveMaxColLen = 0; //真正有数据的列长度，有时excel会展示一堆没数据的列
+        let effectiveMaxRowLen = 0;
         for(let mergeRange in sheet._merges) {
+            if (!Object.prototype.hasOwnProperty.call(sheet._merges, mergeRange)) {
+                continue;
+            }
             sheetData.merges.push(sheet._merges[mergeRange].shortRange);
             let mergeAddress = {};
             // 合并单元格起始地址
@@ -567,6 +652,7 @@ export function transferExcelToSpreadSheet(workbook, options = {}){
             // X轴方向跨度
             mergeAddress.XRange = sheet._merges[mergeRange].model.right - sheet._merges[mergeRange].model.left;
             effectiveMaxColLen = Math.max(effectiveMaxColLen, sheet._merges[mergeRange].model.right || 0);
+            effectiveMaxRowLen = Math.max(effectiveMaxRowLen, sheet._merges[mergeRange].model.bottom || 0);
             mergeMap.set(mergeAddress.startAddress, mergeAddress);
         }
 
@@ -616,24 +702,32 @@ export function transferExcelToSpreadSheet(workbook, options = {}){
             (sheet._media || []).forEach(media => {
                 const brCol = media && media.range && media.range.br && media.range.br.nativeCol;
                 const tlCol = media && media.range && media.range.tl && media.range.tl.nativeCol;
+                const brRow = media && media.range && media.range.br && media.range.br.nativeRow;
+                const tlRow = media && media.range && media.range.tl && media.range.tl.nativeRow;
                 if (typeof brCol === 'number') {
                     effectiveMaxColLen = Math.max(effectiveMaxColLen, brCol + 1);
                 } else if (typeof tlCol === 'number') {
                     effectiveMaxColLen = Math.max(effectiveMaxColLen, tlCol + 1);
+                }
+                if (typeof brRow === 'number') {
+                    effectiveMaxRowLen = Math.max(effectiveMaxRowLen, brRow + 1);
+                } else if (typeof tlRow === 'number') {
+                    effectiveMaxRowLen = Math.max(effectiveMaxRowLen, tlRow + 1);
                 }
             });
         }
 
         let tempRowsKeys = Object.keys(sheetData.rows);
         const maxRowLen = tempRowsKeys.length ? +tempRowsKeys[tempRowsKeys.length - 1] + 1 : 0;
+        const minRowLen = typeof opts.minRowLength === 'number' && Number.isFinite(opts.minRowLength) && opts.minRowLength >= 0
+            ? opts.minRowLength
+            : 100;
 
-        sheetData.rows.len = Math.max(maxRowLen,
-            Object.prototype.hasOwnProperty.call(opts, 'minRowLength') ? opts.minRowLength : 100);
+        sheetData.rows.len = Math.max(maxRowLen, effectiveMaxRowLen, minRowLen);
 
         transferColumns(sheet, sheetData, opts, effectiveMaxColLen);
         workbookData.push(sheetData);
     });
-    // console.log(workbookData, 'workbookData');
     workbook._worksheets = sheets;
     return {
         workbookData,

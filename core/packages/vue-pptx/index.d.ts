@@ -1,4 +1,4 @@
-export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob;
+export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob | Response;
 
 export interface PptxOptions {
     width?: number;
@@ -9,7 +9,7 @@ export interface PptxOptions {
 export type Options = PptxOptions;
 
 export interface PptxProps {
-    src: OfficeSource;
+    src?: OfficeSource | null;
     requestOptions?: Record<string, any>;
     options?: PptxOptions;
     onRendered?: (pptx?: any) => void;

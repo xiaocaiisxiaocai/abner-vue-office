@@ -17,6 +17,9 @@ let switchTimer = null;
 onMounted(() => {
     myDocxPreview = jsDocx.init(dom.value);
     myDocxPreview.preview(`${baseUrl}static/test-files/test.docx`).then(() => {
+        if (!myDocxPreview) {
+            return;
+        }
         console.log('docx preview done');
         switchTimer = setTimeout(() => {
             if (myDocxPreview) {

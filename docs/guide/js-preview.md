@@ -164,10 +164,10 @@ export interface Options {
 ### preview方法
 调用preview方法进行文件的预览。
 
-preview方法接收参数支持：`string | ArrayBuffer | ArrayBufferView | Blob`（文件 URL 地址、`ArrayBuffer`、`Uint8Array` 等 TypedArray、`Blob`）。
+preview方法接收参数支持：`string | ArrayBuffer | ArrayBufferView | Blob | Response`（文件 URL 地址、`ArrayBuffer`、`Uint8Array` 等 TypedArray、`Blob`、`Response`）。
 
 ```ts
-preview: (src: string | ArrayBuffer | ArrayBufferView | Blob) => Promise<any>
+preview: (src: string | ArrayBuffer | ArrayBufferView | Blob | Response) => Promise<any>
 ```
 
 url格式适合有文件静态地址的情况，ArrayBuffer格式适合文件上传前的预览。

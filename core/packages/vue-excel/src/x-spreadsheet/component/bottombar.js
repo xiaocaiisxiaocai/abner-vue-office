@@ -149,6 +149,8 @@ export default class Bottombar {
     });
     this.items = [];
     this.dataNames = [];
+    this.activeEl = null;
+    this.deleteEl = null;
     this.moreEl.reset(this.dataNames);
   }
 

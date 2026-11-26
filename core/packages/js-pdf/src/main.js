@@ -339,6 +339,9 @@ class AbnerJsPdfPreview {
     }
 
     preview(src) {
+        if (this.isDestroyed) {
+            return Promise.resolve();
+        }
         const currentId = ++this.renderId;
         if (!src) {
             this.clearAllCanvas();
@@ -453,6 +456,9 @@ class AbnerJsPdfPreview {
             return;
         }
         this.pdfDocument.getData().then(fileData => {
+            if (this.isDestroyed) {
+                return;
+            }
             downloadFile(
                 fileName || `abner-vue-office-js-pdf-${new Date().getTime()}.pdf`,
                 new Blob([fileData], { type: 'application/pdf' })

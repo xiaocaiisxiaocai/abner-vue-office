@@ -43,6 +43,9 @@ class AbnerJsDocxPreview {
     }
 
     async preview(src) {
+        if (this.isDestroyed) {
+            return;
+        }
         const currentId = ++this.renderId;
         const shouldCommit = () => !this.isDestroyed && currentId === this.renderId && !!this.wrapperMain;
         if (!src) {
