@@ -15,7 +15,7 @@ function returnMessage(flag, key, ...arg) {
 }
 
 export default class Validator {
-  // operator: b|nb|eq|neq|lt|lte|gt|gte
+  // operator: be|nbe|eq|neq|lt|lte|gt|gte
   // type: date|number|list|phone|email
   constructor(type, required, value, operator) {
     this.required = required;
@@ -37,6 +37,7 @@ export default class Validator {
   }
 
   equals(other) {
+    if (!other) return false;
     let flag = this.type === other.type
       && this.required === other.required
       && this.operator === other.operator;
@@ -51,26 +52,31 @@ export default class Validator {
   }
 
   values() {
-    return this.value.split(',');
+    return typeof this.value === 'string' ? this.value.split(',') : [];
   }
 
   validate(v) {
     const {
       required, operator, value, type,
     } = this;
-    if (required && /^\s*$/.test(v)) {
+    const str = v == null ? '' : String(v);
+    if (required && /^\s*$/.test(str)) {
       return returnMessage(false, 'required');
     }
-    if (/^\s*$/.test(v)) return [true];
-    if (rules[type] && !rules[type].test(v)) {
+    if (/^\s*$/.test(str)) return [true];
+    if (rules[type] && !rules[type].test(str)) {
       return returnMessage(false, 'notMatch');
     }
     if (type === 'list') {
-      return returnMessage(this.values().includes(v), 'notIn');
+      return returnMessage(this.values().includes(str), 'notIn');
     }
     if (operator) {
-      const v1 = this.parseValue(v);
+      const v1 = this.parseValue(str);
+      if ((type === 'number' || type === 'date') && Number.isNaN(v1)) {
+        return returnMessage(false, 'notMatch');
+      }
       if (operator === 'be') {
+        if (!Array.isArray(value) || value.length < 2) return [false, ''];
         const [min, max] = value;
         return returnMessage(
           v1 >= this.parseValue(min) && v1 <= this.parseValue(max),
@@ -80,6 +86,7 @@ export default class Validator {
         );
       }
       if (operator === 'nbe') {
+        if (!Array.isArray(value) || value.length < 2) return [false, ''];
         const [min, max] = value;
         return returnMessage(
           v1 < this.parseValue(min) || v1 > this.parseValue(max),

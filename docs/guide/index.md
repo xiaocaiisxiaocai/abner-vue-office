@@ -6,33 +6,38 @@ abner-vue-office是一个支持多种文件（docx、xlsx、xls、pdf、pptx）�
 
 ## 功能特色
 - 一站式：提供docx、xlsx、xls、pdf、pptx多种文档的在线预览方案，有它就够了，不用再四处寻找、测试、集成各种库了
-- 使用简单：只需提供文档的src(网络地址)即可完成文档预览，也支持ArrayBuffer、Blob等多种格式
+- 使用简单：只需提供文档的src(网络地址)即可完成文档预览，也支持ArrayBuffer、ArrayBufferView、Blob、Response等多种格式
 - 支持样式：不仅能预览内容，也支持文档样式，最大限度还原office文件内容
 
 
 ## 安装
 ```shell
-#docx文档预览组件
-npm install @abner-vue-office/docx vue-demi
+# docx文档预览组件
+npm install @abner-vue-office/docx vue-demi@0.14.6
 
-#excel文档预览组件
-npm install @abner-vue-office/excel vue-demi
+# excel文档预览组件
+npm install @abner-vue-office/excel vue-demi@0.14.6
 
-#pdf文档预览组件
-npm install @abner-vue-office/pdf vue-demi
+# pdf文档预览组件
+npm install @abner-vue-office/pdf vue-demi@0.14.6
 
-#pptx文档预览组件
-npm install @abner-vue-office/pptx vue-demi
+# pptx文档预览组件
+npm install @abner-vue-office/pptx vue-demi@0.14.6
 ```
-如果是vue2.6版本或以下还需要额外安装 @vue/composition-api
+如果是 Vue 2.6 版本或以下还需要额外安装并注册 `@vue/composition-api`：
 ```shell
 npm install @vue/composition-api
+```
+```javascript
+import Vue from 'vue'
+import VueCompositionAPI from '@vue/composition-api'
+Vue.use(VueCompositionAPI)
 ```
 
 
 ## 使用网络地址预览
 
-docx、xlsx、pdf三种文件的预览方式几乎一致，我们先以docx文档的预览为例，介绍下组件用法。
+docx、xlsx、pdf、pptx 四种文件的预览方式几乎一致，我们先以docx文档的预览为例，介绍下组件用法。
 
 docx的预览如下：
 ```vue
@@ -73,7 +78,7 @@ export default {
 ```
 可以看出，非常的简单，只需要指定文档的src远程地址即可。
 
-可以设置组件的style配置样式，通常需要设置下高度height，如果不设置则默认取组件的父元素高度，最小高度300px。
+建议为组件设置 `style` 高度（如 `height: 100vh;`）或确保其父容器拥有明确高度（组件根容器使用 `height: 100%`）。
 
 组件渲染完成会抛出rendered事件，渲染失败会抛出error事件。
 
@@ -96,7 +101,7 @@ export default {
         >
             <el-button size="small" type="warning">点击上传</el-button>
         </el-upload>
-        <abner-vue-office-docx :src="src"/>
+        <abner-vue-office-docx :src="src" style="height: 100vh;"/>
     </div>
 </template>
 
@@ -117,12 +122,13 @@ export default {
     methods: {
         //在beforeUpload中读取文件内容
         beforeUpload(file) {
+            if (!file) return false;
             let reader = new FileReader();
-            reader.readAsArrayBuffer(file);
             reader.onload = (loadEvent) => {
                 let arrayBuffer = loadEvent.target.result;
-                this.src = arrayBuffer
+                this.src = arrayBuffer;
             };
+            reader.readAsArrayBuffer(file);
             return false
         }
     }
@@ -137,7 +143,7 @@ export default {
 <template>
     <div>
         <input type="file" @change="changeHandle"/>
-        <abner-vue-office-docx :src="src"/>
+        <abner-vue-office-docx :src="src" style="height: 100vh;"/>
     </div>
 </template>
 
@@ -156,12 +162,13 @@ export default {
     },
     methods: {
         changeHandle(event) {
-            let file = event.target.files[0]
-            let fileReader = new FileReader()
-            fileReader.readAsArrayBuffer(file)
+            let file = event.target.files && event.target.files[0];
+            if (!file) return;
+            let fileReader = new FileReader();
             fileReader.onload = () => {
-                this.src = fileReader.result
-            }
+                this.src = fileReader.result;
+            };
+            fileReader.readAsArrayBuffer(file);
         }
     }
 }

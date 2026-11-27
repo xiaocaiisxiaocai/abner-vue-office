@@ -1,5 +1,15 @@
 export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob | Response;
 
+export interface RequestOptions {
+    method?: string;
+    headers?: Record<string, string>;
+    withCredentials?: boolean;
+    credentials?: RequestCredentials;
+    timeout?: number;
+    body?: any;
+    [key: string]: any;
+}
+
 export interface ExcelCellEvent {
     cell: any;
     rowIndex: number;
@@ -23,19 +33,23 @@ export interface ExcelOptions {
     showContextmenu?: boolean;
     beforeTransformData?: (workbookData: any) => any;
     transformData?: (workbookData: any) => any;
+    [key: string]: any;
 }
 
 export type Options = ExcelOptions;
 
 export interface ExcelProps {
     src?: OfficeSource | null;
-    requestOptions?: Record<string, any>;
+    requestOptions?: RequestOptions;
     options?: ExcelOptions;
     onRendered?: () => void;
     onError?: (error: any) => void;
     onSwitchSheet?: (sheetIndex: number) => void;
     onCellSelected?: (event: ExcelCellEvent) => void;
     onCellsSelected?: (event: ExcelCellsEvent) => void;
+    class?: any;
+    style?: any;
+    [key: string]: any;
 }
 
 export interface AbnerVueOfficeExcelInstance {

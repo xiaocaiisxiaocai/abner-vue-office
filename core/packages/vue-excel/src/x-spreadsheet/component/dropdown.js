@@ -43,13 +43,20 @@ export default class Dropdown extends Element {
   }
 
   setTitle(title) {
-    this.title.html(title);
+    if (this.title && this.title.el) {
+      this.title.el.textContent = title != null ? String(title) : '';
+    }
     this.hide();
   }
 
   show() {
     const { contentEl } = this;
     contentEl.show();
+    if (this._clickoutsideEl) {
+      this._clickoutsideEl.active(false);
+      unbindClickoutside(this._clickoutsideEl);
+      this._clickoutsideEl = null;
+    }
     if (this.el && this.el.parentNode) {
       const parentEl = this.parent();
       parentEl.active();

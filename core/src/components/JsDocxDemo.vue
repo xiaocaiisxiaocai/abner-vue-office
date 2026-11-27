@@ -1,29 +1,26 @@
 <template>
-<div ref="dom">
-
-</div>
+<div ref="dom" style="height: calc(100vh - 50px);"></div>
 </template>
 
 <script setup>
 import { onMounted, onBeforeUnmount, ref } from 'vue';
 import jsDocx from '../../packages/js-docx/index';
 import '../../packages/js-docx/index.css';
+import { getStaticFileUrl } from '../hooks/usePreview.js';
 
 const dom = ref(null);
-const baseUrl = location.origin + (location.pathname + '/').replace('//', '/');
 let myDocxPreview = null;
 let switchTimer = null;
 
 onMounted(() => {
     myDocxPreview = jsDocx.init(dom.value);
-    myDocxPreview.preview(`${baseUrl}static/test-files/test.docx`).then(() => {
+    myDocxPreview.preview(getStaticFileUrl('static/test-files/test.docx')).then(() => {
         if (!myDocxPreview) {
             return;
         }
-        console.log('docx preview done');
         switchTimer = setTimeout(() => {
             if (myDocxPreview) {
-                myDocxPreview.preview(`${baseUrl}static/test-files/test2.docx`).catch(err => {
+                myDocxPreview.preview(getStaticFileUrl('static/test-files/test2.docx')).catch(err => {
                     console.log('err', err);
                 });
             }
@@ -40,11 +37,10 @@ onBeforeUnmount(() => {
     }
     if (myDocxPreview && typeof myDocxPreview.destroy === 'function') {
         myDocxPreview.destroy();
-        myDocxPreview = null;
     }
+    myDocxPreview = null;
 });
 </script>
 
 <style scoped>
-
 </style>

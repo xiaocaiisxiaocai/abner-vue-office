@@ -378,7 +378,8 @@ test('x-spreadsheet Bottombar, Editor, Selector, ModalValidation, FormField, Dro
         });
         const df = new DropdownFormat();
         df.contentEl.el.children[0].dispatchEvent({ type: 'click' });
-        assert.equal(df.title.html(), '数值');
+        assert.equal(df.title.el.textContent, '数值');
+        assert.equal(df.title.html(), '');
 
         // Resizer ignores right-click and supports destroy()
         const Resizer = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/resizer.js', {
@@ -577,11 +578,12 @@ test('x-spreadsheet Bottombar, Editor, Selector, ModalValidation, FormField, Dro
             h,
             cssPrefix: 'x-spreadsheet',
             bind: eventMod.bind,
-            unbind: eventMod.unbind
+            unbind: eventMod.unbind,
+            hideTooltip: () => {}
         });
         const tb = new Toolbar(dp, () => 400, false);
         mockWindow.dispatchEvent({ type: 'resize' }); // must not throw when btns2 not initialized yet
-        assert.ok(tb.btns2 === undefined || Array.isArray(tb.btns2));
+        assert.equal(tb.btns2, undefined);
         const origMoreHide = tb.moreEl.dd.hide.bind(tb.moreEl.dd);
         tb.moreEl.dd.hide = () => {
             toolbarHideCount++;
@@ -603,12 +605,16 @@ test('x-spreadsheet Bottombar, Editor, Selector, ModalValidation, FormField, Dro
             Draw: class {
                 constructor() {
                     this.ctx = {};
+                    this._strokeStyle = '';
                 }
                 resize() {}
                 clear() {}
                 save() { return this; }
                 restore() { return this; }
-                attr() { return this; }
+                attr(o) {
+                    if (o && o.strokeStyle) this._strokeStyle = o.strokeStyle;
+                    return this;
+                }
                 translate() { return this; }
                 fillRect() { return this; }
                 fillText() { return this; }
@@ -617,7 +623,12 @@ test('x-spreadsheet Bottombar, Editor, Selector, ModalValidation, FormField, Dro
                 text() { return this; }
                 error() {}
                 frozen() {}
-                line(...pts) { drawnFreezeLines.push(pts); return this; }
+                line(...pts) {
+                    if (this._strokeStyle === 'rgba(75, 137, 255, .6)') {
+                        drawnFreezeLines.push(pts);
+                    }
+                    return this;
+                }
             },
             DrawBox: class {
                 constructor(x, y, w, h) {
@@ -641,6 +652,9 @@ test('x-spreadsheet Bottombar, Editor, Selector, ModalValidation, FormField, Dro
         td.freeze = [1, 0];
         tbl.render();
         assert.equal(errorLookupRi, 2);
+        const freezeLine = drawnFreezeLines.find(([[x1, y1], [x2, y2]]) => x1 === 0 && x2 > 0 && y1 === 25 && y2 === 25);
+        assert.ok(freezeLine);
+        assert.equal(drawnFreezeLines.length, 1);
     });
 });
 
@@ -651,19 +665,21 @@ test('x-spreadsheet sheet.js and index.js cover editor clear, paste merged guard
         'utf8'
     );
     const fnBody = sheetSrc
-        .slice(sheetSrc.indexOf('function scrollbarMove'), sheetSrc.indexOf('export default class Sheet'))
+        .slice(sheetSrc.indexOf('function getOverlayerOffset'), sheetSrc.indexOf('export default class Sheet'))
         .replace(/sheetReset\.call\(this\)/g, '(() => { this._resetCount = (this._resetCount || 0) + 1; })()');
 
     await runWithDomGlobals({ document: mockDocument, window: mockWindow }, () => {
+        const toastCalls = [];
         const harness = new Function(
-            'cssPrefix', 'bind', 'unbind', 'mouseMoveUp', 'bindTouch', 'xtoast',
+            'cssPrefix', 'bind', 'unbind', 'mouseMoveUp', 'bindTouch', 'xtoast', 'clearToasts',
             `${fnBody}\nreturn { scrollbarMove, selectorMove, paste, hideRowsOrCols, unhideRowsOrCols, autofilter, sortFilterChange, overlayerMousedown, sheetInitEvents };`
         )(
             'x-spreadsheet',
             (t, n, fn) => t.addEventListener(n, fn),
             (t, n, fn) => t.removeEventListener(n, fn),
             () => () => {},
-            () => {},
+            () => () => {},
+            (title, msg) => toastCalls.push({ title, msg }),
             () => {}
         );
 
@@ -712,17 +728,21 @@ test('x-spreadsheet sheet.js and index.js cover editor clear, paste merged guard
 
         // paste does NOT fall through to pasteFromText when data.paste returns false for merged cell
         let pasteFromTextCalled = 0;
-        let xtoastMsg = '';
         const pasteCtx = {
             data: {
                 settings: { mode: 'edit' },
                 clipboard: { isClear: () => false },
-                paste: () => false,
+                paste: (_what, onErr) => {
+                    onErr('Unable to do this for merged cells');
+                    return false;
+                },
                 pasteFromText: () => { pasteFromTextCalled++; }
             }
         };
         harness.paste.call(pasteCtx, 'all', { clipboardData: { getData: () => 'x' } });
         assert.equal(pasteFromTextCalled, 0);
+        assert.equal(toastCalls[0].title, 'Tip');
+        assert.match(toastCalls[0].msg, /merged cells/);
 
         // paste falls back to clipboardData when clipboard is clear
         harness.paste.call({
@@ -802,8 +822,7 @@ test('x-spreadsheet sheet.js and index.js cover editor clear, paste merged guard
         assert.equal(prevented, false);
 
         // x-spreadsheet/index.js syncs this.data and cleans up on destroy
-        const eventMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/event.js');
-        const { Element, h } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/element.js');
+        const { h } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/element.js');
         const DataProxy = createDataProxyClass();
         let bottombarInst = null;
         let resetDatas = [];
@@ -856,6 +875,5 @@ test('x-spreadsheet sheet.js and index.js cover editor clear, paste merged guard
         assert.equal(sheetDestroyed, true);
         assert.equal(sp.data, null);
         assert.equal(sp.sheet, null);
-        void xtoastMsg;
     });
 });

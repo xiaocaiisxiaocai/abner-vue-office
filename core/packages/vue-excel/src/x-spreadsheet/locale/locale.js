@@ -12,23 +12,22 @@ function translate(key, messages) {
     const keys = key.match(/(?:\\.|[^.])+/g);
     if (!keys) return undefined;
 
-    // Return the translation from the first language in the languages array
-    // that has a value for the provided key.
     for (const lang of $languages) {
-      if (!messages[lang]) continue;
+      if (!Object.prototype.hasOwnProperty.call(messages, lang) || !messages[lang]) continue;
 
       let message = messages[lang];
 
       for (let i = 0; i < keys.length; i += 1) {
-        const property = keys[i];
+        const property = keys[i].replace(/\\\./g, '.');
+        if (!message || typeof message !== 'object' || !Object.prototype.hasOwnProperty.call(message, property)) {
+          break;
+        }
         const value = message[property];
 
-        // If value doesn't exist, try next language
-        if (!value) break;
+        if (value === undefined) break;
 
         if (i === keys.length - 1) return value;
 
-        // Move down to the next level of the messages object
         message = value;
       }
     }
@@ -39,32 +38,24 @@ function translate(key, messages) {
 
 function t(key, ...args) {
   let v = translate(key, $messages);
-  if (!v && typeof window !== 'undefined' && window.x_spreadsheet && window.x_spreadsheet.$messages) {
+  if (v === undefined && typeof window !== 'undefined' && window.x_spreadsheet && window.x_spreadsheet.$messages) {
     v = translate(key, window.x_spreadsheet.$messages);
   }
   if (typeof v === 'string' && args.length > 0) {
     let idx = 0;
     v = v.replace(/\{\}/g, () => (idx < args.length ? args[idx++] : '{}'));
   }
-  return v || '';
+  return v !== undefined ? v : '';
 }
 
 function tf(key) {
   return () => t(key);
 }
 
-// If clearLangList is set to false, lang will be added to the front of the
-// languages array. The languages in the language array are searched in order
-// to find a translation. This allows the use of other languages as a fallback
-// if lang is missing some keys. The language array is preloaded with English.
-// To set the languages array to only include lang, set clearLangList to true.
 function locale(lang, message, clearLangList = false) {
   if (clearLangList) {
     $languages = [lang];
   } else {
-    // Append to front of array without duplicates.
-    // Translation method will use the first language in the list that has a
-    // matching key.
     $languages = [lang, ...$languages.filter(l => l !== lang)];
   }
 

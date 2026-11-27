@@ -26,11 +26,15 @@ export function stringAt(index) {
  * @returns {number}
  */
 export function indexAt(str) {
+  if (typeof str !== 'string') return NaN;
+  const upper = str.toUpperCase();
+  if (!/^[A-Z]+$/.test(upper)) return NaN;
   let ret = 0;
-  for(let i = 0; i !== str.length; ++i) ret = 26 * ret + str.charCodeAt(i) - 64;
+  for (let i = 0; i !== upper.length; i += 1) {
+    ret = 26 * ret + upper.charCodeAt(i) - 64;
+  }
   return ret - 1;
 }
-
 
 // B10 => x,y
 /** translate A1-tag to XY-tag
@@ -40,16 +44,12 @@ export function indexAt(str) {
  * @returns {tagXY}
  */
 export function expr2xy(src) {
-  let x = '';
-  let y = '';
-  for (let i = 0; i < src.length; i += 1) {
-    if (src.charAt(i) >= '0' && src.charAt(i) <= '9') {
-      y += src.charAt(i);
-    } else {
-      x += src.charAt(i);
-    }
-  }
-  return [indexAt(x), parseInt(y, 10) - 1];
+  if (typeof src !== 'string') return [NaN, NaN];
+  const match = src.trim().match(/^\$?([A-Za-z]+)\$?(\d+)$/);
+  if (!match) return [NaN, NaN];
+  const y = parseInt(match[2], 10) - 1;
+  if (y < 0) return [NaN, NaN];
+  return [indexAt(match[1]), y];
 }
 
 /** translate XY-tag to A1-tag
@@ -74,9 +74,18 @@ export function xy2expr(x, y) {
  */
 export function expr2expr(src, xn, yn, condition = () => true) {
   if (xn === 0 && yn === 0) return src;
-  const [x, y] = expr2xy(src);
+  if (typeof src !== 'string') return src;
+  const match = src.trim().match(/^(\$?)([A-Za-z]+)(\$?)(\d+)$/);
+  if (!match) return src;
+  const [, absCol, colStr, absRow, rowStr] = match;
+  const x = indexAt(colStr);
+  const y = parseInt(rowStr, 10) - 1;
+  if (Number.isNaN(x) || Number.isNaN(y) || x < 0 || y < 0) return src;
   if (!condition(x, y)) return src;
-  return xy2expr(x + xn, y + yn);
+  const nx = absCol ? x : x + xn;
+  const ny = absRow ? y : y + yn;
+  if (nx < 0 || ny < 0) return src;
+  return `${absCol}${stringAt(nx)}${absRow}${ny + 1}`;
 }
 
 export default {

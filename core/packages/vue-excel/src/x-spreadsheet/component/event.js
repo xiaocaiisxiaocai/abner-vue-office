@@ -1,8 +1,12 @@
-export function bind(target, name, fn) {
-  target.addEventListener(name, fn);
+export function bind(target, name, fn, options) {
+  if (target && typeof target.addEventListener === 'function') {
+    target.addEventListener(name, fn, options);
+  }
 }
-export function unbind(target, name, fn) {
-  target.removeEventListener(name, fn);
+export function unbind(target, name, fn, options) {
+  if (target && typeof target.removeEventListener === 'function') {
+    target.removeEventListener(name, fn, options);
+  }
 }
 export function unbindClickoutside(el) {
   const dom = el && el.el ? el.el : el;
@@ -14,9 +18,6 @@ export function unbindClickoutside(el) {
   }
 }
 
-// the left mouse button: mousedown → mouseup → click
-// the right mouse button: mousedown → contenxtmenu → mouseup
-// the right mouse button in firefox(>65.0): mousedown → contenxtmenu → mouseup → click on window
 export function bindClickoutside(el, cb) {
   const dom = el && el.el ? el.el : el;
   if (!dom || typeof window === 'undefined' || !window.document || !window.document.body) {
@@ -24,8 +25,6 @@ export function bindClickoutside(el, cb) {
   }
   unbindClickoutside(el);
   dom.xclickoutside = (evt) => {
-    // ignore double click
-    // console.log('evt:', evt);
     const containsTarget = (el && typeof el.contains === 'function' && el.contains(evt.target))
       || (typeof dom.contains === 'function' && dom.contains(evt.target));
     if (evt.detail === 2 || containsTarget) return;
@@ -39,7 +38,8 @@ export function bindClickoutside(el, cb) {
   };
   bind(window.document.body, 'click', dom.xclickoutside);
 }
-export function mouseMoveUp(target, movefunc, upfunc) {
+
+export function mouseMoveUp(target, movefunc, upfunc, cancelfunc) {
   if (target && typeof target._xCancelMoveUp === 'function') {
     target._xCancelMoveUp();
   }
@@ -53,7 +53,7 @@ export function mouseMoveUp(target, movefunc, upfunc) {
     if (t && t._xCancelMoveUp === cancel) {
       t._xCancelMoveUp = null;
     }
-    upfunc(evt);
+    if (typeof upfunc === 'function') upfunc(evt);
   };
   const cancel = () => {
     if (!active) return;
@@ -63,6 +63,7 @@ export function mouseMoveUp(target, movefunc, upfunc) {
     if (t && t._xCancelMoveUp === cancel) {
       t._xCancelMoveUp = null;
     }
+    if (typeof cancelfunc === 'function') cancelfunc();
   };
   if (t) {
     t._xCancelMoveUp = cancel;
@@ -74,49 +75,53 @@ export function mouseMoveUp(target, movefunc, upfunc) {
 
 function calTouchDirection(spanx, spany, evt, cb) {
   let direction = '';
-  // console.log('spanx:', spanx, ', spany:', spany);
   if (Math.abs(spanx) > Math.abs(spany)) {
-    // horizontal
     direction = spanx > 0 ? 'right' : 'left';
     cb(direction, spanx, evt);
   } else {
-    // vertical
     direction = spany > 0 ? 'down' : 'up';
     cb(direction, spany, evt);
   }
 }
-// cb = (direction, distance) => {}
-export function bindTouch(target, { move, end }) {
+
+export function bindTouch(target, { move, end } = {}) {
   let startx = 0;
   let starty = 0;
-  bind(target, 'touchstart', (evt) => {
+  const onTouchStart = (evt) => {
+    if (!evt.touches || !evt.touches[0]) return;
     const { pageX, pageY } = evt.touches[0];
     startx = pageX;
     starty = pageY;
-  });
-  bind(target, 'touchmove', (evt) => {
-    if (!move) return;
+  };
+  const onTouchMove = (evt) => {
+    if (!move || !evt.changedTouches || !evt.changedTouches[0]) return;
     const { pageX, pageY } = evt.changedTouches[0];
     const spanx = pageX - startx;
     const spany = pageY - starty;
     if (Math.abs(spanx) > 10 || Math.abs(spany) > 10) {
-      // console.log('spanx:', spanx, ', spany:', spany);
       calTouchDirection(spanx, spany, evt, move);
       startx = pageX;
       starty = pageY;
     }
     evt.preventDefault();
-  });
-  bind(target, 'touchend', (evt) => {
-    if (!end) return;
+  };
+  const onTouchEnd = (evt) => {
+    if (!end || !evt.changedTouches || !evt.changedTouches[0]) return;
     const { pageX, pageY } = evt.changedTouches[0];
     const spanx = pageX - startx;
     const spany = pageY - starty;
     calTouchDirection(spanx, spany, evt, end);
-  });
+  };
+  bind(target, 'touchstart', onTouchStart, { passive: true });
+  bind(target, 'touchmove', onTouchMove, { passive: false });
+  bind(target, 'touchend', onTouchEnd);
+  return () => {
+    unbind(target, 'touchstart', onTouchStart, { passive: true });
+    unbind(target, 'touchmove', onTouchMove, { passive: false });
+    unbind(target, 'touchend', onTouchEnd);
+  };
 }
 
-// eventemiter
 export function createEventEmitter() {
   const listeners = new Map();
 
@@ -161,8 +166,8 @@ export function createEventEmitter() {
 
   function once(eventName, callback) {
     const execCalllback = (...args) => {
-      callback.call(null, ...args);
       removeListener(eventName, execCalllback);
+      callback.call(null, ...args);
     };
 
     return on(eventName, execCalllback);

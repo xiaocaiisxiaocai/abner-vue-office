@@ -59,8 +59,9 @@ test('excel.js getData handles buffers, typedarray slices, Blob, Response, and X
             this.headers[k] = v;
         }
 
-        send() {
+        send(body) {
             MockXHR.lastInstance = this;
+            this.sentBody = body;
             if (this.url.endsWith('/ok')) {
                 this.status = 200;
                 this.response = new ArrayBuffer(4);
@@ -80,6 +81,9 @@ test('excel.js getData handles buffers, typedarray slices, Blob, Response, and X
     }
 
     await runWithDomGlobals({ XMLHttpRequest: MockXHR }, async () => {
+        const directAb = new ArrayBuffer(3);
+        assert.equal(await excelMod.getData(directAb), directAb);
+
         const okBuf = await excelMod.getData('https://example.com/ok', {
             credentials: 'include',
             responseType: 'blob',
@@ -88,10 +92,19 @@ test('excel.js getData handles buffers, typedarray slices, Blob, Response, and X
             headers: { Authorization: 'Bearer tok' }
         });
         assert.equal(okBuf.byteLength, 4);
+        assert.equal(MockXHR.lastInstance.sentBody, null);
         assert.equal(MockXHR.lastInstance.withCredentials, true);
         assert.equal(MockXHR.lastInstance.responseType, 'arraybuffer');
         assert.equal(MockXHR.lastInstance.timeout, 5000);
         assert.equal(MockXHR.lastInstance.headers.Authorization, 'Bearer tok');
+
+        await excelMod.getData('https://example.com/ok', {
+            method: 'POST',
+            body: 'payload',
+            headers: new Headers({ 'X-From-Headers': 'yes' })
+        });
+        assert.equal(MockXHR.lastInstance.sentBody, 'payload');
+        assert.equal(MockXHR.lastInstance.headers['x-from-headers'] || MockXHR.lastInstance.headers['X-From-Headers'], 'yes');
 
         const nullOptsBuf = await excelMod.getData('https://example.com/ok', null);
         assert.equal(nullOptsBuf.byteLength, 4);
@@ -210,8 +223,12 @@ test('excel.js formatNumberValue, getCellText, getStyle, and transferExcelToSpre
     assert.equal(excelMod.formatNumberValue(15, '£#,##0.00'), '£15.00');
     assert.equal(excelMod.formatNumberValue(50, '0.00"%"'), '50.00%');
     assert.equal(excelMod.formatNumberValue(0.125, '0.0#%'), '12.5%');
+    assert.equal(excelMod.formatNumberValue(0.126, '0%'), '13%');
+    assert.equal(excelMod.formatNumberValue(42, '"NO#0"0'), 'NO#042');
+    assert.equal(excelMod.formatNumberValue(1234.5, '#,##0.00" (0%)"'), '1,234.50 (0%)');
     assert.equal(excelMod.formatNumberValue(-0.0001, '0.00'), '0.00');
     assert.equal(excelMod.formatNumberValue(-0.00001, '0.00%;-0.00%'), '0.00%');
+    assert.equal(excelMod.formatNumberValue(-100, '$#,##0.00;-$#,##0.00'), '-$100.00');
     assert.equal(excelMod.formatNumberValue(0.55, '.00'), '.55'.replace('.', '0.'));
     assert.equal(excelMod.formatNumberValue(1234, '#,0'), '1,234');
     assert.equal(excelMod.formatNumberValue(1234.5, '#,0.00'), '1,234.50');
@@ -219,9 +236,22 @@ test('excel.js formatNumberValue, getCellText, getStyle, and transferExcelToSpre
     assert.equal(excelMod.formatNumberValue(0, '_(* #,##0.00_);_(* (#,##0.00);_(* "-"??_);_(@_)'), '-');
     assert.equal(excelMod.formatNumberValue(0, '_(* #,##0.00_);_(* (#,##0.00);_(* 0.00_)'), '0.00');
     assert.equal(excelMod.formatNumberValue(0, '_(#,##0.00_)'), '0.00');
+    assert.equal(excelMod.formatNumberValue('abc', '0.00'), 'abc');
     assert.equal(excelMod.formatNumberValue(123, 'General'), '123');
     assert.equal(excelMod.formatNumberValue(NaN, '0.00'), 'NaN');
     assert.equal(excelMod.formatNumberValue(Infinity, '0.00'), 'Infinity');
+    assert.equal(excelMod.transferArgbColor('00FF0000'), null);
+    assert.equal(excelMod.transferArgbColor('ABCDEF'), '#ABCDEF');
+
+    // Transparent ARGB and diagonal border skipped in getStyle
+    const diagTransparent = excelMod.getStyle({
+        style: {
+            fill: { fgColor: { argb: '00FFFFFF' } },
+            border: { diagonal: { style: 'thin', color: { argb: 'FFFF0000' } } }
+        }
+    });
+    assert.equal(diagTransparent.bgcolor, undefined);
+    assert.equal(diagTransparent.border.diagonal, undefined);
 
     assert.equal(excelMod.formatExcelDate(null, 'YYYY-MM-DD'), '');
     assert.equal(excelMod.formatExcelDate('not-a-date', 'YYYY-MM-DD'), '');

@@ -1,5 +1,5 @@
 <script setup>
-import { watch, onBeforeUnmount } from 'vue';
+import { ref, watch, onBeforeUnmount } from 'vue';
 import { UploadOutlined } from '@ant-design/icons-vue';
 import usePreview, { isXlsName } from '../hooks/usePreview.js';
 import useLoading from '../hooks/useLoading.js';
@@ -12,7 +12,20 @@ const props = defineProps({
 });
 
 const { type, inputSrc, src, xls, beforeUpload } = usePreview(props.defaultSrc);
-watch(src, (val) => {
+const retryKey = ref(0);
+
+function handlePreview() {
+    const trimmed = typeof inputSrc.value === 'string' ? inputSrc.value.trim() : inputSrc.value;
+    inputSrc.value = trimmed;
+    xls.value = isXlsName(trimmed);
+    if (src.value === trimmed) {
+        retryKey.value += 1;
+    } else {
+        src.value = trimmed;
+    }
+}
+
+watch([src, retryKey], ([val]) => {
     if (val) {
         useLoading.showLoading();
     } else {
@@ -44,7 +57,7 @@ onBeforeUnmount(() => {
           v-if="type==='url'"
           type="primary"
           style="margin-left: 10px"
-          @click="src = inputSrc; xls = isXlsName(inputSrc)"
+          @click="handlePreview"
       >
         预览
       </a-button>
@@ -62,9 +75,8 @@ onBeforeUnmount(() => {
       </a-upload>
 
     </div>
-    <slot :src="src" :xls="xls"></slot>
-    <div class="preview-wrapper-main">
-
+    <div :key="retryKey" style="display: contents">
+      <slot :src="src" :xls="xls"></slot>
     </div>
   </div>
 </template>

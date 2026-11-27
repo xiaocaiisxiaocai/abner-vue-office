@@ -21,7 +21,9 @@ class SelectorElement {
     if (useHideInput) {
       this.hideInput = h('input', '')
         .on('compositionend', (evt) => {
-          this.inputChange(evt.target.value);
+          const val = evt.target.value;
+          evt.target.value = '';
+          this.inputChange(val);
         });
       this.el.child(this.hideInputDiv = h('div', 'hide-input').child(this.hideInput));
     }
@@ -37,7 +39,7 @@ class SelectorElement {
     return this;
   }
 
-  setAreaOffset(v) {
+  setAreaOffset(v, shouldFocus = false) {
     const {
       left, top, width, height,
     } = v;
@@ -50,10 +52,9 @@ class SelectorElement {
     this.areaEl.offset(of).show();
     if (this.useHideInput) {
       this.hideInputDiv.offset(of);
-      if (this.autoFocus) {
-        this.hideInput.val('').focus();
-      } else {
-        this.hideInput.val('');
+      this.hideInput.val('');
+      if (shouldFocus && this.autoFocus) {
+        this.hideInput.focus();
       }
     }
   }
@@ -141,14 +142,23 @@ function calLAreaOffset(offset) {
   };
 }
 
-function setBRAreaOffset(offset) {
+function calTLAreaOffset(offset) {
+  const {
+    l, t, width, height,
+  } = offset;
+  return {
+    left: l, top: t, width, height,
+  };
+}
+
+function setBRAreaOffset(offset, shouldFocus = false) {
   const { br } = this;
-  br.setAreaOffset(calBRAreaOffset.call(this, offset));
+  br.setAreaOffset(calBRAreaOffset.call(this, offset), shouldFocus);
 }
 
 function setTLAreaOffset(offset) {
   const { tl } = this;
-  tl.setAreaOffset(offset);
+  tl.setAreaOffset(calTLAreaOffset(offset));
 }
 
 function setTAreaOffset(offset) {
@@ -173,7 +183,7 @@ function setBRClipboardOffset(offset) {
 
 function setTLClipboardOffset(offset) {
   const { tl } = this;
-  tl.setClipboardOffset(offset);
+  tl.setClipboardOffset(calTLAreaOffset(offset));
 }
 
 function setTClipboardOffset(offset) {
@@ -181,8 +191,8 @@ function setTClipboardOffset(offset) {
   t.setClipboardOffset(calTAreaOffset.call(this, offset));
 }
 
-function setAllAreaOffset(offset) {
-  setBRAreaOffset.call(this, offset);
+function setAllAreaOffset(offset, shouldFocus = false) {
+  setBRAreaOffset.call(this, offset, shouldFocus);
   setTLAreaOffset.call(this, offset);
   setTAreaOffset.call(this, offset);
   setLAreaOffset.call(this, offset);
@@ -229,12 +239,19 @@ export default class Selector {
 
   resetData(data) {
     this.data = data;
+    this.br.autoFocus = data.settings.autoFocus;
     this.indexes = [data.selector.ri, data.selector.ci];
     this.moveIndexes = [data.selector.range.sri, data.selector.range.sci];
     this.range = data.selector.range;
     this.lastri = -1;
     this.lastci = -1;
     this.arange = null;
+    this.hideAutofill();
+    if (data.clipboard && data.clipboard.isClear()) {
+      this.hideClipboard();
+    } else {
+      this.showClipboard();
+    }
     this.resetAreaOffset();
   }
 
@@ -303,32 +320,38 @@ export default class Selector {
     }
 
     this.moveIndexes = [sri, sci];
-    // this.sIndexes = sIndexes;
-    // this.eIndexes = eIndexes;
     this.range = cellRange;
-    this.resetAreaOffset();
+    const offset = this.data.getSelectedRect();
+    const coffset = this.data.getClipboardRect();
+    setAllAreaOffset.call(this, offset, true);
+    setAllClipboardOffset.call(this, coffset);
+    this.resetOffset();
     this.el.show();
   }
 
-  setEnd(ri, ci, moving = true) {
+  setEnd(ri, ci, moving = true, shouldFocus = true) {
     const { data, lastri, lastci } = this;
     if (moving) {
       if (ri === lastri && ci === lastci) return;
       this.lastri = ri;
       this.lastci = ci;
     }
+    this.moveIndexes = [ri, ci];
     this.range = data.calSelectedRangeByEnd(ri, ci);
-    setAllAreaOffset.call(this, this.data.getSelectedRect());
+    setAllAreaOffset.call(this, this.data.getSelectedRect(), shouldFocus);
   }
 
   reset() {
-    // console.log('::::', this.data);
     const { eri, eci } = this.data.selector.range;
-    this.setEnd(eri, eci, false);
+    this.setEnd(eri, eci, false, false);
   }
 
   showAutofill(ri, ci) {
-    if (ri < 0 || ci < 0) return;
+    if (ri < 0 || ci < 0) {
+      this.arange = null;
+      this.hideAutofill();
+      return;
+    }
     // console.log('ri:', ri, ', ci:', ci);
     // const [sri, sci] = this.sIndexes;
     // const [eri, eci] = this.eIndexes;
@@ -371,14 +394,11 @@ export default class Selector {
       // this.saIndexes = [eri + 1, sci];
       // this.eaIndexes = [nri, eci];
     } else {
-      // console.log('else:');
       this.arange = null;
-      // this.saIndexes = null;
-      // this.eaIndexes = null;
+      this.hideAutofill();
       return;
     }
     if (this.arange !== null) {
-      // console.log(this.saIndexes, ':', this.eaIndexes);
       const offset = this.data.getRect(this.arange);
       offset.width += 2;
       offset.height += 2;
@@ -388,7 +408,7 @@ export default class Selector {
       br.showAutofill(calBRAreaOffset.call(this, offset));
       l.showAutofill(calLAreaOffset.call(this, offset));
       t.showAutofill(calTAreaOffset.call(this, offset));
-      tl.showAutofill(offset);
+      tl.showAutofill(calTLAreaOffset(offset));
     }
   }
 

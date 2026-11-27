@@ -3,16 +3,16 @@ function dpr() {
 }
 
 function thinLineWidth() {
-  return dpr() - 0.5;
+  return Math.max(0.5, dpr() - 0.5);
 }
 
 function npx(px) {
-  return parseInt(px * dpr(), 10);
+  return Math.trunc(px * dpr());
 }
 
 function npxLine(px) {
   const n = npx(px);
-  return n > 0 ? n - 0.5 : 0.5;
+  return n === 0 ? 0.5 : n - 0.5;
 }
 
 class DrawBox {
@@ -134,7 +134,6 @@ class Draw {
     this.el = el;
     this.ctx = el.getContext('2d');
     this.resize(width, height);
-    this.ctx.scale(dpr(), dpr());
   }
 
   resize(width, height) {
@@ -183,7 +182,7 @@ class Draw {
   }
 
   clearRect(x, y, w, h) {
-    this.ctx.clearRect(x, y, w, h);
+    this.ctx.clearRect(npx(x), npx(y), npx(w), npx(h));
     return this;
   }
 
@@ -217,8 +216,13 @@ class Draw {
   text(mtxt, box, attr = {}, textWrap = true) {
     const { ctx } = this;
     const {
-      align, valign, font, color, strike, underline,
+      align = 'left',
+      valign = 'middle',
+      color = '#0a0a0a',
+      strike = false,
+      underline = false,
     } = attr;
+    const font = Object.assign({ name: 'Arial', size: 10, bold: false, italic: false }, attr.font || {});
     const tx = box.textx(align);
     ctx.save();
     ctx.beginPath();
@@ -229,23 +233,26 @@ class Draw {
       fillStyle: color,
       strokeStyle: color,
     });
-    const txts = `${mtxt}`.split('\n');
-    const biw = box.innerWidth();
+    const safeText = mtxt == null ? '' : String(mtxt);
+    const txts = safeText.split('\n');
+    const maxW = Math.max(npx(box.innerWidth()), 1);
     const ntxts = [];
     txts.forEach((it) => {
       const txtWidth = ctx.measureText(it).width;
-      if (textWrap && txtWidth > npx(biw)) {
-        let textLine = { w: 0, len: 0, start: 0 };
-        for (let i = 0; i < it.length; i += 1) {
-          if (textLine.w >= npx(biw)) {
-            ntxts.push(it.substr(textLine.start, textLine.len));
-            textLine = { w: 0, len: 0, start: i };
+      if (textWrap && txtWidth > maxW) {
+        const chars = Array.from(it);
+        let currentLine = '';
+        for (let i = 0; i < chars.length; i += 1) {
+          const nextLine = currentLine + chars[i];
+          if (currentLine.length > 0 && ctx.measureText(nextLine).width > maxW) {
+            ntxts.push(currentLine);
+            currentLine = chars[i];
+          } else {
+            currentLine = nextLine;
           }
-          textLine.len += 1;
-          textLine.w += ctx.measureText(it[i]).width + 1;
         }
-        if (textLine.len > 0) {
-          ntxts.push(it.substr(textLine.start, textLine.len));
+        if (currentLine.length > 0) {
+          ntxts.push(currentLine);
         }
       } else {
         ntxts.push(it);
@@ -256,6 +263,12 @@ class Draw {
     ntxts.forEach((txt) => {
       const txtCssWidth = ctx.measureText(txt).width / dpr();
       this.fillText(txt, tx, ty);
+      if (strike || underline) {
+        ctx.lineWidth = thinLineWidth();
+        if (typeof ctx.setLineDash === 'function') {
+          ctx.setLineDash([]);
+        }
+      }
       if (strike) {
         drawFontLine.call(this, 'strike', tx, ty, align, valign, font.size, txtCssWidth);
       }
@@ -270,22 +283,22 @@ class Draw {
 
   border(style, color) {
     const { ctx } = this;
-    if (typeof ctx.setLineDash === 'function') {
+    const hasDash = typeof ctx.setLineDash === 'function';
+    if (hasDash) {
       ctx.setLineDash([]);
     }
     ctx.lineWidth = thinLineWidth();
     ctx.strokeStyle = color;
-    // console.log('style:', style);
     if (style === 'medium') {
-      ctx.lineWidth = npx(2) - 0.5;
+      ctx.lineWidth = Math.max(1, npx(2) - 0.5);
     } else if (style === 'thick') {
-      ctx.lineWidth = npx(3);
-    } else if (style === 'dashed') {
+      ctx.lineWidth = Math.max(1.5, npx(3));
+    } else if (style === 'dashed' && hasDash) {
       ctx.setLineDash([npx(3), npx(2)]);
-    } else if (style === 'dotted') {
+    } else if (style === 'dotted' && hasDash) {
       ctx.setLineDash([npx(1), npx(1)]);
-    } else if (style === 'double') {
-      ctx.setLineDash([npx(2), 0]);
+    } else if (style === 'double' && hasDash) {
+      ctx.setLineDash([npx(2), npx(1)]);
     }
     return this;
   }
@@ -388,7 +401,7 @@ class Draw {
     ctx.save();
     ctx.beginPath();
     ctx.fillStyle = bgcolor || '#fff';
-    ctx.rect(npxLine(x + 1), npxLine(y + 1), npx(width - 2), npx(height - 2));
+    ctx.rect(npxLine(x + 1), npxLine(y + 1), npx(Math.max(0, width - 2)), npx(Math.max(0, height - 2)));
     ctx.clip();
     ctx.fill();
     dtextcb();

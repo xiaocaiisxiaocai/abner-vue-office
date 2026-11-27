@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 const { switchVersion } = require('./utils');
 
 const version = process.argv[2];

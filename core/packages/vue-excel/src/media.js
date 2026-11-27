@@ -14,6 +14,9 @@ export function renderImage(ctx, medias, sheet, offset, options = {}, shouldDraw
         return;
     }
     sheet._media.forEach(media => {
+        if (!media) {
+            return;
+        }
         const { imageId, range, type } = media;
         if (type === 'image' && medias && medias[imageId]) {
             const position = calcPosition(sheet, range, offset, options);
@@ -188,11 +191,11 @@ function getImage(ctx, index, data) {
             const url = URL.createObjectURL(blob);
             const image = new Image();
             image.onload = function () {
-                URL.revokeObjectURL(url);
+                typeof URL.revokeObjectURL === 'function' && URL.revokeObjectURL(url);
                 resolve(image);
             };
             image.onerror = function (e) {
-                URL.revokeObjectURL(url);
+                typeof URL.revokeObjectURL === 'function' && URL.revokeObjectURL(url);
                 delete cache[index];
                 reject(e);
             };

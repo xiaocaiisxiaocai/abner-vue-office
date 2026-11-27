@@ -2,14 +2,37 @@ import { tf } from '../locale/locale';
 
 const formatStringRender = v => v;
 
+const isNumericText = v => (
+  v !== '' && v !== null && v !== undefined && /^-?\d+(\.\d+)?$/.test(String(v).trim())
+);
+
+const addThousands = (intPart) => {
+  const neg = intPart.startsWith('-');
+  const absInt = neg ? intPart.slice(1) : intPart;
+  return `${neg ? '-' : ''}${absInt.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,')}`;
+};
+
 const formatNumberRender = (v) => {
-  // match "-12.1" or "12" or "12.1"
-  if (v !== '' && v !== null && v !== undefined && /^-?\d+(\.\d+)?$/.test(String(v))) {
-    const v1 = Number(v).toFixed(2).toString();
+  if (isNumericText(v)) {
+    const str = String(v).trim();
+    const num = Number(str);
+    if (Math.abs(num) >= 1e15 || !Number.isFinite(num)) {
+      const [intPart, decPart = ''] = str.split('.');
+      return `${addThousands(intPart)}.${decPart.slice(0, 2).padEnd(2, '0')}`;
+    }
+    const v1 = num.toFixed(2);
     const [first, ...parts] = v1.split('.');
-    return [first.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,'), ...parts].join('.');
+    return [addThousands(first), ...parts].join('.');
   }
   return v;
+};
+
+const formatCurrencyRender = (symbol, v) => {
+  if (!isNumericText(v)) return v == null ? '' : v;
+  const formatted = formatNumberRender(v);
+  return String(formatted).startsWith('-')
+    ? `-${symbol}${String(formatted).slice(1)}`
+    : `${symbol}${formatted}`;
 };
 
 const baseFormats = [
@@ -37,28 +60,28 @@ const baseFormats = [
     title: tf('format.percent'),
     type: 'number',
     label: '10.12%',
-    render: v => `${v}%`,
+    render: v => (isNumericText(v) ? `${String(v).trim()}%` : (v == null ? '' : v)),
   },
   {
     key: 'rmb',
     title: tf('format.rmb'),
     type: 'number',
     label: '￥10.00',
-    render: v => `￥${formatNumberRender(v)}`,
+    render: v => formatCurrencyRender('￥', v),
   },
   {
     key: 'usd',
     title: tf('format.usd'),
     type: 'number',
     label: '$10.00',
-    render: v => `$${formatNumberRender(v)}`,
+    render: v => formatCurrencyRender('$', v),
   },
   {
     key: 'eur',
     title: tf('format.eur'),
     type: 'number',
     label: '€10.00',
-    render: v => `€${formatNumberRender(v)}`,
+    render: v => formatCurrencyRender('€', v),
   },
   {
     key: 'date',

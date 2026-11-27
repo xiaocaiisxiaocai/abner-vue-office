@@ -1,5 +1,13 @@
 export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob | Response;
 
+export interface RequestOptions {
+    method?: string;
+    headers?: Record<string, string>;
+    withCredentials?: boolean;
+    credentials?: RequestCredentials;
+    [key: string]: any;
+}
+
 export interface Options {
     staticFileUrl?: string;
     gap?: number;
@@ -12,7 +20,7 @@ export interface Options {
     docBaseUrl?: string;
     cMapUrl?: string;
     cMapPacked?: boolean;
-    CMapReaderFactory?: Record<string, any>;
+    CMapReaderFactory?: new (...args: any[]) => any;
     enableXfa?: boolean;
     useSystemFonts?: boolean;
     onError?: (error: any) => void;
@@ -22,14 +30,14 @@ export interface Options {
 
 export interface AbnerJsPdfPreview {
     preview: (src: OfficeSource) => Promise<any>;
-    rerender: () => Promise<any>;
+    rerender: () => Promise<void>;
     save: (fileName?: string) => void;
     setOptions: (options: Options) => void;
-    setRequestOptions: (requestOptions?: Record<string, any>) => void;
+    setRequestOptions: (requestOptions?: RequestOptions) => void;
     destroy: () => void;
 }
 
 declare const abnerJsPdf: {
-    init: (container: HTMLElement, options?: Options, requestOptions?: Record<string, any>) => AbnerJsPdfPreview;
+    init: (container: HTMLElement, options?: Options, requestOptions?: RequestOptions) => AbnerJsPdfPreview;
 };
 export default abnerJsPdf;

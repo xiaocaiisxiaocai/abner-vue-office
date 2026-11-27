@@ -5,7 +5,6 @@ import Bottombar from './component/bottombar';
 import { cssPrefix } from './config';
 import { locale } from './locale/locale';
 
-
 class Spreadsheet {
   constructor(selectors, options = {}) {
     let targetEl = selectors;
@@ -13,7 +12,10 @@ class Spreadsheet {
     this.sheetIndex = 1;
     this.datas = [];
     if (typeof selectors === 'string') {
-      targetEl = document.querySelector(selectors);
+      targetEl = typeof document !== 'undefined' ? document.querySelector(selectors) : null;
+    }
+    if (!targetEl) {
+      throw new Error('Spreadsheet target element is required');
     }
     this.bottombar = this.options.showBottomBar ? new Bottombar(() => {
       if (this.options.mode === 'read') return;
@@ -32,9 +34,12 @@ class Spreadsheet {
       if (this.datas[index]) {
         this.datas[index].name = value;
       }
-      this.sheet.trigger('change');
-    }) : null;
-    this.data = this.addSheet();
+      this.sheet.trigger('change', this.data ? this.data.getData() : undefined);
+    }, this.options) : null;
+    this.data = null;
+    this.sheet = null;
+    const d = this.addSheet(undefined, true);
+    this.data = d;
     const rootEl = h('div', `${cssPrefix}`)
       .on('contextmenu', evt => evt.preventDefault());
     this.rootEl = rootEl;
@@ -50,12 +55,19 @@ class Spreadsheet {
     const n = name || `sheet${this.sheetIndex}`;
     const d = new DataProxy(n, this.options);
     d.change = (...args) => {
-      this.sheet.trigger('change', ...args);
+      if (this.sheet) {
+        this.sheet.trigger('change', ...args);
+      }
     };
     this.datas.push(d);
-    // console.log('d:', n, d, this.datas);
     if (this.bottombar !== null) {
       this.bottombar.addItem(n, active, this.options);
+    }
+    if (active) {
+      this.data = d;
+      if (this.sheet) {
+        this.sheet.resetData(d);
+      }
     }
     this.sheetIndex += 1;
     return d;
@@ -71,7 +83,7 @@ class Spreadsheet {
         this.data = this.datas[nindex];
         this.sheet.resetData(this.data);
       }
-      this.sheet.trigger('change');
+      this.sheet.trigger('change', this.data ? this.data.getData() : undefined);
     }
   }
 
@@ -86,13 +98,22 @@ class Spreadsheet {
     if (ds.length > 0) {
       for (let i = 0; i < ds.length; i += 1) {
         const it = ds[i];
-        const nd = this.addSheet(it && it.name, i === 0);
+        const sheetName = (it && typeof it.name === 'string' && it.name.trim()) ? it.name : `sheet${this.sheetIndex}`;
+        const nd = this.addSheet(sheetName, i === 0);
         nd.setData(it);
         if (i === 0) {
           this.data = nd;
           this.sheet.resetData(nd);
         }
       }
+    } else if (this.sheet) {
+      const emptyData = new DataProxy('sheet1', this.options);
+      emptyData.change = (...args) => {
+        if (this.sheet) {
+          this.sheet.trigger('change', ...args);
+        }
+      };
+      this.sheet.resetData(emptyData);
     }
     return this;
   }
@@ -117,12 +138,16 @@ class Spreadsheet {
   }
 
   reRender() {
-    this.sheet.table.render();
+    if (this.sheet) {
+      this.sheet.table.render();
+    }
     return this;
   }
 
   on(eventName, func) {
-    this.sheet.on(eventName, func);
+    if (this.sheet) {
+      this.sheet.on(eventName, func);
+    }
     return this;
   }
 
@@ -133,18 +158,15 @@ class Spreadsheet {
   }
 
   change(cb) {
-    this.sheet.on('change', cb);
+    if (this.sheet) {
+      this.sheet.on('change', cb);
+    }
     return this;
   }
 
   destroy() {
-    if (this.bottombar) {
-      if (this.bottombar.contextMenu && typeof this.bottombar.contextMenu.hide === 'function') {
-        this.bottombar.contextMenu.hide();
-      }
-      if (this.bottombar.moreEl && typeof this.bottombar.moreEl.hide === 'function') {
-        this.bottombar.moreEl.hide();
-      }
+    if (this.bottombar && typeof this.bottombar.destroy === 'function') {
+      this.bottombar.destroy();
     }
     if (this.sheet && typeof this.sheet.destroy === 'function') {
       this.sheet.destroy();
@@ -159,17 +181,12 @@ class Spreadsheet {
     this.rootEl = null;
   }
 
-  static locale(lang, message) {
-    locale(lang, message);
+  static locale(lang, message, clearLangList = false) {
+    locale(lang, message, clearLangList);
   }
 }
 
 const spreadsheet = (el, options = {}) => new Spreadsheet(el, options);
-
-if (typeof window !== 'undefined') {
-  window.x_spreadsheet = spreadsheet;
-  window.x_spreadsheet.locale = (lang, message) => locale(lang, message);
-}
 
 export default Spreadsheet;
 export {

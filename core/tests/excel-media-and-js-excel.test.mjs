@@ -336,24 +336,38 @@ test('js-excel/src/main.js lifecycle, transform hooks, race guard, save, and des
 
         await assert.rejects(excel.preview(''), /预览地址不能为空/);
 
+        let releaseSlow;
+        const slowGetData = mockGetData;
         const slowP = excel.preview('slow');
         await excel.preview('fast');
         await slowP;
+        void releaseSlow;
+        void slowGetData;
         assert.equal(excel.fileData.byteLength, 16);
         assert.equal(switched[0], 0);
         assert.equal(createdSheets[0].loaded[createdSheets[0].loaded.length - 1][0].name, 'Mutated');
         assert.equal(createdSheets[0].loaded[createdSheets[0].loaded.length - 1][0].transformed, true);
+
+        // table.render triggers debounce -> renderImage, editor.setOffset updates offset
+        excel.xs.sheet.editor.setOffset({ scroll: { x: 4, y: 8 } });
+        assert.deepEqual(excel.offset, { scroll: { x: 4, y: 8 } });
+        excel.xs.sheet.table.render();
 
         excel.xs.bottombar.swapFunc(1);
         await new Promise(r => setTimeout(r, 15));
         assert.equal(switched[switched.length - 1], 1);
         assert.equal(createdSheets[0].reRenderCount, 1);
 
+        excel.save('explicit.xlsx');
+        excel.save();
+        assert.equal(downloads[0].name, 'explicit.xlsx');
+        assert.match(downloads[1].name, /\.xlsx$/);
+
         excel.setOptions({ xls: true });
         excel.setOptions(null);
         excel.setRequestOptions({ headers: { A: '1' } });
         excel.save();
-        assert.match(downloads[0].name, /\.xls$/);
+        assert.match(downloads[2].name, /\.xls$/);
 
         shouldFailRead = true;
         await assert.rejects(excel.preview('fast'), /corrupt workbook/);

@@ -158,13 +158,21 @@ class CellRange {
 
   static valueOf(ref) {
     // B1:B8, B1 => 1 x 1 cell range
+    if (typeof ref !== 'string') {
+      return new CellRange(0, 0, 0, 0);
+    }
     const refs = ref.split(':');
     const [sci, sri] = expr2xy(refs[0]);
     let [eri, eci] = [sri, sci];
     if (refs.length > 1) {
       [eci, eri] = expr2xy(refs[1]);
     }
-    return new CellRange(sri, sci, eri, eci);
+    return new CellRange(
+      Math.min(sri, eri),
+      Math.min(sci, eci),
+      Math.max(sri, eri),
+      Math.max(sci, eci),
+    );
   }
 }
 

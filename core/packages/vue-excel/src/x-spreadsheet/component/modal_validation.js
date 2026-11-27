@@ -121,10 +121,8 @@ export default class ModalValidation extends Modal {
         minvf.hint('10');
         maxvf.hint('100');
       }
-      minvf.show();
-      maxvf.show();
-      vf.hide();
       svf.hide();
+      this.criteriaOperatorSelected(of.val() || 'be');
     } else {
       if (it === 'list') {
         svf.show();
@@ -205,10 +203,15 @@ export default class ModalValidation extends Modal {
 
   // validation: { mode, ref, validator }
   setValue(v) {
+    const {
+      mf, rf, cf, of, svf, vf, minvf, maxvf,
+    } = this;
+    [mf, rf, cf, of, svf, vf, minvf, maxvf].forEach((field) => {
+      if (field && typeof field.clearError === 'function') {
+        field.clearError();
+      }
+    });
     if (v) {
-      const {
-        mf, rf, cf, of, svf, vf, minvf, maxvf,
-      } = this;
       const {
         mode, ref, validator,
       } = v;
@@ -218,17 +221,22 @@ export default class ModalValidation extends Modal {
       const isRangeType = type === 'number' || type === 'date';
       const resolvedOperator = isRangeType ? (operator || 'be') : undefined;
       mf.val(mode || 'cell');
-      rf.val(ref);
+      rf.val(ref != null ? String(ref) : '');
       cf.val(type);
       if (isRangeType) {
         of.val(resolvedOperator);
       }
       if (Array.isArray(value)) {
-        minvf.val(value[0]);
-        maxvf.val(value[1]);
+        minvf.val(value[0] != null ? String(value[0]) : '');
+        maxvf.val(value[1] != null ? String(value[1]) : '');
+        svf.val('');
+        vf.val('');
       } else {
-        svf.val(value || '');
-        vf.val(value || '');
+        const strVal = value != null ? String(value) : '';
+        svf.val(strVal);
+        vf.val(strVal);
+        minvf.val('');
+        maxvf.val('');
       }
       this.criteriaSelected(type);
       if (isRangeType) {

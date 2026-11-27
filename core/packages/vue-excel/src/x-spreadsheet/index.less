@@ -91,7 +91,7 @@
   &:before {
     pointer-events: none;
     position: absolute;
-    left: calc(50% - 4px);
+    left: calc(~'50% - 4px');
     top: -4px;
     content: "";
     width: 8px;
@@ -111,7 +111,7 @@
     margin: 0;
     padding: 0;
     border-collapse: separate;
-    border-spacing: 2;
+    border-spacing: 2px;
     background: #fff;
 
     td {
@@ -447,9 +447,8 @@
   }
 }
 
-.x-spreadsheet-item,
-.x-spreadsheet-header,
-{
+.@{css-prefix}-item,
+.@{css-prefix}-header {
 
   &.state {
     padding-left: 35px!important;
@@ -461,7 +460,7 @@
       width: 10px;
       height: 10px;
       left: 12px;
-      top: calc(50% - 5px);
+      top: calc(~'50% - 5px');
       background: rgba(0, 0, 0, 0.08);
       // border: 1px solid rgba(0, 0, 0, 0.1);
       border-radius: 2px;
@@ -587,7 +586,6 @@
   margin: 0;
   vertical-align: middle;
   text-align: left;
-  font-weight: 400;
   color: #80868b;
   white-space: nowrap;
   cursor: pointer;
@@ -694,7 +692,7 @@
   flex: auto;
   flex-direction: row;
   background: #d0d0d0;
-  height: calc(100% - 60px);
+  height: calc(~'100% - 60px');
 
   .-sider {
     flex: 0 0 300px;
@@ -760,7 +758,7 @@
     border-spacing: 0;
 
     th, td {
-      width: 100%/7;
+      width: (100% / 7);
       min-width: 32px;
       text-align: center;
       font-weight: 700;

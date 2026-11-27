@@ -1,32 +1,41 @@
 {
   "name": "@abner-vue-office/js-docx",
-  "type" :"module",
+  "type": "module",
   "version": "1.0.0",
   "description": "不依赖前端框架的原生 JavaScript docx 文件预览库",
-  "main": "lib/index.js",
+  "main": "lib/index.cjs",
   "module": "lib/index.js",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
       "import": "./lib/index.js",
+      "require": "./lib/index.cjs",
       "default": "./lib/index.js"
     },
-    "./umd": "./lib/index.umd.js",
+    "./umd": {
+      "types": "./lib/index.d.ts",
+      "require": "./lib/index.cjs",
+      "import": "./lib/index.js",
+      "default": "./lib/index.umd.js"
+    },
     "./lib/index.css": "./lib/index.css",
     "./lib/*": "./lib/*",
     "./package.json": "./package.json"
   },
   "files": [
-    "lib/"
+    "lib/",
+    "LICENSE"
   ],
   "scripts": {
     "clean": "rimraf lib",
     "copyReadme": "node ../../script/copy.js ../../../README.md README.md",
+    "copyLicense": "node ../../script/copy.js ../../LICENSE LICENSE",
     "copyType": "node ../../script/copy.js index.d.ts lib/index.d.ts",
     "copyCss": "node ../../script/copy.js ./index.css ./lib/index.css",
-    "copy": "npm run copyCss && npm run copyType && npm run copyReadme",
-    "build": "npm run clean && rollup --config rollup.config.js && npm run copy"
+    "copy": "npm run copyCss && npm run copyType && npm run copyReadme && npm run copyLicense",
+    "build": "npm run clean && rollup --config rollup.config.js && npm run copy",
+    "prepublishOnly": "node -e \"const fs=require('fs');const req=['lib/index.js','lib/index.cjs','lib/index.umd.js','lib/index.d.ts','lib/index.css','LICENSE'];const miss=req.filter(f=>!fs.existsSync(f));if(miss.length){console.error('Missing artifacts:',miss);process.exit(1);}\""
   },
   "keywords": [
     "javascript",
@@ -37,10 +46,18 @@
   ],
   "license": "MIT",
   "author": "abner",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xiaocaiisxiaocai/abner-vue-office.git",
+    "directory": "core/packages/js-docx"
+  },
+  "homepage": "https://github.com/xiaocaiisxiaocai/abner-vue-office#readme",
+  "bugs": {
+    "url": "https://github.com/xiaocaiisxiaocai/abner-vue-office/issues"
+  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "dependencies": {
-  }
+  "dependencies": {}
 }

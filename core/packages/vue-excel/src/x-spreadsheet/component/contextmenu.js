@@ -83,9 +83,9 @@ export default class ContextMenu {
     const vhf = view.height / 2;
     let left = x;
     if (view.width - x <= width) {
-      left -= width;
+      left = Math.max(0, left - width);
     }
-    el.css('left', `${left}px`);
+    el.css('left', `${Math.max(0, left)}px`);
     if (y > vhf) {
       el.css('bottom', `${view.height - y}px`)
         .css('max-height', `${y}px`)

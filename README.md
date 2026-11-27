@@ -4,7 +4,7 @@
 
 ## 功能特色
 - 一站式：提供 Word（`.docx`）、PDF（`.pdf`）、Excel（`.xlsx`、`.xls`）、PPT（`.pptx`）多种文档的在线预览方案
-- 简单：只需提供文档的 `src`（网络地址、`ArrayBuffer` 或 `Blob`）即可完成文档预览
+- 简单：只需提供文档的 `src`（网络地址、`ArrayBuffer`、`ArrayBufferView`、`Blob` 或 `Response`）即可完成文档预览
 - 体验好：选择每个文档的最佳预览方案，保证用户体验和性能都达到最佳状态
 - 性能好：针对数据量较大做了优化
 
@@ -22,16 +22,28 @@ npm install @abner-vue-office/pdf vue-demi@0.14.6
 # pptx 文档预览组件
 npm install @abner-vue-office/pptx vue-demi@0.14.6
 ```
-如果是 Vue 2.6 版本或以下还需要额外安装 `@vue/composition-api`：
+如果是 Vue 2.6 版本或以下，还需要额外安装并注册 `@vue/composition-api`：
 ```shell
 npm install @vue/composition-api
+```
+```javascript
+import Vue from 'vue'
+import VueCompositionAPI from '@vue/composition-api'
+Vue.use(VueCompositionAPI)
+```
+如果使用 `pnpm` 或开启了 `--ignore-scripts` 导致安装脚本未自动切换 Vue 2 入口，可手动切换或直接引入 `lib/v2`：
+```shell
+npx abner-vue-office-docx-switch 2
+# 或者直接引入：
+# import AbnerVueOfficeDocx from '@abner-vue-office/docx/lib/v2'
+# import '@abner-vue-office/docx/lib/v2/index.css'
 ```
 
 ## 使用示例
 
 文档预览场景大致可以分为三种：
 - 有文档 CDN 地址，比如 `https://***.docx`，将文档地址字符串传给组件的 `src` 属性
-- 通过接口请求获取文件内容，此时可以获取文件的 `ArrayBuffer` 或 `Blob` 格式数据传给组件的 `src` 属性
+- 通过接口请求获取文件内容，此时可以获取文件的 `ArrayBuffer`、`ArrayBufferView`（如 `Uint8Array`）、`Blob` 或 `Response` 格式数据传给组件的 `src` 属性
 - 文件上传时预览，此时可以获取文件的 `ArrayBuffer` 或 `Blob` 格式数据传给组件的 `src` 属性
 
 <details>
@@ -78,7 +90,7 @@ export default {
 <template>
     <div>
         <input type="file" @change="changeHandle" />
-        <abner-vue-office-docx :src="src" />
+        <abner-vue-office-docx :src="src" style="height: 100vh;" />
     </div>
 </template>
 
@@ -97,12 +109,13 @@ export default {
     },
     methods: {
         changeHandle(event) {
-            let file = event.target.files[0]
+            let file = event.target.files && event.target.files[0]
+            if (!file) return
             let fileReader = new FileReader()
-            fileReader.readAsArrayBuffer(file)
             fileReader.onload = () => {
                 this.src = fileReader.result
             }
+            fileReader.readAsArrayBuffer(file)
         }
     }
 }
@@ -141,10 +154,12 @@ export default {
         fetch('你的API文件地址', {
             method: 'post'
         }).then(res => {
-            // 读取文件的 arrayBuffer
-            res.arrayBuffer().then(buf => {
-                this.docx = buf
-            })
+            if (!res.ok) {
+                throw new Error(`HTTP error! status: ${res.status}`)
+            }
+            return res.arrayBuffer()
+        }).then(buf => {
+            this.docx = buf
         })
     },
     methods: {
@@ -161,7 +176,7 @@ export default {
 <details>
 <summary>excel 文件预览示例</summary>
 
-通过网络地址预览示例如下，通过文件 `ArrayBuffer` 预览和上面 docx 的使用方式一致。
+通过网络地址预览示例如下，通过文件 `ArrayBuffer` 预览和上面 docx 的使用方式一致（若上传本地 `.xls` 文件，需根据文件名将 `options.xls` 设为 `true`）。
 ```vue
 <template>
     <abner-vue-office-excel
@@ -287,7 +302,21 @@ export default {
 - `@abner-vue-office/js-excel`
 - `@abner-vue-office/js-pdf`
 
-详细用法请参见 `docs/guide/js-preview.md`。
+```shell
+npm install @abner-vue-office/js-docx
+npm install @abner-vue-office/js-excel
+npm install @abner-vue-office/js-pdf
+```
+
+```javascript
+import abnerJsDocx from '@abner-vue-office/js-docx'
+import '@abner-vue-office/js-docx/lib/index.css'
+
+const previewer = abnerJsDocx.init(document.getElementById('docx'))
+previewer.preview('https://your-domain.com/test.docx')
+```
+
+`js-excel`（需引入 `@abner-vue-office/js-excel/lib/index.css`）和 `js-pdf`（无需额外 CSS）均提供相同的 `init(container, options, requestOptions)`、`preview(src)`、`setOptions(options)`、`setRequestOptions(requestOptions)`、`save(fileName)`、`destroy()` 方法。完整 API 参见项目仓库 [docs/guide/js-preview.md](https://github.com/xiaocaiisxiaocai/abner-vue-office/blob/main/docs/guide/js-preview.md)。
 
 ## 项目依赖的第三方库
 

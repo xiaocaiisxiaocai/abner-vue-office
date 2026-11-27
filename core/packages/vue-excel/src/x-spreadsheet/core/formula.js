@@ -13,32 +13,74 @@
 import { tf } from '../locale/locale';
 import { numberCalc } from './helper';
 
+function toNumericValues(ary) {
+  const nums = [];
+  for (let i = 0; i < ary.length; i += 1) {
+    const v = ary[i];
+    if (typeof v === 'number') {
+      if (Number.isFinite(v)) nums.push(v);
+    } else if (typeof v === 'string') {
+      const trimmed = v.trim();
+      if (trimmed !== '') {
+        const n = Number(trimmed);
+        if (Number.isFinite(n)) nums.push(n);
+      }
+    }
+  }
+  return nums;
+}
+
 /** @type {Formula[]} */
 const baseFormulas = [
   {
     key: 'SUM',
     title: tf('formula.sum'),
-    render: ary => ary.reduce((a, b) => numberCalc('+', a, b), 0),
+    render: (ary) => {
+      const nums = toNumericValues(ary);
+      if (nums.length === 0) return '0';
+      return nums.reduce((a, b) => numberCalc('+', a, b), 0);
+    },
   },
   {
     key: 'AVERAGE',
     title: tf('formula.average'),
-    render: ary => (ary.length ? ary.reduce((a, b) => Number(a) + Number(b), 0) / ary.length : 0),
+    render: (ary) => {
+      const nums = toNumericValues(ary);
+      if (nums.length === 0) return 0;
+      const total = nums.reduce((a, b) => a + b, 0);
+      return total / nums.length;
+    },
   },
   {
     key: 'MAX',
     title: tf('formula.max'),
-    render: ary => Math.max(...ary.map(v => Number(v))),
+    render: (ary) => {
+      const nums = toNumericValues(ary);
+      if (nums.length === 0) return 0;
+      let maxVal = nums[0];
+      for (let i = 1; i < nums.length; i += 1) {
+        if (nums[i] > maxVal) maxVal = nums[i];
+      }
+      return maxVal;
+    },
   },
   {
     key: 'MIN',
     title: tf('formula.min'),
-    render: ary => Math.min(...ary.map(v => Number(v))),
+    render: (ary) => {
+      const nums = toNumericValues(ary);
+      if (nums.length === 0) return 0;
+      let minVal = nums[0];
+      for (let i = 1; i < nums.length; i += 1) {
+        if (nums[i] < minVal) minVal = nums[i];
+      }
+      return minVal;
+    },
   },
   {
     key: 'IF',
     title: tf('formula._if'),
-    render: ([b, t, f]) => (b ? t : f),
+    render: ([b, t = true, f = false]) => (b ? t : f),
   },
   {
     key: 'AND',
@@ -53,36 +95,12 @@ const baseFormulas = [
   {
     key: 'CONCAT',
     title: tf('formula.concat'),
-    render: ary => ary.join(''),
+    render: ary => ary.map(v => (v == null ? '' : String(v))).join(''),
   },
-  /* support:  1 + A1 + B2 * 3
-  {
-    key: 'DIVIDE',
-    title: tf('formula.divide'),
-    render: ary => ary.reduce((a, b) => Number(a) / Number(b)),
-  },
-  {
-    key: 'PRODUCT',
-    title: tf('formula.product'),
-    render: ary => ary.reduce((a, b) => Number(a) * Number(b),1),
-  },
-  {
-    key: 'SUBTRACT',
-    title: tf('formula.subtract'),
-    render: ary => ary.reduce((a, b) => Number(a) - Number(b)),
-  },
-  */
 ];
 
 const formulas = baseFormulas;
 
-// const formulas = (formulaAry = []) => {
-//   const formulaMap = {};
-//   baseFormulas.concat(formulaAry).forEach((f) => {
-//     formulaMap[f.key] = f;
-//   });
-//   return formulaMap;
-// };
 const formulam = {};
 baseFormulas.forEach((f) => {
   formulam[f.key] = f;

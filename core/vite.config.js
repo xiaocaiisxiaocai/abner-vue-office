@@ -5,16 +5,16 @@ export default defineConfig({
   server: {
     host: '0.0.0.0'
   },
-  resolve:{
-    alias:{
-      'vue-demi': 'vue3'
+  resolve: {
+    alias: {
+      'vue-demi': 'vue'
     }
   },
   plugins: [
-      vue(),
+    vue(),
   ],
-  base:'/abner-vue-office/examples/dist',
-  build:{
+  base: '/abner-vue-office/examples/dist/',
+  build: {
     outDir: '../examples/dist'
   }
 });

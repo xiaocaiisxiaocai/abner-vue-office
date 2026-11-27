@@ -45,11 +45,15 @@ const fontSizes = [
  * @returns {fontsizePX}
  */
 function getFontSizePxByPt(pt) {
+  const num = Number(pt);
   for (let i = 0; i < fontSizes.length; i += 1) {
     const fontSize = fontSizes[i];
-    if (fontSize.pt === pt) {
+    if (fontSize.pt === pt || (!Number.isNaN(num) && fontSize.pt === num)) {
       return fontSize.px;
     }
+  }
+  if (!Number.isNaN(num) && Number.isFinite(num)) {
+    return Math.round((num * 96 / 72) * 10) / 10;
   }
   return pt;
 }

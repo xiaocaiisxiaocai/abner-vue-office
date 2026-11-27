@@ -7,28 +7,30 @@ const route = useRoute();
 const current = ref([]);
 
 function syncMenu(pathOrHash) {
+    const cleanPath = String(pathOrHash || '').split('?')[0].replace(/^#/, '');
     let currentRoute = 'docx';
-    if (pathOrHash.includes('excel')) {
+    if (cleanPath.includes('excel')) {
         currentRoute = 'excel';
-    } else if (pathOrHash.includes('pdf')) {
+    } else if (cleanPath.includes('pdf')) {
         currentRoute = 'pdf';
-    } else if (pathOrHash.includes('pptx')) {
+    } else if (cleanPath.includes('pptx')) {
         currentRoute = 'pptx';
     }
     current.value = [currentRoute];
 }
 
 onMounted(() => {
-    syncMenu(location.hash || route.path || '');
+    syncMenu(route.path || (typeof location !== 'undefined' ? location.hash : '') || '');
 });
 
 watch(() => route.path, (newPath) => {
-    syncMenu(newPath || location.hash || '');
+    syncMenu(newPath || (typeof location !== 'undefined' ? location.hash : '') || '');
 });
 
 function go({ key }) {
+    const targetPath = key.startsWith('/') ? key : `/${key}`;
     router.push({
-        path: key,
+        path: targetPath,
         query: { ...route.query }
     });
 }
@@ -52,11 +54,7 @@ function go({ key }) {
       </a-menu>
       <router-view/>
   </div>
-
 </template>
 
 <style scoped>
-:deep(.ant-tabs-nav-wrap) {
-  padding-left: 20px !important;
-}
 </style>

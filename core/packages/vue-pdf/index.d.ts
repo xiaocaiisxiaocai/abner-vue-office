@@ -1,5 +1,13 @@
 export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob | Response;
 
+export interface RequestOptions {
+    method?: string;
+    headers?: Record<string, string>;
+    withCredentials?: boolean;
+    credentials?: RequestCredentials;
+    [key: string]: any;
+}
+
 export interface PdfOptions {
     width?: number;
     gap?: number;
@@ -12,7 +20,7 @@ export interface PdfOptions {
     docBaseUrl?: string;
     cMapUrl?: string;
     cMapPacked?: boolean;
-    CMapReaderFactory?: Record<string, any>;
+    CMapReaderFactory?: new (...args: any[]) => any;
     enableXfa?: boolean;
     useSystemFonts?: boolean;
     [key: string]: any;
@@ -23,15 +31,19 @@ export type Options = PdfOptions;
 export interface PdfProps {
     src?: OfficeSource | null;
     staticFileUrl?: string;
-    requestOptions?: Record<string, any>;
+    requestOptions?: RequestOptions;
     options?: PdfOptions;
     defaultScale?: number;
     onRendered?: () => void;
     onError?: (error: any) => void;
+    class?: any;
+    style?: any;
+    [key: string]: any;
 }
 
 export interface AbnerVueOfficePdfInstance {
     $props: PdfProps;
+    userScale: { value: number };
     rerender: () => Promise<void>;
     save: (fileName?: string) => void;
     getScale: () => number;

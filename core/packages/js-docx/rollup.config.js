@@ -1,15 +1,19 @@
-import {getBabelOutputPlugin} from '@rollup/plugin-babel';
+import { babel } from '@rollup/plugin-babel';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import terser from '@rollup/plugin-terser';
 
-const babelConfig = {
+const babelOptions = {
+    babelHelpers: 'bundled',
+    babelrc: false,
+    configFile: false,
+    exclude: [/node_modules/, /src[\\/](pdf|worker)\.js$/],
     presets: [
         [
             '@babel/preset-env',
             {
                 targets: {
-                    browsers: ['ie >= 11'] // 指定转换目标为IE11及以上版本
+                    browsers: ['chrome >= 49', 'edge >= 15', 'firefox >= 52', 'safari >= 10', 'ie >= 11']
                 }
             }
         ]
@@ -18,25 +22,28 @@ const babelConfig = {
 
 export default {
     input: 'index.js',
-    output:[
+    output: [
         {
             file: 'lib/index.js',
-            name: 'abnerJsDocx',
             format: 'es',
-            plugins: [getBabelOutputPlugin(babelConfig), terser()]
+            plugins: [terser()]
+        },
+        {
+            file: 'lib/index.cjs',
+            format: 'cjs',
+            exports: 'default',
+            plugins: [terser()]
         },
         {
             file: 'lib/index.umd.js',
             name: 'abnerJsDocx',
             format: 'umd',
-            plugins: [getBabelOutputPlugin({
-                ...babelConfig,
-                allowAllFormats: true
-            }), terser()]
+            plugins: [terser()]
         }
     ],
     plugins: [
         nodeResolve({ browser: true, preferBuiltins: false }),
-        commonjs()
+        commonjs(),
+        babel(babelOptions)
     ]
 };

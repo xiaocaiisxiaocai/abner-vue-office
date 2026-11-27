@@ -23,17 +23,19 @@ function RgbToHex(a, b, c) {
 }
 
 export function getDarkColor(color, level) {
+    const lv = (typeof level === 'number' && Number.isFinite(level)) ? level : 0;
     const rgbc = HexToRgb(color);
     for (let i = 0; i < 3; i++) {
-        rgbc[i] = Math.max(0, Math.min(255, Math.floor(rgbc[i] * (1 - level))));
+        rgbc[i] = Math.max(0, Math.min(255, Math.floor(rgbc[i] * (1 - lv))));
     }
     return RgbToHex(rgbc[0], rgbc[1], rgbc[2]);
 }
 
 export function getLightColor(color, level) {
+    const lv = (typeof level === 'number' && Number.isFinite(level)) ? level : 0;
     const rgbc = HexToRgb(color);
     for (let i = 0; i < 3; i++) {
-        rgbc[i] = Math.max(0, Math.min(255, Math.floor((255 - rgbc[i]) * level + rgbc[i])));
+        rgbc[i] = Math.max(0, Math.min(255, Math.floor((255 - rgbc[i]) * lv + rgbc[i])));
     }
     return RgbToHex(rgbc[0], rgbc[1], rgbc[2]);
 }

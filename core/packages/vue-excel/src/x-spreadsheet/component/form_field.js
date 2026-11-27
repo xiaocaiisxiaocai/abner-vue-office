@@ -13,9 +13,9 @@ export default class FormField {
     this.label = '';
     this.rule = rule;
     if (label) {
-      this.label = h('label', 'label').css('width', `${labelWidth}px`).html(label);
+      this.label = h('label', 'label').css('width', `${labelWidth}px`).child(String(label));
     }
-    this.tip = h('div', 'tip').child('tip').hide();
+    this.tip = h('div', 'tip').hide();
     this.input = input;
     this.input.vchange = () => this.validate();
     this.el = h('div', `${cssPrefix}-form-field`)
@@ -43,27 +43,40 @@ export default class FormField {
     this.input.hint(hint);
   }
 
+  clearError() {
+    this.el.removeClass('error');
+    this.tip.el.textContent = '';
+    this.tip.hide();
+  }
+
   validate() {
     const {
       input, rule, tip, el,
     } = this;
-    const v = input.val();
+    const rawVal = input.val();
+    const v = rawVal == null ? '' : String(rawVal);
     if (rule.required) {
       if (/^\s*$/.test(v)) {
-        tip.html(t('validation.required'));
+        tip.el.textContent = t('validation.required');
+        tip.show();
         el.addClass('error');
         return false;
       }
+    }
+    if (!rule.required && v === '') {
+      this.clearError();
+      return true;
     }
     if (rule.type || rule.pattern) {
       const pattern = rule.pattern || patterns[rule.type];
       if (pattern && !pattern.test(v)) {
-        tip.html(t('validation.notMatch'));
+        tip.el.textContent = t('validation.notMatch');
+        tip.show();
         el.addClass('error');
         return false;
       }
     }
-    el.removeClass('error');
+    this.clearError();
     return true;
   }
 }

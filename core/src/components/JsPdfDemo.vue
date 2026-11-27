@@ -1,18 +1,17 @@
 <template>
-<div ref="dom" style="height: calc(100vh - 50px);">
-
-</div>
+<div ref="dom" style="height: calc(100vh - 50px);"></div>
 </template>
 
 <script setup>
 import { onMounted, onBeforeUnmount, ref } from 'vue';
 import jsPdf from '../../packages/js-pdf/index';
+import { getStaticFileUrl } from '../hooks/usePreview.js';
 
 const dom = ref(null);
-const baseUrl = location.origin + (location.pathname + '/').replace('//', '/');
+let myPdfPreview = null;
 
 onMounted(() => {
-    window.myPdfPreview = jsPdf.init(dom.value, {
+    myPdfPreview = jsPdf.init(dom.value, {
         onError: (e) => {
             console.log('发生错误', e);
         },
@@ -20,19 +19,18 @@ onMounted(() => {
             console.log('渲染完成');
         }
     });
-    window.myPdfPreview.preview(`${baseUrl}static/test-files/test.pdf`).catch(err => {
+    myPdfPreview.preview(getStaticFileUrl('static/test-files/test.pdf')).catch(err => {
         console.log('err', err);
     });
 });
 
 onBeforeUnmount(() => {
-    if (window.myPdfPreview && typeof window.myPdfPreview.destroy === 'function') {
-        window.myPdfPreview.destroy();
-        window.myPdfPreview = null;
+    if (myPdfPreview && typeof myPdfPreview.destroy === 'function') {
+        myPdfPreview.destroy();
     }
+    myPdfPreview = null;
 });
 </script>
 
 <style scoped>
-
 </style>

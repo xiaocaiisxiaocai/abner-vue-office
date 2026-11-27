@@ -21,14 +21,32 @@ class Filter {
       return true;
     }
     if (operator === 'in') {
-      return value.includes(v);
+      return Array.isArray(value) && value.includes(v);
     }
+    if (operator === 'eq') {
+      return v === value;
+    }
+    if (operator === 'neq') {
+      return v !== value;
+    }
+    const nv = Number(v);
+    if (operator === 'be' && Array.isArray(value) && value.length >= 2) {
+      const min = Number(value[0]);
+      const max = Number(value[1]);
+      return !Number.isNaN(nv) && nv >= min && nv <= max;
+    }
+    const target = Number(value);
+    if (Number.isNaN(nv) || Number.isNaN(target)) return false;
+    if (operator === 'gt') return nv > target;
+    if (operator === 'gte') return nv >= target;
+    if (operator === 'lt') return nv < target;
+    if (operator === 'lte') return nv <= target;
     return false;
   }
 
   vlength() {
     const { operator, value } = this;
-    if (operator === 'in') {
+    if (operator === 'in' && Array.isArray(value)) {
       return value.length;
     }
     return 0;
@@ -55,6 +73,13 @@ class Sort {
   }
 }
 
+function normalizeFilterCellText(cell) {
+  if (cell !== null && cell !== undefined && cell.text != null && !/^\s*$/.test(String(cell.text))) {
+    return String(cell.text);
+  }
+  return '';
+}
+
 export default class AutoFilter {
   constructor() {
     this.ref = null;
@@ -62,14 +87,15 @@ export default class AutoFilter {
     this.sort = null;
   }
 
-  setData({ ref, filters, sort }) {
-    if (ref != null) {
-      this.ref = ref;
-      this.filters = (filters || []).map(it => new Filter(it.ci, it.operator, it.value));
-      if (sort) {
-        this.sort = new Sort(sort.ci, sort.order);
-      }
+  setData(d) {
+    this.clear();
+    if (!d || typeof d !== 'object' || d.ref == null) {
+      return;
     }
+    const { ref, filters, sort } = d;
+    this.ref = ref;
+    this.filters = (filters || []).map(it => new Filter(it.ci, it.operator, it.value));
+    this.sort = sort ? new Sort(sort.ci, sort.order) : null;
   }
 
   getData() {
@@ -119,24 +145,26 @@ export default class AutoFilter {
   }
 
   filteredRows(getCell) {
-    // const ary = [];
-    // let lastri = 0;
     const rset = new Set();
     const fset = new Set();
     if (this.active()) {
       const { sri, eri } = this.range();
       const { filters } = this;
       for (let ri = sri + 1; ri <= eri; ri += 1) {
+        let matched = true;
         for (let i = 0; i < filters.length; i += 1) {
           const filter = filters[i];
           const cell = getCell(ri, filter.ci);
-          const ctext = cell ? cell.text : '';
+          const ctext = normalizeFilterCellText(cell);
           if (!filter.includes(ctext)) {
-            rset.add(ri);
+            matched = false;
             break;
-          } else {
-            fset.add(ri);
           }
+        }
+        if (matched) {
+          fset.add(ri);
+        } else {
+          rset.add(ri);
         }
       }
     }
@@ -144,18 +172,13 @@ export default class AutoFilter {
   }
 
   items(ci, getCell) {
-    const m = {};
+    const m = Object.create(null);
     if (this.active()) {
       const { sri, eri } = this.range();
       for (let ri = sri + 1; ri <= eri; ri += 1) {
         const cell = getCell(ri, ci);
-        if (cell !== null && cell.text != null && !/^\s*$/.test(String(cell.text))) {
-          const key = String(cell.text);
-          const cnt = (m[key] || 0) + 1;
-          m[key] = cnt;
-        } else {
-          m[''] = (m[''] || 0) + 1;
-        }
+        const key = normalizeFilterCellText(cell);
+        m[key] = (m[key] || 0) + 1;
       }
     }
     return m;

@@ -42,16 +42,17 @@ class Validation {
       type, required, operator, value,
     } = validator;
     return {
-      refs, mode, type, required, operator, value,
+      refs: refs.slice(), mode, type, required, operator, value,
     };
   }
 
   static valueOf({
     refs, mode, type, required, operator, value,
   }) {
-    return new Validation(mode, refs, new Validator(type, required, value, operator));
+    return new Validation(mode, Array.isArray(refs) ? refs.slice() : [], new Validator(type, required, value, operator));
   }
 }
+
 class Validations {
   constructor() {
     this._ = [];
@@ -71,9 +72,9 @@ class Validations {
       const [flag, message] = v.validator.validate(text);
       if (!flag) {
         errors.set(key, message);
-      } else {
-        errors.delete(key);
+        return false;
       }
+      errors.delete(key);
     } else {
       errors.delete(key);
     }
@@ -85,10 +86,11 @@ class Validations {
   add(mode, ref, {
     type, required, value, operator,
   }) {
+    this.remove(CellRange.valueOf(ref));
     const validator = new Validator(
       type, required, value, operator,
     );
-    const v = this.getByValidator(validator);
+    const v = this.getByValidator(validator, mode);
     if (v !== null) {
       v.addRef(ref);
     } else {
@@ -96,10 +98,10 @@ class Validations {
     }
   }
 
-  getByValidator(validator) {
+  getByValidator(validator, mode) {
     for (let i = 0; i < this._.length; i += 1) {
       const v = this._[i];
-      if (v.validator.equals(validator)) {
+      if ((mode === undefined || v.mode === mode) && v.validator.equals(validator)) {
         return v;
       }
     }
@@ -118,6 +120,13 @@ class Validations {
     this.each((it) => {
       it.remove(cellRange);
     });
+    this._ = this._.filter(it => it.refs.length > 0);
+    for (const key of Array.from(this.errors.keys())) {
+      const [riStr, ciStr] = key.split('_');
+      if (cellRange.includes(parseInt(riStr, 10), parseInt(ciStr, 10))) {
+        this.errors.delete(key);
+      }
+    }
   }
 
   each(cb) {
@@ -129,7 +138,8 @@ class Validations {
   }
 
   setData(d) {
-    this._ = d.map(it => Validation.valueOf(it));
+    this.errors.clear();
+    this._ = Array.isArray(d) ? d.map(it => Validation.valueOf(it)) : [];
   }
 }
 

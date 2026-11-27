@@ -73,7 +73,7 @@ app.listen(3000);
 
 检查CDN中vue.js的版本 和 node_modules下的vue版本是否一致。
 
-首先在项目的html中查看引入的vue.js文件路径，然后根据路径找的这个vue.js文件，查看其版本；
+首先在项目的html中查看引入的vue.js文件路径，然后根据路径找到这个vue.js文件，查看其版本；
 
 然后查看node_modules中安装的vue版本，**注意**：是在node_modules目录下找到vue安装文件，然后查看其版本，而不是package.json中的vue版本。
 

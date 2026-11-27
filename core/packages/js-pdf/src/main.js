@@ -172,7 +172,9 @@ class AbnerJsPdfPreview {
         const httpHeaders = reqOpts.headers || this.options.httpHeaders;
         const withCredentials = reqOpts.withCredentials !== undefined
             ? Boolean(reqOpts.withCredentials)
-            : reqOpts.credentials === 'include';
+            : (reqOpts.credentials === 'include'
+                ? true
+                : Boolean(this.options.withCredentials));
         const staticBase = typeof this.options.staticFileUrl === 'string' && this.options.staticFileUrl
             ? this.options.staticFileUrl
             : 'https://unpkg.com/pdfjs-dist@3.1.81/';
@@ -183,17 +185,17 @@ class AbnerJsPdfPreview {
             cMapUrl: `${staticBase.endsWith('/') ? staticBase : staticBase + '/'}cmaps/`,
             cMapPacked: true,
             enableXfa: true,
-            ...omit(this.options, ['url', 'width', 'staticFileUrl', 'gap', 'httpHeaders', 'onError', 'onRendered'])
+            ...omit(this.options, ['url', 'width', 'staticFileUrl', 'gap', 'httpHeaders', 'withCredentials', 'onError', 'onRendered'])
         });
         return this.loadingTask.promise;
     }
 
     renderSinglePage(num, canvas, currentId = this.renderId) {
-        if (this.isDestroyed || !this.pdfDocument || currentId !== this.renderId) {
+        if (this.isDestroyed || !this.pdfDocument || currentId !== this.renderId || !canvas || canvas.parentNode !== this.wrapperMain) {
             return Promise.resolve();
         }
         return this.pdfDocument.getPage(num).then((pdfPage) => {
-            if (this.isDestroyed || !this.pdfDocument || currentId !== this.renderId) {
+            if (this.isDestroyed || !this.pdfDocument || currentId !== this.renderId || canvas.parentNode !== this.wrapperMain) {
                 return;
             }
             const viewport = pdfPage.getViewport({ scale: this.getViewportScale });
@@ -482,7 +484,7 @@ class AbnerJsPdfPreview {
             return;
         }
         this.pdfDocument.getData().then(fileData => {
-            if (this.isDestroyed) {
+            if (this.isDestroyed || typeof Blob === 'undefined') {
                 return;
             }
             downloadFile(

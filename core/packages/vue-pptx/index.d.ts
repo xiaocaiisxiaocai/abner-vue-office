@@ -1,5 +1,13 @@
 export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob | Response;
 
+export interface RequestOptions {
+    method?: string;
+    headers?: Record<string, string>;
+    withCredentials?: boolean;
+    credentials?: RequestCredentials;
+    [key: string]: any;
+}
+
 export interface PptxOptions {
     width?: number;
     height?: number;
@@ -10,10 +18,13 @@ export type Options = PptxOptions;
 
 export interface PptxProps {
     src?: OfficeSource | null;
-    requestOptions?: Record<string, any>;
+    requestOptions?: RequestOptions;
     options?: PptxOptions;
     onRendered?: (pptx?: any) => void;
     onError?: (error: any) => void;
+    class?: any;
+    style?: any;
+    [key: string]: any;
 }
 
 export interface AbnerVueOfficePptxInstance {

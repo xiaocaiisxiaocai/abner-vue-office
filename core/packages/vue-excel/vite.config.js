@@ -3,7 +3,7 @@ import { createVuePlugin } from 'vite-plugin-vue2';
 import vue3 from '@vitejs/plugin-vue';
 import * as compiler from '@vue/compiler-sfc';
 import { isVue2 } from 'vue-demi';
-const { resolve } = require('path');
+import { resolve } from 'path';
 import babel from '@rollup/plugin-babel';
 
 export default defineConfig({
@@ -23,7 +23,7 @@ export default defineConfig({
     outDir: 'lib/v' + (isVue2 ? '2' : '3'),
     lib: {
       entry: resolve(__dirname, 'index.js'), //指定组件编译入口文件
-      name: 'abner-vue-office-excel',
+      name: 'AbnerVueOfficeExcel',
       formats: ['umd'],
       fileName: () => 'index.js',
     },

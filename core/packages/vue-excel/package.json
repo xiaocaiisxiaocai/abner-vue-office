@@ -10,15 +10,25 @@
       "default": "./lib/index.js"
     },
     "./lib/index.css": "./lib/index.css",
-    "./lib/v2": "./lib/v2/index.js",
+    "./lib/v2": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/v2/index.js"
+    },
     "./lib/v2/index.css": "./lib/v2/index.css",
-    "./lib/v3": "./lib/v3/index.js",
+    "./lib/v3": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/v3/index.js"
+    },
     "./lib/v3/index.css": "./lib/v3/index.css",
     "./lib/*": "./lib/*",
     "./package.json": "./package.json"
   },
+  "bin": {
+    "abner-vue-office-excel-switch": "lib/script/switch-cli.js"
+  },
   "files": [
-    "lib/"
+    "lib/",
+    "LICENSE"
   ],
   "scripts": {
     "clean": "rimraf lib",
@@ -26,16 +36,18 @@
     "copyFile3": "node ../../script/copy.js src/index.css lib/v3/index.css",
     "copyDefault": "node ../../script/copy.js lib/v3/index.js lib/index.js lib/v3/index.css lib/index.css",
     "copyReadme": "node ../../script/copy.js ../../../README.md README.md",
+    "copyLicense": "node ../../script/copy.js ../../LICENSE LICENSE",
     "copyType": "node ../../script/copy.js index.d.ts lib/index.d.ts",
     "copyScripts": "node ../../script/copy.js ../../script/postinstall.js lib/script/postinstall.js ../../script/switch-cli.js lib/script/switch-cli.js ../../script/utils.js lib/script/utils.js",
     "build:2": "npx vue-demi-switch 2 vue2 && vite build && npm run copyFile2",
     "build:3": "npx vue-demi-switch 3 vue3 && vite build && npm run copyFile3",
-    "build": "npm run clean && npm run build:2 && npm run build:3 && npm run copyDefault && npm run copyScripts && npm run copyReadme && npm run copyType",
-    "postinstall": "node -e \"if(require('fs').existsSync('lib/script/postinstall.js'))require('./lib/script/postinstall.js')\""
+    "build": "npm run clean && npm run build:2 && npm run build:3 && npm run copyDefault && npm run copyScripts && npm run copyReadme && npm run copyLicense && npm run copyType",
+    "postinstall": "node -e \"if(require('fs').existsSync('lib/script/postinstall.js'))require('./lib/script/postinstall.js')\"",
+    "prepublishOnly": "node -e \"const fs=require('fs');const req=['lib/index.js','lib/v2/index.js','lib/v3/index.js','lib/index.d.ts','lib/index.css','LICENSE'];const miss=req.filter(f=>!fs.existsSync(f));if(miss.length){console.error('Missing artifacts:',miss);process.exit(1);}\""
   },
   "peerDependencies": {
     "@vue/composition-api": "^1.7.1",
-    "vue": "^2.0.0 || >=3.0.0",
+    "vue": "^2.6.0 || >=3.0.0",
     "vue-demi": "^0.14.6"
   },
   "peerDependenciesMeta": {
@@ -56,6 +68,15 @@
   ],
   "license": "MIT",
   "author": "abner",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xiaocaiisxiaocai/abner-vue-office.git",
+    "directory": "core/packages/vue-excel"
+  },
+  "homepage": "https://github.com/xiaocaiisxiaocai/abner-vue-office#readme",
+  "bugs": {
+    "url": "https://github.com/xiaocaiisxiaocai/abner-vue-office/issues"
+  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"

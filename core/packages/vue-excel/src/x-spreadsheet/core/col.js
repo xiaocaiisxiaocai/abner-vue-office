@@ -15,11 +15,15 @@ class Cols {
     if (!d || typeof d !== 'object') {
       return;
     }
-    if (d.len !== undefined) {
-      this.len = d.len;
-      delete d.len;
-    }
-    this._ = d;
+    const copy = {};
+    Object.keys(d).forEach((k) => {
+      if (k === 'len') {
+        this.len = d.len;
+      } else if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+        copy[k] = d[k];
+      }
+    });
+    this._ = copy;
   }
 
   getData() {
@@ -30,7 +34,7 @@ class Cols {
   getWidth(i) {
     if (this.isHide(i)) return 0;
     const col = this._[i];
-    if (col && col.width) {
+    if (col && col.width !== undefined) {
       return col.width;
     }
     return this.width;
@@ -47,6 +51,9 @@ class Cols {
   }
 
   unhide(idx) {
+    if (idx >= 0 && this.isHide(idx)) {
+      this.setHide(idx, false);
+    }
     let index = idx;
     while (index > 0) {
       index -= 1;
@@ -58,7 +65,7 @@ class Cols {
 
   isHide(ci) {
     const col = this._[ci];
-    return col && col.hide;
+    return !!(col && col.hide);
   }
 
   setHide(ci, v) {

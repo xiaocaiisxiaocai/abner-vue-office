@@ -10,6 +10,7 @@ export interface RequestOptions {
 
 export interface Options {
     inWrapper?: boolean;
+    hideWrapperOnPrint?: boolean;
     ignoreWidth?: boolean;
     ignoreHeight?: boolean;
     ignoreFonts?: boolean;
@@ -24,9 +25,10 @@ export interface Options {
     renderEndnotes?: boolean;
     ignoreLastRenderedPageBreak?: boolean;
     useBase64URL?: boolean;
-    useMathMLPolyfill?: boolean;
     renderChanges?: boolean;
-    showChanges?: boolean;
+    renderComments?: boolean;
+    renderAltChunks?: boolean;
+    [key: string]: any;
 }
 
 export interface AbnerJsDocxPreview {

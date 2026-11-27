@@ -74,7 +74,8 @@ export default class Bottombar {
   constructor(addFunc = () => {},
     swapFunc = () => {},
     deleteFunc = () => {},
-    updateFunc = () => {}) {
+    updateFunc = () => {},
+    options = {}) {
     this.swapFunc = swapFunc;
     this.updateFunc = updateFunc;
     this.dataNames = [];
@@ -91,6 +92,7 @@ export default class Bottombar {
       this.menuEl = h('ul', `${cssPrefix}-menu`).child(
         h('li', '').children(
           new Icon('add').on('click', () => {
+            if (options && options.mode === 'read') return;
             addFunc();
           }),
           h('span', '').child(this.moreEl),
@@ -99,18 +101,18 @@ export default class Bottombar {
     );
   }
 
-  addItem(name, active, options) {
+  addItem(name, active, options = {}) {
     this.dataNames.push(name);
     const item = h('li', active ? 'active' : '').child(name);
     item.on('click', () => {
       this.clickSwap2(item);
-    }).on('contextmenu', (evt) => {
-      if (options.mode === 'read') return;
-      const { offsetLeft, offsetHeight } = evt.target;
+    }).on('contextmenu', () => {
+      if (options && options.mode === 'read') return;
+      const { offsetLeft, offsetHeight } = item.el;
       this.contextMenu.setOffset({ left: offsetLeft, bottom: offsetHeight + 1 });
       this.deleteEl = item;
     }).on('dblclick', () => {
-      if (options.mode === 'read') return;
+      if (options && options.mode === 'read') return;
       if (item.el && typeof item.el.querySelector === 'function' && item.el.querySelector('input')) {
         return;
       }
@@ -119,13 +121,32 @@ export default class Bottombar {
       const v = this.dataNames[idx];
       const input = new FormInput('auto', '');
       input.val(v);
-      input.input.on('blur', ({ target }) => {
-        const { value } = target;
+      let committed = false;
+      const finishRename = (newVal) => {
+        if (committed) return;
+        committed = true;
+        input.clearTimer();
         const nindex = this.items.indexOf(item);
-        if (nindex >= 0) {
-          this.renameItem(nindex, value);
-        }
-      });
+        if (nindex < 0) return;
+        const trimmed = newVal != null ? String(newVal) : '';
+        const finalVal = /^\s*$/.test(trimmed) ? this.dataNames[nindex] : trimmed;
+        this.renameItem(nindex, finalVal);
+      };
+      input.input
+        .on('click.stop', () => {})
+        .on('keydown', (evt) => {
+          if (evt.keyCode === 13) {
+            evt.stopPropagation();
+            finishRename(evt.target.value);
+          } else if (evt.keyCode === 27) {
+            evt.stopPropagation();
+            const nindex = this.items.indexOf(item);
+            finishRename(nindex >= 0 ? this.dataNames[nindex] : v);
+          }
+        })
+        .on('blur', ({ target }) => {
+          finishRename(target.value);
+        });
       item.html('').child(input.el);
       input.focus();
     });
@@ -146,6 +167,12 @@ export default class Bottombar {
   }
 
   clear() {
+    if (this.contextMenu) {
+      this.contextMenu.hide();
+    }
+    if (this.moreEl) {
+      this.moreEl.hide();
+    }
     this.items.forEach((it) => {
       this.menuEl.removeChild(it.el);
     });
@@ -154,6 +181,10 @@ export default class Bottombar {
     this.activeEl = null;
     this.deleteEl = null;
     this.moreEl.reset(this.dataNames);
+  }
+
+  destroy() {
+    this.clear();
   }
 
   deleteItem() {

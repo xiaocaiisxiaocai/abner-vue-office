@@ -62,6 +62,9 @@ async function render(data, container, options = {}, shouldCommit) {
         }, shouldCommit);
     }
     const blob = await getBlob(data);
+    if (typeof shouldCommit === 'function' && !shouldCommit()) {
+        return;
+    }
     if (!blob) {
         await enqueueOnContainer(container, () => {
             container.innerHTML = '';

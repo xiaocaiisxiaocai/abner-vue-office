@@ -20,6 +20,7 @@ const PAGER_SIZES = [
 ];
 
 const PAGER_ORIENTATIONS = ['landscape', 'portrait'];
+const FALLBACK_ORIENTATIONS = ['Landscape', 'Portrait'];
 
 function inches2px(inc) {
   return parseInt(96 * inc, 10);
@@ -37,15 +38,16 @@ function pagerSizeChange(evt) {
   const { paper } = this;
   const { value } = evt.target;
   const ps = PAGER_SIZES[value];
+  if (!ps) return;
   paper.w = inches2px(ps[1]);
   paper.h = inches2px(ps[2]);
-  // console.log('paper:', ps, paper);
   this.preview();
 }
 function pagerOrientationChange(evt) {
   const { paper } = this;
   const { value } = evt.target;
   const v = PAGER_ORIENTATIONS[value];
+  if (!v) return;
   paper.orientation = v;
   this.preview();
 }
@@ -65,7 +67,13 @@ export default class Print {
       },
     };
     this.data = data;
+    this.canvases = [];
     this._printIframe = null;
+    this._iframeTimer = null;
+    const translatedOrientations = t('print.orientations');
+    const orientations = Array.isArray(translatedOrientations) && translatedOrientations.length >= 2
+      ? translatedOrientations
+      : FALLBACK_ORIENTATIONS;
     this.el = h('div', `${cssPrefix}-print`)
       .children(
         h('div', `${cssPrefix}-print-bar`)
@@ -92,7 +100,7 @@ export default class Print {
                 h('fieldset', '').children(
                   h('label', '').child(`${t('print.orientation')}`),
                   h('select', '').children(
-                    ...PAGER_ORIENTATIONS.map((it, index) => h('option', '').attr('value', index).child(`${t('print.orientations')[index]}`)),
+                    ...PAGER_ORIENTATIONS.map((it, index) => h('option', '').attr('value', index).child(`${orientations[index]}`)),
                   ).on('change', pagerOrientationChange.bind(this)),
                 ),
               ),
@@ -103,7 +111,8 @@ export default class Print {
 
   resetData(data) {
     this.data = data;
-    this._printIframe = null;
+    this.el.hide();
+    this.removePrintIframe();
   }
 
   preview() {
@@ -129,6 +138,7 @@ export default class Print {
       eri: 0,
       eci: 0,
     };
+    const { exceptRowSet } = data;
     const maxPages = cr.eri - cr.sri + 2;
     for (let i = 0; i < maxPages && (ri <= cr.eri || i === 0); i += 1) {
       let th = 0;
@@ -138,39 +148,56 @@ export default class Print {
       const canvas = h('canvas', `${cssPrefix}-canvas`);
       this.canvases.push(canvas.el);
       const draw = new Draw(canvas.el, width, height);
+      const clipAndTransform = (cb) => {
+        draw.save();
+        if (draw.ctx && typeof draw.ctx.rect === 'function' && typeof draw.ctx.clip === 'function') {
+          draw.ctx.rect(padding, top, iwidth, iheight);
+          draw.ctx.clip();
+        }
+        draw.translate(left, top);
+        if (scale < 1) draw.scale(scale, scale);
+        cb();
+        draw.restore();
+      };
       // cell-content
-      draw.save();
-      draw.translate(left, top);
-      if (scale < 1) draw.scale(scale, scale);
-      for (; ri <= cr.eri; ri += 1) {
-        const rh = data.rows.getHeight(ri);
-        th += rh;
-        if (th < effHeight || ri === startRi) {
-          for (let ci = 0; ci <= cr.eci; ci += 1) {
-            renderCell(draw, data, ri, ci, yoffset);
-            mViewRange.eci = ci;
+      let pageHiddenOffset = 0;
+      clipAndTransform(() => {
+        for (; ri <= cr.eri; ri += 1) {
+          if (exceptRowSet && exceptRowSet.has(ri)) {
+            const hiddenH = data.rows.getHeight(ri);
+            pageHiddenOffset -= hiddenH;
+            continue;
           }
-          if (th >= effHeight) {
-            yo = -th;
-            ri += 1;
+          const rh = data.rows.getHeight(ri);
+          th += rh;
+          if (th < effHeight || ri === startRi) {
+            for (let ci = 0; ci <= cr.eci; ci += 1) {
+              renderCell(draw, data, ri, ci, yoffset + pageHiddenOffset);
+              mViewRange.eci = ci;
+            }
+            if (th >= effHeight) {
+              yo = -th + pageHiddenOffset;
+              ri += 1;
+              break;
+            }
+          } else {
+            yo = -(th - rh) + pageHiddenOffset;
             break;
           }
-        } else {
-          yo = -(th - rh);
-          break;
         }
-      }
-      mViewRange.eri = Math.max(mViewRange.sri, ri - 1);
-      draw.restore();
-      // merge-cell
-      draw.save();
-      draw.translate(left, top);
-      if (scale < 1) draw.scale(scale, scale);
-      const yof = yoffset;
-      data.eachMergesInView(mViewRange, ({ sri, sci }) => {
-        renderCell(draw, data, sri, sci, yof);
       });
-      draw.restore();
+      mViewRange.eri = Math.max(mViewRange.sri, ri - 1);
+      // merge-cell
+      const yof = yoffset;
+      clipAndTransform(() => {
+        data.eachMergesInView(mViewRange, ({ sri, sci }) => {
+          if (exceptRowSet && exceptRowSet.has(sri)) return;
+          const hiddenAbove = exceptRowSet
+            ? (data.rows.sumHeight(mViewRange.sri, sri, exceptRowSet) - data.rows.sumHeight(mViewRange.sri, sri))
+            : 0;
+          renderCell(draw, data, sri, sci, yof + hiddenAbove);
+        });
+      });
 
       mViewRange.sri = ri;
       mViewRange.sci = 0;
@@ -181,6 +208,10 @@ export default class Print {
   }
 
   removePrintIframe() {
+    if (this._iframeTimer) {
+      clearTimeout(this._iframeTimer);
+      this._iframeTimer = null;
+    }
     if (this._printIframe && this._printIframe.parentNode) {
       this._printIframe.parentNode.removeChild(this._printIframe);
     }
@@ -190,34 +221,49 @@ export default class Print {
   toPrint() {
     this.el.hide();
     this.removePrintIframe();
+    if (!this.canvases || this.canvases.length === 0) return;
+    if (typeof window === 'undefined' || !window.document || !window.document.body) return;
     const { paper } = this;
     const iframe = h('iframe', '').hide();
     const { el } = iframe;
     this._printIframe = el;
     window.document.body.appendChild(el);
     const { contentWindow } = el;
+    if (!contentWindow || !contentWindow.document) {
+      this.removePrintIframe();
+      return;
+    }
     const idoc = contentWindow.document;
-    const style = document.createElement('style');
+    const style = idoc.createElement ? idoc.createElement('style') : window.document.createElement('style');
     style.innerHTML = `
-      @page { size: ${paper.width}px ${paper.height}px; };
+      @page { size: ${paper.width}px ${paper.height}px; }
       canvas {
-        page-break-before: auto;        
+        page-break-before: auto;
         page-break-after: always;
         image-rendering: pixelated;
-      };
+      }
     `;
-    idoc.head.appendChild(style);
+    if (idoc.head) idoc.head.appendChild(style);
     this.canvases.forEach((it) => {
       const cn = it.cloneNode(false);
-      const ctx = cn.getContext('2d');
-      // ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(it, 0, 0);
-      idoc.body.appendChild(cn);
+      const ctx = cn.getContext ? cn.getContext('2d') : null;
+      if (ctx) {
+        ctx.drawImage(it, 0, 0);
+      }
+      if (idoc.body) idoc.body.appendChild(cn);
     });
     contentWindow.onafterprint = () => {
       this.removePrintIframe();
     };
-    contentWindow.print();
+    if (typeof contentWindow.focus === 'function') {
+      contentWindow.focus();
+    }
+    if (typeof contentWindow.print === 'function') {
+      contentWindow.print();
+    }
+    this._iframeTimer = setTimeout(() => {
+      this.removePrintIframe();
+    }, 60000);
   }
 
   destroy() {

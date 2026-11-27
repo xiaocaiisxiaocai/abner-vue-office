@@ -46,7 +46,7 @@ export default {
 </script>
 ```
 
-可以设置组件的style配置样式，通常需要设置下高度height，如果不设置则默认取组件的父元素高度，最小高度300px。
+建议为组件设置 `style` 高度（如 `height: 100vh;`）或确保其父容器拥有明确高度（组件根容器使用 `height: 100%`）。
 
 组件渲染完成会抛出rendered事件，渲染失败会抛出error事件。
 
@@ -69,7 +69,7 @@ export default {
         >
             <el-button size="small" type="warning">点击上传</el-button>
         </el-upload>
-        <abner-vue-office-docx :src="src"/>
+        <abner-vue-office-docx :src="src" style="height: 100vh;"/>
     </div>
 </template>
 
@@ -90,12 +90,13 @@ export default {
     methods: {
         //在beforeUpload中读取文件内容
         beforeUpload(file) {
+            if (!file) return false;
             let reader = new FileReader();
-            reader.readAsArrayBuffer(file);
             reader.onload = (loadEvent) => {
                 let arrayBuffer = loadEvent.target.result;
-                this.src = arrayBuffer
+                this.src = arrayBuffer;
             };
+            reader.readAsArrayBuffer(file);
             return false
         }
     }
@@ -110,7 +111,7 @@ export default {
 <template>
     <div>
         <input type="file" @change="changeHandle"/>
-        <abner-vue-office-docx :src="src"/>
+        <abner-vue-office-docx :src="src" style="height: 100vh;"/>
     </div>
 </template>
 
@@ -129,12 +130,13 @@ export default {
     },
     methods: {
         changeHandle(event) {
-            let file = event.target.files[0]
-            let fileReader = new FileReader()
-            fileReader.readAsArrayBuffer(file)
+            let file = event.target.files && event.target.files[0];
+            if (!file) return;
+            let fileReader = new FileReader();
             fileReader.onload = () => {
-                this.src = fileReader.result
-            }
+                this.src = fileReader.result;
+            };
+            fileReader.readAsArrayBuffer(file);
         }
     }
 }

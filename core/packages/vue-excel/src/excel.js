@@ -112,7 +112,7 @@ function requestExcel(src, options = {}) {
     const opts = options || {};
     return new Promise(function (resolve, reject) {
         const xhr = new XMLHttpRequest();
-        const method = (opts.method || 'GET').trim();
+        const method = (typeof opts.method === 'string' && opts.method.trim()) || 'GET';
         const isBodyless = /^(get|head)$/i.test(method);
         xhr.open(method, src, true);
         xhr.responseType = 'arraybuffer';
@@ -141,9 +141,15 @@ function requestExcel(src, options = {}) {
         }
         xhr.withCredentials = Boolean(opts.withCredentials || opts.credentials === 'include');
         if (opts.headers) {
-            Object.keys(opts.headers).forEach(function(key) {
-                xhr.setRequestHeader(key, opts.headers[key]);
-            });
+            if (typeof opts.headers.forEach === 'function') {
+                opts.headers.forEach(function (val, key) {
+                    xhr.setRequestHeader(key, val);
+                });
+            } else {
+                Object.keys(opts.headers).forEach(function(key) {
+                    xhr.setRequestHeader(key, opts.headers[key]);
+                });
+            }
         }
 
         xhr.send(isBodyless ? null : opts.body);
@@ -243,12 +249,41 @@ function splitNumFmtSections(fmt) {
     return sections;
 }
 
+function findDigitPlaceholderBounds(section) {
+    let first = -1;
+    let last = -1;
+    let inQuotes = false;
+    let escaped = false;
+    for (let i = 0; i < section.length; i++) {
+        const ch = section[i];
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (ch === '\\') {
+            escaped = true;
+            continue;
+        }
+        if (ch === '"') {
+            inQuotes = !inQuotes;
+            continue;
+        }
+        if (!inQuotes && (ch === '0' || ch === '#' || ch === '?')) {
+            if (first === -1) {
+                first = i;
+            }
+            last = i;
+        }
+    }
+    return { first, last };
+}
+
 function extractTrailingQuotedSuffix(section) {
-    const lastDigitIdx = Math.max(section.lastIndexOf('0'), section.lastIndexOf('#'), section.lastIndexOf('?'));
-    if (lastDigitIdx === -1) {
+    const { last } = findDigitPlaceholderBounds(section);
+    if (last === -1) {
         return '';
     }
-    const tail = section.slice(lastDigitIdx + 1);
+    const tail = section.slice(last + 1);
     const match = tail.match(/"([^"]+)"/);
     return match ? match[1] : '';
 }
@@ -314,7 +349,7 @@ function formatNumberValue(value, cellNumFmt) {
                         pctResult = trimmedFrac.length > 0 ? `${intPart}.${trimmedFrac}` : intPart;
                     }
                 } else {
-                    pctResult = String(parseFloat(rawScaled.toFixed(12)));
+                    pctResult = rawScaled.toFixed(0);
                 }
                 if (/^-[0]+(\.[0]+)?$/.test(pctResult)) {
                     pctResult = pctResult.slice(1);
@@ -322,7 +357,7 @@ function formatNumberValue(value, cellNumFmt) {
                 if (isParenNeg) {
                     return `(${pctResult}%)`;
                 }
-                if (value < 0 && hasExplicitMinus && !pctResult.startsWith('-') && !/^0(\.0+)?$/.test(pctResult)) {
+                if (value < 0 && hasExplicitMinus && !pctResult.startsWith('-') && !/^0+(\.0+)?$/.test(pctResult)) {
                     return `-${pctResult}%`;
                 }
                 return `${pctResult}%`;
@@ -332,7 +367,7 @@ function formatNumberValue(value, cellNumFmt) {
                 const numVal = useAbsForNegSection ? Math.abs(value) : value;
 
                 let prefix = '';
-                const firstDigitIdx = cleanSection.search(/[0#?]/);
+                const { first: firstDigitIdx } = findDigitPlaceholderBounds(cleanSection);
                 const leadingPart = firstDigitIdx > 0 ? cleanSection.slice(0, firstDigitIdx) : '';
                 if (bracketCurrency) {
                     prefix = bracketCurrency;
@@ -372,7 +407,7 @@ function formatNumberValue(value, cellNumFmt) {
 
                 const intPattern = patternOnly.split('.')[0];
                 const intZeroCount = (intPattern.match(/0/g) || []).length;
-                if (!patternOnly.includes(',') && intZeroCount > 1) {
+                if (!patternOnly.includes(',') && intZeroCount > 1 && !result.includes('e') && !result.includes('E')) {
                     const parts = result.split('.');
                     const neg = parts[0].startsWith('-');
                     const absDigits = neg ? parts[0].slice(1) : parts[0];
@@ -382,7 +417,7 @@ function formatNumberValue(value, cellNumFmt) {
                     }
                 }
 
-                if (/[#0],[#0]/.test(patternOnly)) {
+                if (/[#0?],[#0?]/.test(patternOnly) && !result.includes('e') && !result.includes('E')) {
                     const parts = result.split('.');
                     const digits = parts[0].split('').reverse();
                     const formatted = [];
@@ -403,7 +438,7 @@ function formatNumberValue(value, cellNumFmt) {
                 if (result.startsWith('-')) {
                     return `-${prefix}${result.slice(1)}${suffix}`;
                 }
-                if (value < 0 && hasExplicitMinus && !/^0(\.0+)?$/.test(result)) {
+                if (value < 0 && hasExplicitMinus && !/^0+(\.0+)?$/.test(result)) {
                     return `-${prefix}${result}${suffix}`;
                 }
                 return `${prefix}${result}${suffix}`;
@@ -500,7 +535,7 @@ function getCellText(cell){
             return boolVal !== undefined && boolVal !== null ? String(boolVal).toUpperCase() : '';
         }
         case 10: //Error
-            return (value && value.error) || (cell.text && cell.text.error) || '';
+            return (value && value.error) || (cell.text && cell.text.error) || (typeof cell.text === 'string' ? cell.text : '');
         default:
             if (value == null) {
                 return '';
@@ -526,10 +561,14 @@ function transferArgbColor(originColor){
         if (!argb) {
             return null;
         }
+        const alpha = parseInt(argb[1], 16) / 255;
+        if (alpha === 0) {
+            return null;
+        }
         color.r = parseInt(argb[2], 16);
         color.g = parseInt(argb[3], 16);
         color.b = parseInt(argb[4], 16);
-        color.a = parseInt(argb[1], 16) / 255;
+        color.a = alpha;
         return tinycolor(`rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`).toHexString();
     } catch (e) {
         console.warn(e);
@@ -605,8 +644,11 @@ function getStyle(cell){
     if(style.border){
         let styleBorder = {};
         Object.keys(style.border).forEach(position =>{
+            if (position === 'diagonal') {
+                return;
+            }
             let originBorder = style.border[position];
-            if (!originBorder) {
+            if (!originBorder || typeof originBorder !== 'object' || (!originBorder.style && !originBorder.color)) {
                 return;
             }
             let bordColor = '#000000';
@@ -651,18 +693,22 @@ export function transferExcelToSpreadSheet(workbook, options = {}){
             if (!Object.prototype.hasOwnProperty.call(sheet._merges, mergeRange)) {
                 continue;
             }
-            sheetData.merges.push(sheet._merges[mergeRange].shortRange);
+            const mergeItem = sheet._merges[mergeRange];
+            if (!mergeItem || !mergeItem.model) {
+                continue;
+            }
+            sheetData.merges.push(mergeItem.shortRange);
             let mergeAddress = {};
             // 合并单元格起始地址
-            mergeAddress.startAddress = sheet._merges[mergeRange].tl;
+            mergeAddress.startAddress = mergeItem.tl;
             // 合并单元格终止地址
-            mergeAddress.endAddress = sheet._merges[mergeRange].br;
+            mergeAddress.endAddress = mergeItem.br;
             // Y轴方向跨度
-            mergeAddress.YRange = sheet._merges[mergeRange].model.bottom - sheet._merges[mergeRange].model.top;
+            mergeAddress.YRange = mergeItem.model.bottom - mergeItem.model.top;
             // X轴方向跨度
-            mergeAddress.XRange = sheet._merges[mergeRange].model.right - sheet._merges[mergeRange].model.left;
-            effectiveMaxColLen = Math.max(effectiveMaxColLen, sheet._merges[mergeRange].model.right || 0);
-            effectiveMaxRowLen = Math.max(effectiveMaxRowLen, sheet._merges[mergeRange].model.bottom || 0);
+            mergeAddress.XRange = mergeItem.model.right - mergeItem.model.left;
+            effectiveMaxColLen = Math.max(effectiveMaxColLen, mergeItem.model.right || 0);
+            effectiveMaxRowLen = Math.max(effectiveMaxRowLen, mergeItem.model.bottom || 0);
             mergeMap.set(mergeAddress.startAddress, mergeAddress);
         }
 

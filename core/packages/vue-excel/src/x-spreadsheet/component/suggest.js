@@ -3,10 +3,10 @@ import { bindClickoutside, unbindClickoutside } from './event';
 import { cssPrefix } from '../config';
 
 function inputMovePrev(evt) {
-  evt.preventDefault();
   evt.stopPropagation();
   const { filterItems } = this;
   if (filterItems.length <= 0) return;
+  evt.preventDefault();
   if (this.itemIndex >= 0) filterItems[this.itemIndex].toggle();
   this.itemIndex -= 1;
   if (this.itemIndex < 0) {
@@ -19,6 +19,7 @@ function inputMoveNext(evt) {
   evt.stopPropagation();
   const { filterItems } = this;
   if (filterItems.length <= 0) return;
+  evt.preventDefault();
   if (this.itemIndex >= 0) filterItems[this.itemIndex].toggle();
   this.itemIndex += 1;
   if (this.itemIndex > filterItems.length - 1) {
@@ -28,6 +29,7 @@ function inputMoveNext(evt) {
 }
 
 function inputEnter(evt) {
+  if (evt.altKey) return;
   evt.preventDefault();
   const { filterItems } = this;
   if (filterItems.length <= 0) return;
@@ -43,6 +45,9 @@ function inputKeydownHandler(evt) {
     evt.stopPropagation();
   }
   switch (keyCode) {
+    case 27: // esc
+      this.hide();
+      break;
     case 37: // left
       evt.stopPropagation();
       break;
@@ -74,6 +79,7 @@ export default class Suggest {
     this.el = h('div', `${cssPrefix}-suggest`).css('width', width).hide();
     this.itemClick = itemClick;
     this.itemIndex = -1;
+    this._clickoutsideEl = null;
   }
 
   setOffset(v) {
@@ -89,36 +95,42 @@ export default class Suggest {
     if (el && el.el && el.el.parentNode) {
       unbindClickoutside(el.parent());
     }
+    if (this._clickoutsideEl) {
+      unbindClickoutside(this._clickoutsideEl);
+      this._clickoutsideEl = null;
+    }
   }
 
   setItems(items) {
     this.items = items;
-    // this.search('');
   }
 
   search(word) {
     let { items } = this;
     if (!/^\s*$/.test(word)) {
       const upperWord = String(word).toUpperCase();
-      items = items.filter(it => String(it.key || it).toUpperCase().startsWith(upperWord));
+      items = items.filter((it) => {
+        const searchKey = (it && typeof it === 'object' && it.key !== undefined) ? it.key : it;
+        return String(searchKey).toUpperCase().startsWith(upperWord);
+      });
     }
     items = items.map((it) => {
-      let { title } = it;
-      if (title) {
+      let title = it && typeof it === 'object' ? it.title : it;
+      if (title !== undefined) {
         if (typeof title === 'function') {
           title = title();
         }
       } else {
-        title = it;
+        title = (it && typeof it === 'object' && it.key !== undefined) ? it.key : '';
       }
       const item = h('div', `${cssPrefix}-item`)
-        .child(title)
+        .child(title != null ? String(title) : '')
         .on('click.stop', () => {
           this.itemClick(it);
           this.hide();
         });
-      if (it.label) {
-        item.child(h('div', 'label').html(it.label));
+      if (it && it.label !== undefined && it.label !== null && it.label !== '') {
+        item.child(h('div', 'label').child(String(it.label)));
       }
       return item;
     });
@@ -128,9 +140,12 @@ export default class Suggest {
       return;
     }
     const { el } = this;
-    // items[0].toggle();
     el.html('').children(...items).show();
-    bindClickoutside(el.parent(), () => { this.hide(); });
+    if (el && el.el && el.el.parentNode) {
+      const parentEl = el.parent();
+      this._clickoutsideEl = parentEl;
+      bindClickoutside(parentEl, () => { this.hide(); });
+    }
   }
 
   bindInputEvents(input) {

@@ -2,7 +2,7 @@
 
 ## 安装
 ```shell
-npm install @abner-vue-office/pptx vue-demi
+npm install @abner-vue-office/pptx vue-demi@0.14.6
 ```
 
 ## 使用网络地址预览

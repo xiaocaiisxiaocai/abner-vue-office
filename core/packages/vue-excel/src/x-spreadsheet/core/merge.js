@@ -17,7 +17,7 @@ class Merges {
     for (let i = 0; i < this._.length; i += 1) {
       const it = this._[i];
       if (it.includes(ri, ci)) {
-        return it;
+        return it.clone();
       }
     }
     return null;
@@ -31,7 +31,6 @@ class Merges {
     for (let i = 0; i < this._.length; i += 1) {
       const it = this._[i];
       if (it.intersects(cellRange)) {
-        // console.log('intersects');
         return true;
       }
     }
@@ -39,45 +38,115 @@ class Merges {
   }
 
   union(cellRange) {
-    let cr = cellRange;
-    this._.forEach((it) => {
-      if (it.intersects(cr)) {
-        cr = it.union(cr);
-      }
-    });
+    let cr = cellRange.clone();
+    let changed = true;
+    while (changed) {
+      changed = false;
+      this._.forEach((it) => {
+        if (it.intersects(cr) && !it.within(cr)) {
+          cr = it.union(cr);
+          changed = true;
+        }
+      });
+    }
     return cr;
   }
 
   add(cr) {
     this.deleteWithin(cr);
-    this._.push(cr);
+    this._.push(cr.clone());
   }
 
   // type: row | column
-  shift(type, index, n, cbWithin) {
-    this._.forEach((cellRange) => {
-      const {
-        sri, sci, eri, eci,
-      } = cellRange;
-      const range = cellRange;
+  shift(type, index, n, cbWithin = () => {}) {
+    if (n === 0) return;
+    if (n > 0) {
+      this._.forEach((range) => {
+        if (type === 'row') {
+          if (range.sri >= index) {
+            range.sri += n;
+            range.eri += n;
+          } else if (range.sri < index && index <= range.eri) {
+            range.eri += n;
+            cbWithin(range.sri, range.sci, n, 0);
+          }
+        } else if (type === 'column') {
+          if (range.sci >= index) {
+            range.sci += n;
+            range.eci += n;
+          } else if (range.sci < index && index <= range.eci) {
+            range.eci += n;
+            cbWithin(range.sri, range.sci, 0, n);
+          }
+        }
+      });
+      return;
+    }
+
+    const delCount = -n;
+    const delEnd = index + delCount - 1;
+    const kept = [];
+    this._.forEach((range) => {
       if (type === 'row') {
-        if (sri >= index) {
-          range.sri += n;
-          range.eri += n;
-        } else if (sri < index && index <= eri) {
-          range.eri += n;
-          cbWithin(sri, sci, n, 0);
+        const {
+          sri, eri, sci,
+        } = range;
+        if (sri > delEnd) {
+          range.sri -= delCount;
+          range.eri -= delCount;
+          kept.push(range);
+        } else if (eri < index) {
+          kept.push(range);
+        } else if (sri >= index && eri <= delEnd) {
+          // fully deleted merge
+        } else {
+          // partial overlap
+          const newSri = sri < index ? sri : index;
+          const overlapBeforeEnd = Math.min(eri, delEnd) - Math.max(sri, index) + 1;
+          const newEri = eri - overlapBeforeEnd;
+          if (newEri >= newSri) {
+            range.sri = newSri;
+            range.eri = newEri;
+            if (range.multiple()) {
+              cbWithin(newSri, sci, (eri - sri) - (newEri - newSri) > 0 ? -overlapBeforeEnd : 0, 0);
+              kept.push(range);
+            } else {
+              cbWithin(newSri, sci, -overlapBeforeEnd, 0);
+            }
+          }
         }
       } else if (type === 'column') {
-        if (sci >= index) {
-          range.sci += n;
-          range.eci += n;
-        } else if (sci < index && index <= eci) {
-          range.eci += n;
-          cbWithin(sri, sci, 0, n);
+        const {
+          sri, sci, eci,
+        } = range;
+        if (sci > delEnd) {
+          range.sci -= delCount;
+          range.eci -= delCount;
+          kept.push(range);
+        } else if (eci < index) {
+          kept.push(range);
+        } else if (sci >= index && eci <= delEnd) {
+          // fully deleted merge
+        } else {
+          const newSci = sci < index ? sci : index;
+          const overlapBeforeEnd = Math.min(eci, delEnd) - Math.max(sci, index) + 1;
+          const newEci = eci - overlapBeforeEnd;
+          if (newEci >= newSci) {
+            range.sci = newSci;
+            range.eci = newEci;
+            if (range.multiple()) {
+              cbWithin(sri, newSci, 0, -overlapBeforeEnd);
+              kept.push(range);
+            } else {
+              cbWithin(sri, newSci, 0, -overlapBeforeEnd);
+            }
+          }
         }
+      } else {
+        kept.push(range);
       }
     });
+    this._ = kept;
   }
 
   move(cellRange, rn, cn) {
@@ -93,7 +162,7 @@ class Merges {
   }
 
   setData(merges) {
-    this._ = merges.map(merge => CellRange.valueOf(merge));
+    this._ = Array.isArray(merges) ? merges.map(merge => CellRange.valueOf(merge)) : [];
     return this;
   }
 

@@ -67,6 +67,7 @@ export default defineComponent({
         let loadingTask = null;
         let currentObjectUrl = null;
         let isUnmounted = false;
+        let isLoading = false;
         let renderId = 0;
         let libRequestId = 0;
         const activeRenderTasks = new Set();
@@ -152,6 +153,7 @@ export default defineComponent({
 
         onBeforeUnmount(() => {
             isUnmounted = true;
+            isLoading = false;
             ++renderId;
             ++libRequestId;
             onScrollPdf.cancel();
@@ -164,6 +166,7 @@ export default defineComponent({
 
         function scheduleInit() {
             const currentLibReqId = ++libRequestId;
+            isLoading = true;
             return checkPdfLib().then(() => {
                 if (isUnmounted || currentLibReqId !== libRequestId) {
                     return;
@@ -171,6 +174,7 @@ export default defineComponent({
                 return init();
             }).catch(e => {
                 if (!isUnmounted && currentLibReqId === libRequestId) {
+                    isLoading = false;
                     emit('error', e);
                 }
             });
@@ -190,7 +194,7 @@ export default defineComponent({
                         }
                     });
                 });
-            } else if (props.src && containerRef.value && !loadingTask) {
+            } else if (props.src && containerRef.value && !isLoading) {
                 scheduleInit();
             }
         }
@@ -268,7 +272,9 @@ export default defineComponent({
 
         async function init() {
             const currentId = ++renderId;
+            isLoading = true;
             if (!props.src) {
+                isLoading = false;
                 clearCanvas();
                 cleanupPdfResources();
                 emit('error', new Error('src不能为空'));
@@ -292,7 +298,9 @@ export default defineComponent({
                 const httpHeaders = reqOpts.headers || opts.httpHeaders;
                 const withCredentials = reqOpts.withCredentials !== undefined
                     ? Boolean(reqOpts.withCredentials)
-                    : reqOpts.credentials === 'include';
+                    : (reqOpts.credentials === 'include'
+                        ? true
+                        : Boolean(opts.withCredentials));
                 const staticBase = typeof props.staticFileUrl === 'string' && props.staticFileUrl
                     ? props.staticFileUrl
                     : 'https://unpkg.com/pdfjs-dist@3.1.81/';
@@ -303,7 +311,7 @@ export default defineComponent({
                     cMapUrl: `${staticBase.endsWith('/') ? staticBase : staticBase + '/'}cmaps/`,
                     cMapPacked: true,
                     enableXfa: true,
-                    ...omit(opts, ['url', 'width', 'gap', 'defaultScale', 'httpHeaders'])
+                    ...omit(opts, ['url', 'width', 'gap', 'defaultScale', 'httpHeaders', 'withCredentials'])
                 });
                 const pdf = await loadingTask.promise;
                 if (isUnmounted || currentId !== renderId) {
@@ -320,6 +328,10 @@ export default defineComponent({
                     clearCanvas();
                     cleanupPdfResources();
                     emit('error', e);
+                }
+            } finally {
+                if (currentId === renderId) {
+                    isLoading = false;
                 }
             }
         }
@@ -465,11 +477,11 @@ export default defineComponent({
         }
 
         function renderPage(num, canvas, currentId = renderId) {
-            if (!pdfDocument || isUnmounted || currentId !== renderId) {
+            if (!pdfDocument || isUnmounted || currentId !== renderId || !canvas || canvas.parentNode !== wrapperRef.value) {
                 return Promise.resolve();
             }
             return pdfDocument.getPage(num).then((pdfPage) => {
-                if (!pdfDocument || isUnmounted || currentId !== renderId) {
+                if (!pdfDocument || isUnmounted || currentId !== renderId || canvas.parentNode !== wrapperRef.value) {
                     return;
                 }
                 const viewport = pdfPage.getViewport({ scale: getViewportScale });
@@ -562,7 +574,7 @@ export default defineComponent({
                 return;
             }
             pdfDocument.getData().then(fileData => {
-                if (isUnmounted) {
+                if (isUnmounted || typeof Blob === 'undefined') {
                     return;
                 }
                 downloadFile(

@@ -1,13 +1,17 @@
 // import helper from '../helper';
 
 export default class History {
-  constructor() {
+  constructor(maxLength = 100) {
     this.undoItems = [];
     this.redoItems = [];
+    this.maxLength = maxLength;
   }
 
   add(data) {
     this.undoItems.push(JSON.stringify(data));
+    if (this.undoItems.length > this.maxLength) {
+      this.undoItems.shift();
+    }
     this.redoItems = [];
   }
 

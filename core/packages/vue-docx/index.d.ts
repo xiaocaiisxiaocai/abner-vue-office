@@ -11,6 +11,7 @@ export interface RequestOptions {
 export interface DocxOptions {
     className?: string;
     inWrapper?: boolean;
+    hideWrapperOnPrint?: boolean;
     ignoreWidth?: boolean;
     ignoreHeight?: boolean;
     ignoreFonts?: boolean;
@@ -19,14 +20,15 @@ export interface DocxOptions {
     experimental?: boolean;
     trimXmlDeclaration?: boolean;
     useBase64URL?: boolean;
-    useMathMLPolyfill?: boolean;
     renderHeaders?: boolean;
     renderFooters?: boolean;
     renderFootnotes?: boolean;
     renderEndnotes?: boolean;
     renderChanges?: boolean;
-    showChanges?: boolean;
+    renderComments?: boolean;
+    renderAltChunks?: boolean;
     debug?: boolean;
+    [key: string]: any;
 }
 
 export type Options = DocxOptions;
@@ -37,6 +39,9 @@ export interface DocxProps {
     options?: DocxOptions;
     onRendered?: () => void;
     onError?: (error: any) => void;
+    class?: any;
+    style?: any;
+    [key: string]: any;
 }
 
 export interface AbnerVueOfficeDocxInstance {

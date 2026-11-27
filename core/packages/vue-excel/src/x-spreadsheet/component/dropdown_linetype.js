@@ -15,12 +15,13 @@ const lineTypes = [
 export default class DropdownLineType extends Dropdown {
   constructor(type) {
     const icon = new Icon('line-type');
-    const idx = lineTypes.findIndex(it => it[0] === type);
-    let beforei = idx >= 0 ? idx : 0;
+    let beforei = lineTypes.findIndex(it => it[0] === type);
     const lineTypeEls = lineTypes.map((it, iti) => h('div', `${cssPrefix}-item state ${type === it[0] ? 'checked' : ''}`)
       .on('click', () => {
-        lineTypeEls[beforei].toggle('checked');
-        lineTypeEls[iti].toggle('checked');
+        if (beforei >= 0 && lineTypeEls[beforei]) {
+          lineTypeEls[beforei].removeClass('checked');
+        }
+        lineTypeEls[iti].addClass('checked');
         beforei = iti;
         this.hide();
         this.change(it);

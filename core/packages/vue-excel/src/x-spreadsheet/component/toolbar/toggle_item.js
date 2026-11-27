@@ -10,6 +10,7 @@ export default class ToggleItem extends Item {
   }
 
   click() {
+    if (this.el.hasClass('disabled')) return;
     this.change(this.tag, this.toggle());
   }
 

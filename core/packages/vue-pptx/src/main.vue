@@ -87,13 +87,15 @@ export default defineComponent({
             return Promise.reject(new Error('不支持的 src 格式'));
         }
 
-        function renderArrayBuffer(arrayBuffer, currentId) {
+        async function renderArrayBuffer(arrayBuffer, currentId) {
             if (isUnmounted || currentId !== renderId || !rootRef.value) {
-                return Promise.resolve();
+                return;
             }
             const stageEl = document.createElement('div');
-            const viewer = createViewer(stageEl);
-            return viewer.preview(arrayBuffer).then((pptx) => {
+            let viewer = null;
+            try {
+                viewer = createViewer(stageEl);
+                const pptx = await viewer.preview(arrayBuffer);
                 if (isUnmounted || currentId !== renderId || !rootRef.value) {
                     destroyViewer(viewer);
                     return;
@@ -106,7 +108,7 @@ export default defineComponent({
                 pptxViewer = viewer;
                 fileData = arrayBuffer;
                 emit('rendered', pptx);
-            }).catch(e => {
+            } catch (e) {
                 destroyViewer(viewer);
                 if (!isUnmounted && currentId === renderId) {
                     destroyViewer(pptxViewer);
@@ -117,7 +119,7 @@ export default defineComponent({
                     }
                     emit('error', e);
                 }
-            });
+            }
         }
 
         function preview() {

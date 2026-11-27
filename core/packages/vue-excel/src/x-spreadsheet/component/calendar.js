@@ -2,6 +2,13 @@ import { h } from './element';
 import Icon from './icon';
 import { t } from '../locale/locale';
 
+function toValidDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return new Date(value.getTime());
+  }
+  return new Date();
+}
+
 function addMonth(date, step) {
   const day = date.getDate();
   date.setDate(1);
@@ -25,7 +32,6 @@ function monthDays(year, month, cdate) {
       const index = i * 7 + j;
       const d = weekday(startDate, index);
       const disabled = d.getMonth() !== month;
-      // console.log('d:', d, ', cdate:', cdate);
       const active = d.getFullYear() === cdate.getFullYear()
         && d.getMonth() === cdate.getMonth()
         && d.getDate() === cdate.getDate();
@@ -40,8 +46,8 @@ const fallbackMonths = ['January', 'February', 'March', 'April', 'May', 'June', 
 
 export default class Calendar {
   constructor(value) {
-    this.value = value;
-    this.cvalue = new Date(value);
+    this.value = toValidDate(value);
+    this.cvalue = new Date(this.value.getTime());
 
     this.headerLeftEl = h('div', 'calendar-header-left');
     this.bodyEl = h('tbody', '');
@@ -73,8 +79,8 @@ export default class Calendar {
   }
 
   setValue(value) {
-    this.value = value;
-    this.cvalue = new Date(value);
+    this.value = toValidDate(value);
+    this.cvalue = new Date(this.value.getTime());
     this.buildAll();
   }
 
@@ -98,7 +104,7 @@ export default class Calendar {
   buildHeaderLeft() {
     const { value } = this;
     const months = Array.isArray(t('calendar.months')) ? t('calendar.months') : fallbackMonths;
-    this.headerLeftEl.html(`${months[value.getMonth()]} ${value.getFullYear()}`);
+    this.headerLeftEl.el.textContent = `${months[value.getMonth()]} ${value.getFullYear()}`;
   }
 
   buildBody() {

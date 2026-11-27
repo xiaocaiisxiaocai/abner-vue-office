@@ -19,10 +19,7 @@ class Element {
 
   on(eventNames, handler) {
     const [fen, ...oen] = eventNames.split('.');
-    let eventName = fen;
-    if (eventName === 'mousewheel' && typeof window !== 'undefined' && window.navigator && /Firefox/i.test(window.navigator.userAgent)) {
-      eventName = 'DOMMouseScroll';
-    }
+    const eventName = fen === 'mousewheel' ? 'wheel' : fen;
     this.el.addEventListener(eventName, (evt) => {
       for (let i = 0; i < oen.length; i += 1) {
         const k = oen[i];
@@ -125,9 +122,12 @@ class Element {
   */
 
   child(arg) {
+    if (arg === null || arg === undefined || arg === false) {
+      return this;
+    }
     let ele = arg;
-    if (typeof arg === 'string') {
-      ele = document.createTextNode(arg);
+    if (typeof arg === 'string' || typeof arg === 'number') {
+      ele = document.createTextNode(String(arg));
     } else if (arg instanceof Element) {
       ele = arg.el;
     }
@@ -251,7 +251,10 @@ class Element {
   }
 
   computedStyle() {
-    return window.getComputedStyle(this.el, null);
+    if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+      return window.getComputedStyle(this.el, null);
+    }
+    return {};
   }
 
   show() {

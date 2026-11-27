@@ -1,6 +1,8 @@
 import helper from './helper';
 import { expr2expr } from './alphabet';
 
+const FORMULA_REF_RE = /\$?[a-zA-Z]{1,3}\$?\d+/g;
+
 class Rows {
   constructor({ len, height }) {
     this._ = {};
@@ -12,7 +14,7 @@ class Rows {
   getHeight(ri) {
     if (this.isHide(ri)) return 0;
     const row = this.get(ri);
-    if (row && row.height) {
+    if (row && row.height !== undefined) {
       return row.height;
     }
     return this.height;
@@ -24,6 +26,9 @@ class Rows {
   }
 
   unhide(idx) {
+    if (idx >= 0 && this.isHide(idx)) {
+      this.setHide(idx, false);
+    }
     let index = idx;
     while (index > 0) {
       index -= 1;
@@ -35,7 +40,7 @@ class Rows {
 
   isHide(ri) {
     const row = this.get(ri);
-    return row && row.hide;
+    return !!(row && row.hide);
   }
 
   setHide(ri, v) {
@@ -119,79 +124,67 @@ class Rows {
     const deri = dstCellRange.eri;
     const deci = dstCellRange.eci;
     const [rn, cn] = srcCellRange.size();
-    const [drn, dcn] = dstCellRange.size();
-    // console.log(srcIndexes, dstIndexes);
-    let isAdd = true;
-    let dn = 0;
-    if (deri < sri || deci < sci) {
-      isAdd = false;
-      if (deri < sri) dn = drn;
-      else dn = dcn;
-    }
+    const snapshot = [];
     for (let i = sri; i <= eri; i += 1) {
-      if (this._[i]) {
+      if (this._[i] && this._[i].cells) {
         for (let j = sci; j <= eci; j += 1) {
-          if (this._[i].cells && this._[i].cells[j]) {
-            for (let ii = dsri; ii <= deri; ii += rn) {
-              for (let jj = dsci; jj <= deci; jj += cn) {
-                const nri = ii + (i - sri);
-                const nci = jj + (j - sci);
-                const ncell = helper.cloneDeep(this._[i].cells[j]);
-                // ncell.text
-                if (autofill && ncell && ncell.text && ncell.text.length > 0) {
-                  const { text } = ncell;
-                  let n = (jj - dsci) + (ii - dsri) + 2;
-                  if (!isAdd) {
-                    n -= dn + 1;
-                  }
-                  if (text[0] === '=') {
-                    ncell.text = text.replace(/[a-zA-Z]{1,3}\d+/g, (word) => {
-                      let [xn, yn] = [0, 0];
-                      if (sri === dsri) {
-                        xn = n - 1;
-                        // if (isAdd) xn -= 1;
-                      } else {
-                        yn = n - 1;
-                      }
-                      if (/^\d+$/.test(word)) return word;
-                      return expr2expr(word, xn, yn);
-                    });
-                  } else if ((rn <= 1 && cn > 1 && (dsri > eri || deri < sri))
-                    || (cn <= 1 && rn > 1 && (dsci > eci || deci < sci))
-                    || (rn <= 1 && cn <= 1)) {
-                    const result = /[\\.\d]+$/.exec(text);
-                    // console.log('result:', result);
-                    if (result !== null) {
-                      const index = Number(result[0]) + n - 1;
-                      ncell.text = text.substring(0, result.index) + index;
-                    }
-                  }
-                }
-                this.setCell(nri, nci, ncell, what);
-                cb(nri, nci, ncell);
-              }
-            }
+          if (this._[i].cells[j] !== undefined) {
+            snapshot.push([i, j, helper.cloneDeep(this._[i].cells[j])]);
           }
         }
       }
     }
+    snapshot.forEach(([i, j, srcCell]) => {
+      for (let ii = dsri; ii <= deri; ii += rn) {
+        for (let jj = dsci; jj <= deci; jj += cn) {
+          const nri = ii + (i - sri);
+          const nci = jj + (j - sci);
+          if (nri > deri || nci > deci) continue;
+          const ncell = helper.cloneDeep(srcCell);
+          if (autofill && ncell && ncell.text != null) {
+            const textStr = String(ncell.text);
+            if (textStr.length > 0) {
+              if (textStr[0] === '=') {
+                const dx = nci - j;
+                const dy = nri - i;
+                ncell.text = textStr.replace(FORMULA_REF_RE, word => expr2expr(word, dx, dy));
+              } else if ((rn <= 1 && cn > 1 && (dsri > eri || deri < sri))
+                || (cn <= 1 && rn > 1 && (dsci > eci || deci < sci))
+                || (rn <= 1 && cn <= 1)) {
+                const step = (nci - j) !== 0 ? (nci - j) : (nri - i);
+                const result = /-?\d+$/.exec(textStr);
+                if (result !== null) {
+                  const index = Number(result[0]) + step;
+                  ncell.text = `${textStr.substring(0, result.index)}${index}`;
+                }
+              }
+            }
+          }
+          this.setCell(nri, nci, ncell, what);
+          cb(nri, nci, ncell);
+        }
+      }
+    });
   }
 
   cutPaste(srcCellRange, dstCellRange) {
-    const ncellmm = {};
-    this.each((ri) => {
-      this.eachCells(ri, (ci) => {
-        let nri = parseInt(ri, 10);
-        let nci = parseInt(ci, 10);
-        if (srcCellRange.includes(nri, nci)) {
-          nri = dstCellRange.sri + (nri - srcCellRange.sri);
-          nci = dstCellRange.sci + (nci - srcCellRange.sci);
-        }
-        ncellmm[nri] = ncellmm[nri] || { cells: {} };
-        ncellmm[nri].cells[nci] = this._[ri].cells[ci];
-      });
+    const [srn, scn] = srcCellRange.size();
+    const snapshot = [];
+    srcCellRange.each((ri, ci) => {
+      const cell = this.getCell(ri, ci);
+      if (cell !== null) {
+        snapshot.push([ri - srcCellRange.sri, ci - srcCellRange.sci, cell]);
+      }
     });
-    this._ = ncellmm;
+    this.deleteCells(srcCellRange, 'all');
+    for (let dr = 0; dr < srn; dr += 1) {
+      for (let dc = 0; dc < scn; dc += 1) {
+        this.deleteCell(dstCellRange.sri + dr, dstCellRange.sci + dc, 'all');
+      }
+    }
+    snapshot.forEach(([dr, dc, cell]) => {
+      this.setCell(dstCellRange.sri + dr, dstCellRange.sci + dc, cell, 'all');
+    });
   }
 
   // src: Array<Array<String>>
@@ -211,13 +204,13 @@ class Rows {
     const ndata = {};
     this.each((ri, row) => {
       let nri = parseInt(ri, 10);
+      this.eachCells(ri, (ci, cell) => {
+        if (cell && cell.text && cell.text[0] === '=') {
+          cell.text = cell.text.replace(FORMULA_REF_RE, word => expr2expr(word, 0, n, (_x, y) => y >= sri));
+        }
+      });
       if (nri >= sri) {
         nri += n;
-        this.eachCells(ri, (ci, cell) => {
-          if (cell.text && cell.text[0] === '=') {
-            cell.text = cell.text.replace(/[a-zA-Z]{1,3}\d+/g, word => expr2expr(word, 0, n, (x, y) => y >= sri));
-          }
-        });
       }
       ndata[nri] = row;
     });
@@ -230,19 +223,21 @@ class Rows {
     const ndata = {};
     this.each((ri, row) => {
       const nri = parseInt(ri, 10);
+      if (nri < sri || nri > eri) {
+        this.eachCells(ri, (ci, cell) => {
+          if (cell && cell.text && cell.text[0] === '=') {
+            cell.text = cell.text.replace(FORMULA_REF_RE, word => expr2expr(word, 0, -n, (_x, y) => y > eri));
+          }
+        });
+      }
       if (nri < sri) {
         ndata[nri] = row;
       } else if (nri > eri) {
         ndata[nri - n] = row;
-        this.eachCells(ri, (ci, cell) => {
-          if (cell.text && cell.text[0] === '=') {
-            cell.text = cell.text.replace(/[a-zA-Z]{1,3}\d+/g, word => expr2expr(word, 0, -n, (x, y) => y > eri));
-          }
-        });
       }
     });
     this._ = ndata;
-    this.len -= n;
+    this.len = Math.max(0, this.len - n);
   }
 
   insertColumn(sci, n = 1) {
@@ -250,11 +245,11 @@ class Rows {
       const rndata = {};
       this.eachCells(ri, (ci, cell) => {
         let nci = parseInt(ci, 10);
+        if (cell && cell.text && cell.text[0] === '=') {
+          cell.text = cell.text.replace(FORMULA_REF_RE, word => expr2expr(word, n, 0, x => x >= sci));
+        }
         if (nci >= sci) {
           nci += n;
-          if (cell.text && cell.text[0] === '=') {
-            cell.text = cell.text.replace(/[a-zA-Z]{1,3}\d+/g, word => expr2expr(word, n, 0, x => x >= sci));
-          }
         }
         rndata[nci] = cell;
       });
@@ -268,13 +263,15 @@ class Rows {
       const rndata = {};
       this.eachCells(ri, (ci, cell) => {
         const nci = parseInt(ci, 10);
+        if (nci < sci || nci > eci) {
+          if (cell && cell.text && cell.text[0] === '=') {
+            cell.text = cell.text.replace(FORMULA_REF_RE, word => expr2expr(word, -n, 0, x => x > eci));
+          }
+        }
         if (nci < sci) {
           rndata[nci] = cell;
         } else if (nci > eci) {
           rndata[nci - n] = cell;
-          if (cell.text && cell.text[0] === '=') {
-            cell.text = cell.text.replace(/[a-zA-Z]{1,3}\d+/g, word => expr2expr(word, -n, 0, x => x > eci));
-          }
         }
       });
       row.cells = rndata;
@@ -291,14 +288,14 @@ class Rows {
   // what: all | text | format | merge
   deleteCell(ri, ci, what = 'all') {
     const row = this.get(ri);
-    if (row) {
+    if (row && row.cells) {
       const cell = this.getCell(ri, ci);
       if (cell !== null && cell.editable !== false) {
         if (what === 'all') {
           delete row.cells[ci];
         } else if (what === 'text') {
-          if (cell.text) delete cell.text;
-          if (cell.value) delete cell.value;
+          if (cell.text !== undefined) delete cell.text;
+          if (cell.value !== undefined) delete cell.value;
         } else if (what === 'format') {
           if (cell.style !== undefined) delete cell.style;
           if (cell.merge) delete cell.merge;
@@ -310,16 +307,23 @@ class Rows {
   }
 
   maxCell() {
-    const keys = Object.keys(this._);
-    const ri = keys[keys.length - 1];
-    const col = this._[ri];
-    if (col) {
-      const { cells } = col;
-      const ks = Object.keys(cells);
-      const ci = ks[ks.length - 1];
-      return [parseInt(ri, 10), parseInt(ci, 10)];
-    }
-    return [0, 0];
+    let maxRi = 0;
+    let maxCi = 0;
+    Object.keys(this._).forEach((riKey) => {
+      const ri = parseInt(riKey, 10);
+      if (Number.isNaN(ri)) return;
+      if (ri > maxRi) maxRi = ri;
+      const row = this._[riKey];
+      if (row && row.cells) {
+        Object.keys(row.cells).forEach((ciKey) => {
+          const ci = parseInt(ciKey, 10);
+          if (!Number.isNaN(ci) && ci > maxCi) {
+            maxCi = ci;
+          }
+        });
+      }
+    });
+    return [maxRi, maxCi];
   }
 
   each(cb) {
@@ -340,11 +344,15 @@ class Rows {
     if (!d || typeof d !== 'object') {
       return;
     }
-    if (d.len !== undefined) {
-      this.len = d.len;
-      delete d.len;
-    }
-    this._ = d;
+    const copy = {};
+    Object.keys(d).forEach((k) => {
+      if (k === 'len') {
+        this.len = d.len;
+      } else if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
+        copy[k] = d[k];
+      }
+    });
+    this._ = copy;
   }
 
   getData() {

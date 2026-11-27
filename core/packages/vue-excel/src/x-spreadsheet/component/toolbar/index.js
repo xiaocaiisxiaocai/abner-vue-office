@@ -26,6 +26,7 @@ import Item from './item';
 import { h } from '../element';
 import { cssPrefix } from '../../config';
 import { bind, unbind } from '../event';
+import { hideTooltip } from '../tooltip';
 
 function buildDivider() {
   return h('div', `${cssPrefix}-toolbar-divider`);
@@ -38,12 +39,12 @@ function initBtns2() {
       it.forEach(({ el }) => {
         const rect = el.box();
         const { marginLeft, marginRight } = el.computedStyle();
-        this.btns2.push([el, rect.width + parseInt(marginLeft, 10) + parseInt(marginRight, 10)]);
+        this.btns2.push([el, rect.width + (parseFloat(marginLeft) || 0) + (parseFloat(marginRight) || 0)]);
       });
     } else {
       const rect = it.box();
       const { marginLeft, marginRight } = it.computedStyle();
-      this.btns2.push([it, rect.width + parseInt(marginLeft, 10) + parseInt(marginRight, 10)]);
+      this.btns2.push([it, rect.width + (parseFloat(marginLeft) || 0) + (parseFloat(marginRight) || 0)]);
     }
   });
 }
@@ -53,9 +54,11 @@ function moreResize() {
     el, btns, moreEl, btns2,
   } = this;
   if (!btns2) return;
+  hideTooltip();
   const { moreBtns, contentEl } = moreEl.dd;
   el.css('width', `${this.widthFn()}px`);
   const elBox = el.box();
+  if (!elBox || elBox.width <= 0) return;
 
   let sumWidth = 160;
   let sumWidth2 = 12;
@@ -83,6 +86,7 @@ function moreResize() {
 function genBtn(it) {
   const btn = new Item();
   btn.el.on('click', () => {
+    if (this.data && this.data.settings && this.data.settings.mode === 'read') return;
     if (it.onClick) it.onClick(this.data.getData(), this.data);
   });
   btn.tip = it.tip || '';
@@ -199,11 +203,14 @@ export default class Toolbar {
       this._onWindowResize = () => {
         moreResize.call(this);
       };
-      bind(window, 'resize', this._onWindowResize);
+      if (typeof window !== 'undefined') {
+        bind(window, 'resize', this._onWindowResize);
+      }
     }
   }
 
   destroy() {
+    hideTooltip();
     if (this._resizeTimer) {
       clearTimeout(this._resizeTimer);
       this._resizeTimer = null;
@@ -241,7 +248,10 @@ export default class Toolbar {
   }
 
   trigger(type) {
-    this[`${type}El`].click();
+    const targetEl = this[`${type}El`];
+    if (targetEl && typeof targetEl.click === 'function') {
+      targetEl.click();
+    }
   }
 
   resetData(data) {

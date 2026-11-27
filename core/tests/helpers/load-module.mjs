@@ -41,10 +41,12 @@ export function createDomMocks() {
             this.readOnly = false;
             this.focused = false;
             this.value = '';
+            this.selectionStart = 0;
             this.selectionEnd = 0;
             this.src = '';
             this.download = '';
             this.href = '';
+            this.isConnected = true;
             this.classList = {
                 add: (...tokens) => {
                     const set = new Set(this._className.split(/\s+/).filter(Boolean));
@@ -96,18 +98,27 @@ export function createDomMocks() {
 
         set textContent(val) {
             this._textContent = String(val ?? '');
-            if (!val) {
-                this._innerHTML = '';
-                this.children.forEach(c => {
-                    c.parentNode = null;
-                });
-                this.children = [];
-                this.childNodes = [];
-            }
+            this._innerHTML = '';
+            this.children.forEach(c => {
+                c.parentNode = null;
+            });
+            this.children = [];
+            this.childNodes = [];
         }
 
         get firstChild() {
             return this.childNodes[0] || null;
+        }
+
+        cloneNode(deep = false) {
+            const copy = new MockElement(this.tagName);
+            copy.className = this.className;
+            copy.width = this.width;
+            copy.height = this.height;
+            if (deep) {
+                this.children.forEach(c => copy.appendChild(c.cloneNode(true)));
+            }
+            return copy;
         }
 
         appendChild(child) {
@@ -244,9 +255,10 @@ export function createDomMocks() {
         }
 
         querySelectorAll(sel) {
+            const cls = sel.startsWith('.') ? sel.slice(1) : null;
             const res = [];
             for (const c of this.children) {
-                if (c.tagName === sel.toUpperCase()) {
+                if ((cls && c.className.split(/\s+/).includes(cls)) || c.tagName === sel.toUpperCase()) {
                     res.push(c);
                 }
                 res.push(...c.querySelectorAll(sel));
@@ -262,6 +274,7 @@ export function createDomMocks() {
         }
 
         click() {
+            this.dispatchEvent({ type: 'click', target: this });
             if (this.onClick) {
                 this.onClick();
             }
@@ -269,9 +282,6 @@ export function createDomMocks() {
 
         focus() {
             this.focused = true;
-            if (this.parentNode) {
-                // no-op
-            }
         }
 
         setSelectionRange(start, end) {
@@ -310,6 +320,9 @@ export function createDomMocks() {
     const mockWindow = {
         document: mockDocument,
         devicePixelRatio: 1,
+        scrollX: 0,
+        scrollY: 0,
+        innerWidth: 1024,
         navigator: { userAgent: 'Mozilla/5.0' },
         addEventListener(type, fn) {
             if (!windowListeners.has(type)) {
@@ -326,8 +339,8 @@ export function createDomMocks() {
         getComputedStyle(el) {
             return {
                 paddingTop: el && el.style && el.style.paddingTop ? el.style.paddingTop : '30px',
-                marginLeft: '0px',
-                marginRight: '0px'
+                marginLeft: el && el.style && el.style.marginLeft ? el.style.marginLeft : '0px',
+                marginRight: el && el.style && el.style.marginRight ? el.style.marginRight : '0px'
             };
         },
         dispatchEvent(evt) {
@@ -399,14 +412,13 @@ export function mountSfcScript(relPath, extraDeps = {}, initialProps = {}, refOv
     if (!scriptMatch) {
         throw new Error(`No <script> block in ${relPath}`);
     }
-    let code = scriptMatch[1]
-        .replace(/^\s*import\s+[\s\S]*?from\s+['"][^'"]+['"];\s*$/gm, '')
-        .replace(/^\s*import\s+['"][^'"]+['"];\s*$/gm, '')
+    const code = scriptMatch[1]
+        .replace(/^\s*import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')
+        .replace(/^\s*import\s+['"][^'"]+['"];?\s*$/gm, '')
         .replace(/export\s+default\s+/g, 'const __sfcDef = ');
 
     const reactiveState = {};
     const props = { ...initialProps };
-    const refs = new Map();
     const mountedHooks = [];
     const unmountHooks = [];
     const watchers = [];
@@ -424,16 +436,25 @@ export function mountSfcScript(relPath, extraDeps = {}, initialProps = {}, refOv
         });
     }
 
+    const resolveWatchSource = (source) => {
+        if (typeof source === 'function') return source();
+        if (Array.isArray(source)) return source.map(s => (typeof s === 'function' ? s() : s.value));
+        if (source && typeof source === 'object' && 'value' in source) return source.value;
+        return source;
+    };
+
     const vueDemiMock = {
         defineComponent: def => def,
-        ref: (init) => {
-            const box = { value: init };
-            refs.set(box, init);
-            return box;
-        },
+        ref: (init) => ({ value: init }),
         onMounted: fn => mountedHooks.push(fn),
         onBeforeUnmount: fn => unmountHooks.push(fn),
-        watch: (getter, cb) => watchers.push({ getter, cb, prev: getter() }),
+        watch: (source, cb, opts = {}) => {
+            const entry = { source, cb, prev: resolveWatchSource(source) };
+            watchers.push(entry);
+            if (opts && opts.immediate) {
+                cb(entry.prev, undefined);
+            }
+        },
         nextTick: fn => Promise.resolve().then(() => (typeof fn === 'function' ? fn() : undefined)),
         isVue2: false
     };
@@ -479,7 +500,7 @@ export function mountSfcScript(relPath, extraDeps = {}, initialProps = {}, refOv
         setProp(key, value) {
             reactiveState[key] = value;
             for (const w of watchers) {
-                const next = w.getter();
+                const next = resolveWatchSource(w.source);
                 const changed = Array.isArray(next)
                     ? next.some((v, idx) => !Array.isArray(w.prev) || v !== w.prev[idx])
                     : next !== w.prev;
@@ -493,13 +514,118 @@ export function mountSfcScript(relPath, extraDeps = {}, initialProps = {}, refOv
     };
 }
 
+export function mountScriptSetup(relPath, extraDeps = {}, initialProps = {}, returnNames = []) {
+    const raw = fs.readFileSync(path.join(CORE_DIR, relPath), 'utf8');
+    const scriptMatch = raw.match(/<script\s+setup>([\s\S]*?)<\/script>/);
+    if (!scriptMatch) {
+        throw new Error(`No <script setup> block in ${relPath}`);
+    }
+    const code = scriptMatch[1]
+        .replace(/^\s*import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')
+        .replace(/^\s*import\s+['"][^'"]+['"];?\s*$/gm, '')
+        .replace(/\bconst\s+props\s*=\s*defineProps\s*\([\s\S]*?\);/m, '')
+        .replace(/\bdefineProps\s*\([\s\S]*?\);/m, '');
+
+    const reactiveState = { ...initialProps };
+    const props = {};
+    for (const k of Object.keys(reactiveState)) {
+        Object.defineProperty(props, k, {
+            enumerable: true,
+            configurable: true,
+            get: () => reactiveState[k],
+            set: (next) => {
+                reactiveState[k] = next;
+            }
+        });
+    }
+
+    const mountedHooks = [];
+    const unmountHooks = [];
+    const watchers = [];
+    const resolveSource = (source) => {
+        if (typeof source === 'function') return source();
+        if (Array.isArray(source)) return source.map(s => (typeof s === 'function' ? s() : s.value));
+        if (source && typeof source === 'object' && 'value' in source) return source.value;
+        return source;
+    };
+    const triggerWatchers = () => {
+        for (const w of watchers) {
+            const next = resolveSource(w.source);
+            const changed = Array.isArray(next)
+                ? next.some((v, idx) => !Array.isArray(w.prev) || v !== w.prev[idx])
+                : next !== w.prev;
+            if (changed) {
+                const old = w.prev;
+                w.prev = next;
+                w.cb(next, old);
+            }
+        }
+    };
+    const makeRef = (init) => {
+        let _val = init;
+        return {
+            get value() {
+                return _val;
+            },
+            set value(next) {
+                if (next !== _val) {
+                    _val = next;
+                    triggerWatchers();
+                }
+            }
+        };
+    };
+
+    const depNames = Object.keys(extraDeps);
+    const depVals = depNames.map(k => extraDeps[k]);
+    const retObj = returnNames.length ? `{ ${returnNames.join(', ')} }` : '{}';
+    const bindings = new Function(
+        'props', 'ref', 'onMounted', 'onBeforeUnmount', 'watch',
+        ...depNames,
+        `${code}\nreturn ${retObj};`
+    )(
+        props,
+        makeRef,
+        fn => mountedHooks.push(fn),
+        fn => unmountHooks.push(fn),
+        (source, cb, opts = {}) => {
+            const entry = { source, cb, prev: resolveSource(source) };
+            watchers.push(entry);
+            if (opts && opts.immediate) {
+                cb(entry.prev, undefined);
+            }
+        },
+        ...depVals
+    );
+
+    return {
+        props,
+        bindings,
+        mount() {
+            mountedHooks.forEach(fn => fn());
+        },
+        unmount() {
+            unmountHooks.forEach(fn => fn());
+        },
+        setProp(key, value) {
+            reactiveState[key] = value;
+            triggerWatchers();
+        },
+        triggerWatchers
+    };
+}
+
 export function loadStrippedModule(relPath, extraVars = {}) {
     let src = fs.readFileSync(path.join(CORE_DIR, relPath), 'utf8');
     const namedExports = [];
     src = src
-        .replace(/^\s*import\s+[\s\S]*?from\s+['"][^'"]+['"];\s*$/gm, '')
-        .replace(/^\s*import\s+['"][^'"]+['"];\s*$/gm, '')
+        .replace(/^\s*import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')
+        .replace(/^\s*import\s+['"][^'"]+['"];?\s*$/gm, '')
         .replace(/export\s+default\s+/g, 'const __defaultExport = ')
+        .replace(/export\s+class\s+([A-Za-z0-9_$]+)/g, (_m, name) => {
+            namedExports.push(name);
+            return `class ${name}`;
+        })
         .replace(/export\s+function\s+([A-Za-z0-9_$]+)/g, (_m, name) => {
             namedExports.push(name);
             return `function ${name}`;

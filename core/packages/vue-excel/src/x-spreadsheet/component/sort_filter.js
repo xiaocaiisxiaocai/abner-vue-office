@@ -22,14 +22,15 @@ function buildFilterBody(items) {
     const active = filterValues.includes(it) ? 'checked' : '';
     filterbEl.child(h('div', `${cssPrefix}-item state ${active}`)
       .on('click.stop', () => this.filterClick(index, it))
-      .children(it === '' ? t('filter.empty') : it, h('div', 'label').html(`(${cnt})`)));
+      .children(it === '' ? t('filter.empty') : it, h('div', 'label').child(`(${cnt})`)));
   });
 }
 
 function resetFilterHeader() {
   const { filterhEl, filterValues, values } = this;
-  filterhEl.html(`${filterValues.length} / ${values.length}`);
-  filterhEl.checked(filterValues.length === values.length);
+  const total = Array.isArray(values) ? values.length : 0;
+  filterhEl.el.textContent = `${filterValues.length} / ${total}`;
+  filterhEl.checked(filterValues.length === total);
 }
 
 export default class SortFilter {
@@ -49,11 +50,11 @@ export default class SortFilter {
         new Button('ok', 'primary').on('click', () => this.btnClick('ok')),
       ),
     ).hide();
-    // this.setFilters(['test1', 'test2', 'text3']);
     this.ci = null;
     this.sort = null;
     this.values = null;
     this.filterValues = [];
+    this._outsideTimer = null;
   }
 
   btnClick(it) {
@@ -67,7 +68,6 @@ export default class SortFilter {
   }
 
   itemClick(it) {
-    // console.log('it:', it);
     this.sort = it;
     const { sortAscEl, sortDescEl } = this;
     sortAscEl.checked(it === 'asc');
@@ -75,7 +75,6 @@ export default class SortFilter {
   }
 
   filterClick(index, it) {
-    // console.log('index:', index, it);
     const { filterbEl, filterValues, values } = this;
     const children = filterbEl.children();
     if (it === 'all') {
@@ -83,15 +82,20 @@ export default class SortFilter {
         this.filterValues = [];
         children.forEach(i => h(i).checked(false));
       } else {
-        this.filterValues = Array.from(values);
+        this.filterValues = Array.from(values || []);
         children.forEach(i => h(i).checked(true));
       }
     } else {
       const checked = h(children[index]).toggle('checked');
       if (checked) {
-        filterValues.push(it);
+        if (!filterValues.includes(it)) {
+          filterValues.push(it);
+        }
       } else {
-        filterValues.splice(filterValues.findIndex(i => i === it), 1);
+        const idx = filterValues.findIndex(i => i === it);
+        if (idx >= 0) {
+          filterValues.splice(idx, 1);
+        }
       }
     }
     resetFilterHeader.call(this);
@@ -103,7 +107,7 @@ export default class SortFilter {
   set(ci, items, filter, sort) {
     this.ci = ci;
     const { sortAscEl, sortDescEl } = this;
-    if (sort !== null) {
+    if (sort != null) {
       this.sort = sort.order;
       sortAscEl.checked(sort.asc());
       sortDescEl.checked(sort.desc());
@@ -112,22 +116,31 @@ export default class SortFilter {
       sortAscEl.checked(false);
       sortDescEl.checked(false);
     }
-    // this.setFilters(items, filter);
-    this.values = Object.keys(items);
-    this.filterValues = filter ? Array.from(filter.value) : Object.keys(items);
-    buildFilterBody.call(this, items, filter);
+    this.values = Object.keys(items || {});
+    if (filter && Array.isArray(filter.value)) {
+      const valueSet = new Set(this.values);
+      this.filterValues = filter.value.filter(val => valueSet.has(val));
+    } else {
+      this.filterValues = this.values.slice();
+    }
+    buildFilterBody.call(this, items || {}, filter);
     resetFilterHeader.call(this);
   }
 
   setOffset(v) {
-    this.el.offset(v).show();
-    let tindex = 1;
-    bindClickoutside(this.el, () => {
-      if (tindex <= 0) {
+    const offset = { ...v };
+    if (typeof offset.left === 'number') offset.left = Math.max(0, offset.left);
+    if (typeof offset.top === 'number') offset.top = Math.max(0, offset.top);
+    this.el.offset(offset).show();
+    if (this._outsideTimer) {
+      clearTimeout(this._outsideTimer);
+    }
+    this._outsideTimer = setTimeout(() => {
+      this._outsideTimer = null;
+      bindClickoutside(this.el, () => {
         this.hide();
-      }
-      tindex -= 1;
-    });
+      });
+    }, 0);
   }
 
   show() {
@@ -135,6 +148,10 @@ export default class SortFilter {
   }
 
   hide() {
+    if (this._outsideTimer) {
+      clearTimeout(this._outsideTimer);
+      this._outsideTimer = null;
+    }
     this.el.hide();
     unbindClickoutside(this.el);
   }

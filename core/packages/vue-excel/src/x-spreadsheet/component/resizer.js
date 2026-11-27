@@ -76,38 +76,57 @@ export default class Resizer {
   }
 
   mousedownHandler(evt) {
+    if (!this.cRect) return;
     if (evt && evt.buttons !== undefined && evt.buttons !== 1) return;
     let startEvt = evt;
     const {
       el, lineEl, cRect, vertical, minDistance,
     } = this;
-    let distance = vertical ? cRect.width : cRect.height;
-    // console.log('distance:', distance);
+    const baseDistance = vertical ? cRect.width : cRect.height;
+    let rawDistance = baseDistance;
+    let distance = Math.max(minDistance, baseDistance);
+    const startClientX = evt && typeof evt.clientX === 'number' ? evt.clientX : null;
+    const startClientY = evt && typeof evt.clientY === 'number' ? evt.clientY : null;
     lineEl.show();
-    this._cancelMove = mouseMoveUp(window, (e) => {
-      this.moving = true;
-      if (startEvt !== null && e.buttons === 1) {
-        // console.log('top:', top, ', left:', top, ', cRect:', cRect);
-        if (vertical) {
-          distance = Math.max(minDistance, distance + e.movementX);
-          el.css('left', `${cRect.left + distance}px`);
-        } else {
-          distance = Math.max(minDistance, distance + e.movementY);
-          el.css('top', `${cRect.top + distance}px`);
-        }
-        startEvt = e;
-      }
-    }, () => {
+    const cleanup = () => {
       this._cancelMove = null;
       startEvt = null;
       lineEl.hide();
       this.moving = false;
       this.hide();
+    };
+    const finish = () => {
+      cleanup();
       if (this.finishedFn) {
         if (distance < minDistance) distance = minDistance;
         this.finishedFn(cRect, distance);
       }
-    });
+    };
+    this._cancelMove = mouseMoveUp(window, (e) => {
+      this.moving = true;
+      if (startEvt !== null && e.buttons === 1) {
+        if (vertical) {
+          if (startClientX !== null && typeof e.clientX === 'number') {
+            rawDistance = baseDistance + (e.clientX - startClientX);
+          } else {
+            rawDistance += Number(e.movementX) || 0;
+          }
+          distance = Math.max(minDistance, rawDistance);
+          el.css('left', `${cRect.left + distance}px`);
+        } else {
+          if (startClientY !== null && typeof e.clientY === 'number') {
+            rawDistance = baseDistance + (e.clientY - startClientY);
+          } else {
+            rawDistance += Number(e.movementY) || 0;
+          }
+          distance = Math.max(minDistance, rawDistance);
+          el.css('top', `${cRect.top + distance}px`);
+        }
+        startEvt = e;
+      } else if (e.buttons === 0 && typeof this._cancelMove === 'function') {
+        this._cancelMove();
+      }
+    }, finish, cleanup);
   }
 
   destroy() {

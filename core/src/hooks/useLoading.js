@@ -4,7 +4,7 @@ import { ref } from 'vue';
 const loading = ref(false);
 let hide = null;
 
-function showLoading(content) {
+function showLoading(content = '加载中...') {
     if (typeof hide === 'function') {
         hide();
         hide = null;

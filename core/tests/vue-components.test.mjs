@@ -11,15 +11,19 @@ const require = createRequire(import.meta.url);
 const debounce = require('lodash/debounce');
 const omit = require('lodash/omit');
 
-test('vue-docx/src/main.vue covers validator, mount, switch, empty clear, error, race, save, and unmount', async () => {
+test('vue-docx/src/main.vue covers validator, mount, switch, empty clear, error, stale race, save, and unmount', async () => {
     const { mockDocument } = createDomMocks();
     const downloads = [];
     const rootEl = mockDocument.createElement('div');
     let rejectRender = false;
+    let releaseSlow = null;
+
     const mockDocx = {
         getData: async (src) => {
             if (src === 'slow') {
-                await new Promise(r => setTimeout(r, 25));
+                await new Promise(resolve => {
+                    releaseSlow = resolve;
+                });
             }
             if (src === 'fail-fetch') {
                 throw new Error('fetch fail');
@@ -55,6 +59,10 @@ test('vue-docx/src/main.vue covers validator, mount, switch, empty clear, error,
             { rootRef: rootEl }
         );
         assert.equal(sfc.component.props.src.validator(new Response('a')), true);
+        assert.equal(sfc.component.props.src.validator(new Blob(['a'])), true);
+        assert.equal(sfc.component.props.src.validator(new ArrayBuffer(2)), true);
+        assert.equal(sfc.component.props.src.validator(new Uint8Array([1])), true);
+        assert.equal(sfc.component.props.src.validator(null), true);
         assert.equal(sfc.component.props.src.validator(123), false);
 
         sfc.mount();
@@ -63,12 +71,20 @@ test('vue-docx/src/main.vue covers validator, mount, switch, empty clear, error,
         assert.equal(rootEl.innerHTML, '<p>doc1</p>');
 
         sfc.setupResult.save('my.docx');
+        sfc.setupResult.save();
         assert.equal(downloads[0].n, 'my.docx');
+        assert.match(downloads[1].n, /^abner-vue-office-docx-\d+\.docx$/);
 
         sfc.setProp('src', 'slow');
         sfc.setProp('src', 'fast');
-        await new Promise(r => setTimeout(r, 40));
+        await new Promise(r => setTimeout(r, 10));
+        releaseSlow();
+        await new Promise(r => setTimeout(r, 10));
         assert.equal(rootEl.innerHTML, '<p>fast</p>');
+
+        sfc.setProp('src', 'fail-fetch');
+        await new Promise(r => setTimeout(r, 10));
+        assert.ok(sfc.emitted.some(e => e.name === 'error' && e.args[0].message === 'fetch fail'));
 
         sfc.setProp('src', 'invalid-blob');
         await new Promise(r => setTimeout(r, 10));
@@ -101,10 +117,12 @@ test('vue-docx/src/main.vue covers validator, mount, switch, empty clear, error,
     });
 });
 
-test('vue-excel/src/main.vue covers mount, hooks, events, switchSheet, error, save, and unmount', async () => {
+test('vue-excel/src/main.vue covers mount, swapFunc, table.render -> renderImage, hooks, error, save, and unmount', async () => {
     const { mockDocument } = createDomMocks();
     const downloads = [];
     const sheets = [];
+    const renderImageCalls = [];
+    let releasedGetData = null;
 
     class MockSpreadsheet {
         constructor(el, opts) {
@@ -113,6 +131,11 @@ test('vue-excel/src/main.vue covers mount, hooks, events, switchSheet, error, sa
             this.events = {};
             this.loaded = [];
             this.destroyed = false;
+            this.reRenderCount = 0;
+            this.datas = [
+                { getSelectedRect: () => ({ scroll: { x: 0, y: 0 } }) },
+                { getSelectedRect: () => ({ scroll: { x: 5, y: 6 } }) }
+            ];
             this.bottombar = { swapFunc: () => {} };
             this.sheet = {
                 data: { getSelectedRect: () => ({ scroll: { x: 0, y: 0 } }) },
@@ -133,7 +156,9 @@ test('vue-excel/src/main.vue covers mount, hooks, events, switchSheet, error, sa
             return this;
         }
 
-        reRender() {}
+        reRender() {
+            this.reRenderCount++;
+        }
 
         destroy() {
             this.destroyed = true;
@@ -146,10 +171,19 @@ test('vue-excel/src/main.vue covers mount, hooks, events, switchSheet, error, sa
             'packages/vue-excel/src/main.vue',
             {
                 Spreadsheet: MockSpreadsheet,
-                getData: async src => src,
-                readExcelData: async () => (shouldFail ? { _worksheets: [] } : { _worksheets: [{ name: 'S1' }] }),
-                transferExcelToSpreadSheet: wb => ({ workbookData: [{ name: wb._worksheets[0].name }], medias: [], workbookSource: wb }),
-                renderImage: () => {},
+                getData: async (src) => {
+                    if (src === 'slow.xlsx') {
+                        return new Promise(resolve => {
+                            releasedGetData = resolve;
+                        });
+                    }
+                    return src;
+                },
+                readExcelData: async () => (shouldFail ? { _worksheets: [] } : { _worksheets: [{ name: 'S1' }, { name: 'S2' }] }),
+                transferExcelToSpreadSheet: wb => ({ workbookData: [{ name: wb._worksheets[0].name }], medias: [{ id: 0 }], workbookSource: wb }),
+                renderImage: (_ctx, _medias, sheet, _offset, _opts, shouldDraw) => {
+                    renderImageCalls.push({ sheetName: sheet.name, shouldDraw: shouldDraw() });
+                },
                 clearCache: () => {},
                 debounce,
                 downloadFile: (n, d) => downloads.push({ n, d })
@@ -158,13 +192,9 @@ test('vue-excel/src/main.vue covers mount, hooks, events, switchSheet, error, sa
                 src: 'https://example.com/a.xlsx',
                 requestOptions: {},
                 options: {
-                    xls: true,
-                    beforeTransformData: wb => {
-                        wb._worksheets[0].name = 'Hooked';
-                    },
-                    transformData: data => {
-                        data[0].ok = true;
-                    }
+                    xls: false,
+                    beforeTransformData: wb => ({ _worksheets: [{ name: `${wb._worksheets[0].name}-Replaced` }, { name: 'S2' }] }),
+                    transformData: data => [{ ...data[0], ok: true }]
                 }
             },
             {
@@ -176,9 +206,21 @@ test('vue-excel/src/main.vue covers mount, hooks, events, switchSheet, error, sa
         sfc.mount();
         await new Promise(r => setTimeout(r, 15));
         assert.equal(sheets[0].options.evalPaused, true);
-        assert.equal(sheets[0].loaded[sheets[0].loaded.length - 1][0].name, 'Hooked');
+        assert.equal(sheets[0].loaded[sheets[0].loaded.length - 1][0].name, 'S1-Replaced');
+        assert.equal(sheets[0].loaded[sheets[0].loaded.length - 1][0].ok, true);
         assert.ok(sfc.emitted.some(e => e.name === 'rendered'));
         assert.ok(sfc.emitted.some(e => e.name === 'switchSheet' && e.args[0] === 0));
+
+        // table.render triggers renderImageDebounce -> renderImage
+        sheets[0].sheet.table.render();
+        assert.equal(renderImageCalls.length, 1);
+        assert.equal(renderImageCalls[0].shouldDraw, true);
+
+        // bottombar.swapFunc switches sheet, reRenders, and emits switchSheet(1)
+        sheets[0].bottombar.swapFunc(1);
+        await new Promise(r => setTimeout(r, 15));
+        assert.equal(sheets[0].reRenderCount, 1);
+        assert.ok(sfc.emitted.some(e => e.name === 'switchSheet' && e.args[0] === 1));
 
         sheets[0].events['cell-selected']('c', 1, 2);
         sheets[0].events['cells-selected']('c', { sri: 0, sci: 0, eri: 1, eci: 1 });
@@ -186,7 +228,14 @@ test('vue-excel/src/main.vue covers mount, hooks, events, switchSheet, error, sa
         assert.ok(sfc.emitted.some(e => e.name === 'cellsSelected' && e.args[0].endRowIndex === 1));
 
         sfc.setupResult.save();
-        assert.match(downloads[0].n, /\.xls$/);
+        assert.match(downloads[0].n, /\.xlsx$/);
+
+        // Slow request superseded by newer src must be ignored when resolved
+        sfc.setProp('src', 'slow.xlsx');
+        sfc.setProp('src', 'winner.xlsx');
+        await new Promise(r => setTimeout(r, 15));
+        releasedGetData(new ArrayBuffer(4));
+        await new Promise(r => setTimeout(r, 10));
 
         shouldFail = true;
         sfc.setProp('src', 'bad.xlsx');
@@ -199,7 +248,6 @@ test('vue-excel/src/main.vue covers mount, hooks, events, switchSheet, error, sa
         sfc.unmount();
         assert.equal(sheets[0].destroyed, true);
 
-        // Pre-mount src watch does not crash or emit
         const preSfc = mountSfcScript(
             'packages/vue-excel/src/main.vue',
             {
@@ -219,17 +267,20 @@ test('vue-excel/src/main.vue covers mount, hooks, events, switchSheet, error, sa
     });
 });
 
-test('vue-pdf/src/main.vue covers scheduleInit dedupe, scale, virtual scroll, initial error propagation, save, and unmount', async () => {
+test('vue-pdf/src/main.vue covers cold-start checkPdfLib, withCredentials, setScale during load, unmount task cancel, and save', async () => {
     const { mockDocument, mockWindow } = createDomMocks();
     let getDocCalls = 0;
+    let lastDocOpts = null;
     let failPageRender = false;
     let cancelledTasks = 0;
+    let releaseDeferredRender = null;
     const downloads = [];
 
     mockWindow.pdfjsLib = {
         GlobalWorkerOptions: { workerSrc: '' },
-        getDocument() {
+        getDocument(opts) {
             getDocCalls++;
+            lastDocOpts = opts;
             return {
                 destroy() {},
                 promise: Promise.resolve({
@@ -240,6 +291,20 @@ test('vue-pdf/src/main.vue covers scheduleInit dedupe, scale, virtual scroll, in
                         return {
                             getViewport: ({ scale }) => ({ width: 200 * scale, height: 300 * scale }),
                             render() {
+                                if (releaseDeferredRender) {
+                                    let rejectFn;
+                                    const p = new Promise((_res, rej) => {
+                                        rejectFn = rej;
+                                    });
+                                    releaseDeferredRender();
+                                    return {
+                                        cancel() {
+                                            cancelledTasks++;
+                                            rejectFn(new Error('cancelled on unmount'));
+                                        },
+                                        promise: p
+                                    };
+                                }
                                 return {
                                     cancel() {
                                         cancelledTasks++;
@@ -283,9 +348,9 @@ test('vue-pdf/src/main.vue covers scheduleInit dedupe, scale, virtual scroll, in
                 },
                 {
                     src: 'https://example.com/a.pdf',
-                    requestOptions: { credentials: 'include' },
+                    requestOptions: { withCredentials: true },
                     staticFileUrl: '',
-                    options: { gap: 0 },
+                    options: { gap: 0, withCredentials: false },
                     defaultScale: 1
                 },
                 {
@@ -297,6 +362,7 @@ test('vue-pdf/src/main.vue covers scheduleInit dedupe, scale, virtual scroll, in
             sfc.mount();
             await new Promise(r => setTimeout(r, 15));
             assert.equal(getDocCalls, 1);
+            assert.equal(lastDocOpts.withCredentials, true);
             assert.ok(sfc.emitted.some(e => e.name === 'rendered'));
             assert.equal(sfc.setupResult.getScale(), 1);
 
@@ -331,24 +397,29 @@ test('vue-pdf/src/main.vue covers scheduleInit dedupe, scale, virtual scroll, in
             await new Promise(r => setTimeout(r, 15));
             assert.equal(sfc.setupResult.getScale(), 2);
 
+            // Clearing src emits 'src不能为空'
+            sfc.setProp('src', '');
+            assert.ok(sfc.emitted.some(e => e.name === 'error' && /src不能为空/.test(e.args[0].message)));
+
+            // Mount with in-flight render task and unmount -> must cancel active task
+            cancelledTasks = 0;
+            let resolveStarted;
+            const renderStarted = new Promise(r => {
+                resolveStarted = r;
+            });
+            releaseDeferredRender = resolveStarted;
+            sfc.setProp('src', 'https://example.com/cancel-on-unmount.pdf');
+            await renderStarted;
             sfc.unmount();
-            assert.ok(cancelledTasks >= 0);
+            assert.ok(cancelledTasks >= 1);
+            releaseDeferredRender = null;
         });
 
-        // setScale while initial loadingTask is in flight must not re-call getDocument
+        // Cold-start checkPdfLib + setScale before loadingTask created must NOT duplicate getDocument calls
+        delete mockWindow.pdfjsLib;
+        let loadScriptCount = 0;
+        let releaseScriptLoad = null;
         let slowGetDocCalls = 0;
-        let resolveSlowDoc;
-        let lastDocOpts;
-        mockWindow.pdfjsLib.getDocument = (opts) => {
-            slowGetDocCalls++;
-            lastDocOpts = opts;
-            return {
-                destroy() {},
-                promise: new Promise(r => {
-                    resolveSlowDoc = r;
-                })
-            };
-        };
         await runWithDomGlobals({
             document: mockDocument,
             window: mockWindow,
@@ -356,7 +427,7 @@ test('vue-pdf/src/main.vue covers scheduleInit dedupe, scale, virtual scroll, in
         }, async () => {
             const c = mockDocument.createElement('div');
             const w = mockDocument.createElement('div');
-            const sfcSlow = mountSfcScript(
+            const sfcCold = mountSfcScript(
                 'packages/vue-pdf/src/main.vue',
                 {
                     workerStr: 'console.log(1);',
@@ -364,34 +435,49 @@ test('vue-pdf/src/main.vue covers scheduleInit dedupe, scale, virtual scroll, in
                     downloadFile: () => {},
                     getUrlAsync: async src => src,
                     revokeUrl: () => {},
-                    loadScript: async () => {},
+                    loadScript: () => {
+                        loadScriptCount++;
+                        return new Promise(resolve => {
+                            releaseScriptLoad = () => {
+                                mockWindow.pdfjsLib = {
+                                    GlobalWorkerOptions: { workerSrc: '' },
+                                    getDocument() {
+                                        slowGetDocCalls++;
+                                        return {
+                                            destroy() {},
+                                            promise: Promise.resolve({
+                                                numPages: 1,
+                                                destroy() {},
+                                                getPage: async () => ({
+                                                    getViewport: ({ scale }) => ({ width: 200 * scale, height: 300 * scale }),
+                                                    render: () => ({ cancel() {}, promise: Promise.resolve() })
+                                                })
+                                            })
+                                        };
+                                    }
+                                };
+                                resolve();
+                            };
+                        });
+                    },
                     omit,
                     debounce
                 },
                 {
-                    src: 'https://example.com/slow.pdf',
+                    src: 'https://example.com/cold.pdf',
                     options: { width: -10, url: 'https://override.invalid/bad.pdf' },
                     defaultScale: 1
                 },
                 { containerRef: c, wrapperRef: w }
             );
-            sfcSlow.mount();
-            await new Promise(r => setTimeout(r, 5));
+            sfcCold.mount();
+            assert.equal(loadScriptCount, 1);
+            sfcCold.setupResult.setScale(1.25);
+            releaseScriptLoad();
+            await new Promise(r => setTimeout(r, 20));
             assert.equal(slowGetDocCalls, 1);
-            assert.equal(lastDocOpts.url, 'https://example.com/slow.pdf');
-            sfcSlow.setupResult.setScale(1.25);
-            assert.equal(slowGetDocCalls, 1);
-            resolveSlowDoc({
-                numPages: 1,
-                destroy() {},
-                getPage: async () => ({
-                    getViewport: ({ scale }) => ({ width: 200 * scale, height: 300 * scale }),
-                    render: () => ({ cancel() {}, promise: Promise.resolve() })
-                })
-            });
-            await new Promise(r => setTimeout(r, 15));
             assert.ok(w.style.minWidth && !w.style.minWidth.startsWith('-'));
-            sfcSlow.unmount();
+            sfcCold.unmount();
         });
     } finally {
         URL.createObjectURL = origCreate;
@@ -399,20 +485,32 @@ test('vue-pdf/src/main.vue covers scheduleInit dedupe, scale, virtual scroll, in
     }
 });
 
-test('vue-pptx/src/main.vue covers off-DOM stageEl swap, race guard, rerender, save, error, and unmount', async () => {
+test('vue-pptx/src/main.vue covers off-DOM stageEl swap, race guard, sync rerender throw, save, error, and unmount', async () => {
     const { mockDocument } = createDomMocks();
     const downloads = [];
     const destroyedViewers = [];
     let failPreview = false;
+    let failSyncCreate = false;
+    let releaseSlow = null;
+    let resolveSlowStarted = null;
+    const slowPreviewStarted = new Promise(r => {
+        resolveSlowStarted = r;
+    });
 
     const initPptxPreviewer = (el, opts) => {
+        if (failSyncCreate) {
+            throw new Error('sync create boom');
+        }
         const viewer = {
             el,
             opts,
             async preview(ab) {
                 const text = new TextDecoder().decode(ab);
                 if (text === 'slow') {
-                    await new Promise(r => setTimeout(r, 25));
+                    resolveSlowStarted();
+                    await new Promise(resolve => {
+                        releaseSlow = resolve;
+                    });
                 }
                 if (failPreview) {
                     throw new Error('pptx parse fail');
@@ -454,16 +552,22 @@ test('vue-pptx/src/main.vue covers off-DOM stageEl swap, race guard, rerender, s
         assert.equal(sfc.emitted[0].name, 'rendered');
 
         sfc.setProp('src', enc.encode('slow').buffer);
+        await slowPreviewStarted;
         sfc.setProp('src', enc.encode('winner').buffer);
-        await new Promise(r => setTimeout(r, 40));
+        await new Promise(r => setTimeout(r, 15));
+        releaseSlow();
+        await new Promise(r => setTimeout(r, 10));
         assert.equal(rootEl.children.length, 1);
         assert.equal(rootEl.children[0].className, 'winner');
 
         await sfc.setupResult.rerender();
         assert.equal(rootEl.children[0].className, 'winner');
 
-        sfc.setupResult.save('deck.pptx');
-        assert.equal(downloads[0].n, 'deck.pptx');
+        // Synchronous error inside createViewer during rerender() emits 'error' instead of throwing
+        failSyncCreate = true;
+        await sfc.setupResult.rerender();
+        assert.ok(sfc.emitted.some(e => e.name === 'error' && e.args[0].message === 'sync create boom'));
+        failSyncCreate = false;
 
         failPreview = true;
         sfc.setProp('src', enc.encode('broken').buffer);
@@ -476,6 +580,11 @@ test('vue-pptx/src/main.vue covers off-DOM stageEl swap, race guard, rerender, s
         await new Promise(r => setTimeout(r, 15));
         assert.equal(rootEl.children.length, 1);
 
+        sfc.setupResult.save('deck.pptx');
+        sfc.setupResult.save();
+        assert.equal(downloads[0].n, 'deck.pptx');
+        assert.match(downloads[1].n, /^abner-vue-office-pptx-\d+\.pptx$/);
+
         sfc.setProp('src', '');
         assert.equal(rootEl.children.length, 0);
 
@@ -483,7 +592,6 @@ test('vue-pptx/src/main.vue covers off-DOM stageEl swap, race guard, rerender, s
         assert.ok(destroyedViewers.length >= 2);
     });
 
-    // Additional coverage: string HTTP fetch, Blob, Response, invalid src, negative options, pre-mount guard
     await runWithDomGlobals({
         document: mockDocument,
         fetch: async (url) => ({

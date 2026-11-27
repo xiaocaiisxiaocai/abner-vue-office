@@ -152,16 +152,12 @@ function renderContent(viewRange, fw, fh, tx, ty) {
 
 
   // 2 render mergeCell
-  const rset = new Set();
   draw.save();
   draw.translate(0, -exceptRowTotalHeight);
-  data.eachMergesInView(viewRange, ({ sri, sci, eri }) => {
+  data.eachMergesInView(viewRange, ({ sri, sci }) => {
     if (!exceptRowSet.has(sri)) {
-      renderCell(draw, data, sri, sci);
-    } else if (!rset.has(sri)) {
-      rset.add(sri);
-      const height = data.rows.sumHeight(sri, eri + 1);
-      draw.translate(0, -height);
+      const hiddenBeforeMerge = data.rows.sumHeight(0, sri, exceptRowSet) - data.rows.sumHeight(0, sri);
+      renderCell(draw, data, sri, sci, hiddenBeforeMerge + exceptRowTotalHeight);
     }
   });
   draw.restore();
@@ -260,17 +256,16 @@ function renderFixedLeftTopCell(fw, fh) {
 
 function renderContentGrid({
   sri, sci, eri, eci, w, h,
-}, fw, fh, tx, ty) {
+}, fw, fh, tx, ty, fillBackground = false) {
   const { draw, data } = this;
   const { settings } = data;
 
   draw.save();
   draw.attr(tableGridStyle())
     .translate(fw + tx, fh + ty);
-  // const sumWidth = cols.sumWidth(sci, eci + 1);
-  // const sumHeight = rows.sumHeight(sri, eri + 1);
-  // console.log('sumWidth:', sumWidth);
-  // draw.clearRect(0, 0, w, h);
+  if (fillBackground) {
+    draw.fillRect(0, 0, w, h);
+  }
   if (!settings.showGrid) {
     draw.restore();
     return;
@@ -335,6 +330,18 @@ class Table {
     renderContent.call(this, viewRange, fw, fh, -x, -y);
     renderFixedHeaders.call(this, 'all', viewRange, fw, fh, tx, ty);
     renderFixedLeftTopCell.call(this, fw, fh);
+    const clipPane = (x0, y0, w0, h0, cb) => {
+      const { ctx } = this.draw;
+      if (ctx && typeof ctx.rect === 'function' && typeof ctx.clip === 'function') {
+        this.draw.save();
+        ctx.rect(npx(x0), npx(y0), npx(Math.max(0, w0)), npx(Math.max(0, h0)));
+        ctx.clip();
+        cb();
+        this.draw.restore();
+      } else {
+        cb();
+      }
+    };
     const [fri, fci] = data.freeze;
     if (fri > 0 || fci > 0) {
       // 2
@@ -343,9 +350,11 @@ class Table {
         vr.sri = 0;
         vr.eri = fri - 1;
         vr.h = ty;
-        renderContentGrid.call(this, vr, fw, fh, tx, 0);
-        renderContent.call(this, vr, fw, fh, -x, 0);
-        renderFixedHeaders.call(this, 'top', vr, fw, fh, tx, 0);
+        clipPane(fw + tx, 0, Math.max(0, data.viewWidth() - fw - tx), fh + ty, () => {
+          renderContentGrid.call(this, vr, fw, fh, tx, 0, true);
+          renderContent.call(this, vr, fw, fh, -x, 0);
+          renderFixedHeaders.call(this, 'top', vr, fw, fh, tx, 0);
+        });
       }
       // 3
       if (fci > 0) {
@@ -353,15 +362,20 @@ class Table {
         vr.sci = 0;
         vr.eci = fci - 1;
         vr.w = tx;
-        renderContentGrid.call(this, vr, fw, fh, 0, ty);
-        renderFixedHeaders.call(this, 'left', vr, fw, fh, 0, ty);
-        renderContent.call(this, vr, fw, fh, 0, -y);
+        clipPane(0, fh + ty, fw + tx, Math.max(0, data.viewHeight() - fh - ty), () => {
+          renderContentGrid.call(this, vr, fw, fh, 0, ty, true);
+          renderContent.call(this, vr, fw, fh, 0, -y);
+          renderFixedHeaders.call(this, 'left', vr, fw, fh, 0, ty);
+        });
       }
       // 4
       const freezeViewRange = data.freezeViewRange();
-      renderContentGrid.call(this, freezeViewRange, fw, fh, 0, 0);
-      renderFixedHeaders.call(this, 'all', freezeViewRange, fw, fh, 0, 0);
-      renderContent.call(this, freezeViewRange, fw, fh, 0, 0);
+      clipPane(0, 0, fw + tx, fh + ty, () => {
+        renderContentGrid.call(this, freezeViewRange, fw, fh, 0, 0, true);
+        renderContent.call(this, freezeViewRange, fw, fh, 0, 0);
+        renderFixedHeaders.call(this, 'all', freezeViewRange, fw, fh, 0, 0);
+        renderFixedLeftTopCell.call(this, fw, fh);
+      });
       // 5
       renderFreezeHighlightLine.call(this, fw, fh, tx, ty);
     }

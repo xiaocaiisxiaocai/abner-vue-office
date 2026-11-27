@@ -18,6 +18,9 @@ export default class Modal {
   }
 
   show() {
+    if (typeof document === 'undefined' || !document.body) {
+      return;
+    }
     if (this.dimmer && this.dimmer.el && this.dimmer.el.parentNode) {
       this.dimmer.el.parentNode.removeChild(this.dimmer.el);
       this.dimmer = null;
@@ -30,10 +33,12 @@ export default class Modal {
     this.dimmer = h('div', `${cssPrefix}-dimmer active`);
     document.body.appendChild(this.dimmer.el);
     const { width, height } = this.el.show().box();
-    const { clientHeight, clientWidth } = document.documentElement;
+    const docEl = document.documentElement || {};
+    const clientHeight = docEl.clientHeight || 0;
+    const clientWidth = docEl.clientWidth || 0;
     this.el.offset({
-      left: (clientWidth - width) / 2,
-      top: (clientHeight - height) / 3,
+      left: Math.max(0, (clientWidth - width) / 2),
+      top: Math.max(0, (clientHeight - height) / 3),
     });
     if (typeof window !== 'undefined') {
       this._onKeydownEsc = (evt) => {

@@ -411,16 +411,17 @@ test('x-spreadsheet sheet.js blocks read-only shortcuts and zero-delta scroll ev
 
     const fnBody = sheetSrc
         .slice(sheetSrc.indexOf('function overlayerMousescroll'), sheetSrc.indexOf('export default class Sheet'))
-        .replace(/sheetReset\.call\(this\)/g, '(() => {})');
+        .replace(/sheetReset\.call\(this\)/g, '(() => {})()');
 
     await runWithDomGlobals({ document: mockDocument, window: mockWindow }, () => {
         const harness = new Function(
-            'cssPrefix', 'bind', 'unbind', 'mouseMoveUp', 'bindTouch', 'xtoast', 'throttle',
+            'cssPrefix', 'bind', 'unbind', 'mouseMoveUp', 'bindTouch', 'xtoast', 'clearToasts', 'throttle',
             `${fnBody}\nreturn { overlayerMousescroll, sheetInitEvents };`
         )(
             'x-spreadsheet',
             (t, n, fn) => t.addEventListener(n, fn),
             (t, n, fn) => t.removeEventListener(n, fn),
+            () => {},
             () => {},
             () => {},
             () => {},

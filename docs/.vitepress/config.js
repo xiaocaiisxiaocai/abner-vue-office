@@ -1,5 +1,8 @@
 import { defineConfig } from 'vitepress'
-const path = require('path')
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   base: '/abner-vue-office/examples/docs/',

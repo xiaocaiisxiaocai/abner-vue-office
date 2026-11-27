@@ -3,23 +3,30 @@ function cloneDeep(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
+function isPlainObject(v) {
+  return Object.prototype.toString.call(v) === '[object Object]';
+}
+
 const mergeDeep = (object = {}, ...sources) => {
   sources.forEach((source) => {
     if (!source || typeof source !== 'object') return;
     Object.keys(source).forEach((key) => {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        return;
+      }
       const v = source[key];
-      // console.log('k:', key, ', v:', source[key], typeof v, v instanceof Object);
-      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
-        object[key] = v;
-      } else if (typeof v !== 'function' && !Array.isArray(v) && v instanceof Object) {
-        object[key] = object[key] || {};
+      if (isPlainObject(v)) {
+        if (!isPlainObject(object[key])) {
+          object[key] = {};
+        }
         mergeDeep(object[key], v);
+      } else if (Array.isArray(v)) {
+        object[key] = v.slice();
       } else {
         object[key] = v;
       }
     });
   });
-  // console.log('::', object);
   return object;
 };
 
@@ -94,6 +101,7 @@ function rangeEach(min, max, cb) {
 }
 
 function arrayEquals(a1, a2) {
+  if (!Array.isArray(a1) || !Array.isArray(a2)) return false;
   if (a1.length === a2.length) {
     for (let i = 0; i < a1.length; i += 1) {
       if (a1[i] !== a2[i]) return false;
@@ -103,37 +111,41 @@ function arrayEquals(a1, a2) {
 }
 
 function digits(a) {
-  const v = `${a}`;
-  let ret = 0;
-  let flag = false;
-  for (let i = 0; i < v.length; i += 1) {
-    if (flag === true) ret += 1;
-    if (v.charAt(i) === '.') flag = true;
-  }
-  return ret;
+  const v = `${a}`.trim();
+  const match = v.match(/^[+-]?\d*(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/);
+  if (!match) return 0;
+  const fracLen = match[1] ? match[1].length : 0;
+  const exp = match[2] ? parseInt(match[2], 10) : 0;
+  return Math.max(0, fracLen - exp);
 }
 
 export function numberCalc(type, a1, a2) {
-  const num1 = Number(a1);
-  const num2 = Number(a2);
+  const s1 = a1 == null ? '' : String(a1).trim();
+  const s2 = a2 == null ? '' : String(a2).trim();
+  const num1 = s1 === '' ? NaN : Number(s1);
+  const num2 = s2 === '' ? NaN : Number(s2);
   if (Number.isNaN(num1) || Number.isNaN(num2)) {
-    return a1 + type + a2;
+    return `${a1}${type}${a2}`;
   }
-  const al1 = digits(a1);
-  const al2 = digits(a2);
+  const al1 = digits(s1);
+  const al2 = digits(s2);
   let ret = 0;
+  let precision = Math.min(Math.max(al1, al2), 100);
   if (type === '-') {
     ret = num1 - num2;
   } else if (type === '+') {
     ret = num1 + num2;
   } else if (type === '*') {
     ret = num1 * num2;
+    precision = Math.min(al1 + al2, 100);
   } else if (type === '/') {
+    if (num2 === 0) return String(num1 / num2);
     ret = num1 / num2;
-    if (digits(ret) > 5) return ret.toFixed(2);
-    return ret;
+    if (!Number.isFinite(ret)) return String(ret);
+    return String(Number(ret.toPrecision(12)));
   }
-  return ret.toFixed(Math.max(al1, al2));
+  if (!Number.isFinite(ret)) return String(ret);
+  return ret.toFixed(precision);
 }
 
 export default {

@@ -1,38 +1,56 @@
-// src: include chars: [0-9], +, -, *, /
-// // 9+(3-1)*3+10/2 => 9 3 1-3*+ 10 2/+
+// src: include chars: [0-9], +, -, *, /, (, )
+// 9+(3-1)*3+10/2 => 9 3 1-3*+ 10 2/+
+const OP_PREC = {
+  '+': 1,
+  '-': 1,
+  '*': 2,
+  '/': 2,
+};
+
 const infix2suffix = (src) => {
   const operatorStack = [];
   const stack = [];
+  let numBuf = '';
+  const flushNum = () => {
+    if (numBuf.length > 0) {
+      stack.push(numBuf);
+      numBuf = '';
+    }
+  };
   for (let i = 0; i < src.length; i += 1) {
     const c = src.charAt(i);
-    if (c !== ' ') {
-      if (c >= '0' && c <= '9') {
-        stack.push(c);
-      } else if (c === ')') {
-        let c1 = operatorStack.pop();
-        while (c1 !== '(' && operatorStack.length > 0) {
-          stack.push(c1);
-          c1 = operatorStack.pop();
-        }
-        if (c1 !== undefined && c1 !== '(') {
-          stack.push(c1);
-        }
-      } else {
-        // priority: */ > +-
-        if (operatorStack.length > 0 && (c === '+' || c === '-')) {
-          const last = operatorStack[operatorStack.length - 1];
-          if (last === '*' || last === '/') {
-            while (operatorStack.length > 0) {
-              stack.push(operatorStack.pop());
-            }
-          }
-        }
-        operatorStack.push(c);
+    if (c === ' ') {
+      flushNum();
+      continue;
+    }
+    if ((c >= '0' && c <= '9') || c === '.') {
+      numBuf += c;
+    } else if (c === '(') {
+      flushNum();
+      operatorStack.push(c);
+    } else if (c === ')') {
+      flushNum();
+      while (operatorStack.length > 0) {
+        const c1 = operatorStack.pop();
+        if (c1 === '(') break;
+        stack.push(c1);
       }
+    } else if (OP_PREC[c]) {
+      flushNum();
+      while (operatorStack.length > 0) {
+        const last = operatorStack[operatorStack.length - 1];
+        if (last === '(' || !OP_PREC[last] || OP_PREC[last] < OP_PREC[c]) {
+          break;
+        }
+        stack.push(operatorStack.pop());
+      }
+      operatorStack.push(c);
     }
   }
+  flushNum();
   while (operatorStack.length > 0) {
-    stack.push(operatorStack.pop());
+    const op = operatorStack.pop();
+    if (op !== '(') stack.push(op);
   }
   return stack;
 };

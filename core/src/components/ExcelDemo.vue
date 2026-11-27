@@ -1,73 +1,44 @@
 <script setup>
+import { ref } from 'vue';
 import AbnerVueOfficeExcel from '../../packages/vue-excel/index';
 import '../../packages/vue-excel/src/index.css';
 import PreviewWrapper from '../common/PreviewWrapper.vue';
 import useLoading from '../hooks/useLoading.js';
-import {ref} from 'vue';
-function onRendered(){
+import { getStaticFileUrl } from '../hooks/usePreview.js';
+
+function onRendered() {
     useLoading.hideLoading();
 }
-function onError(e){
+function onError(e) {
     console.log('出错', e);
     useLoading.hideLoading();
 }
 
-
-
-function transformData(data){
-    console.log('transformData', data);
+function transformData(data) {
     return data;
 }
 
-const defaultSrc = location.origin +
-    (location.pathname + '/').replace('//', '/')
-    + 'static/test-files/test.xlsx';
+const defaultSrc = getStaticFileUrl('static/test-files/test.xlsx');
 const excelRef = ref();
 
-function beforeTransformData(data){
-    console.log('beforeTransformData', data, excelRef);
-
-    data._worksheets.forEach(worksheet=>{
-        let line = 0;
-        if( worksheet._rows[line] && worksheet._rows[line]._cells){
-            for(let i = 0;i < worksheet._rows[line]._cells.length;i++){
-                let cell = worksheet._rows[line]._cells[i];
-                if(!cell){
-                    //单元格不存在
-                    worksheet._rows[line]._cells[i] = {
-                        text: '',
-                        value:'',
-                        style: {
-                            bgcolor: '#00ff00'
-                        }
-                    };
-                }else{
-                    cell.style = {
-                        bgcolor: '#00ff00'
-                    };
-                }
-            }
-
-        }
-
-    });
+function beforeTransformData(data) {
+    if (!data || !Array.isArray(data._worksheets)) {
+        return data;
+    }
     return data;
 }
 
-function switchSheet(sheetIndex){
+function switchSheet(sheetIndex) {
     console.log('当前sheet', sheetIndex);
 }
 
-function cellSelected(event){
+function cellSelected(event) {
     console.log('点击了单元格', event);
 }
 
-function cellsSelected(event){
+function cellsSelected(event) {
     console.log('选择了单元格', event);
 }
-// setTimeout(()=>{
-//     console.log( docxRef.value.download());
-// }, 2000);
 </script>
 
 <template>
@@ -76,7 +47,7 @@ function cellsSelected(event){
       placeholder="请输入xlsx文件地址"
       :default-src="defaultSrc"
   >
-    <template  v-slot="slotProps">
+    <template v-slot="slotProps">
       <AbnerVueOfficeExcel
           ref="excelRef"
           :src="slotProps.src"
@@ -89,11 +60,8 @@ function cellsSelected(event){
           @cellsSelected="cellsSelected"
       />
     </template>
-
   </PreviewWrapper>
 </template>
 
-
 <style scoped>
-
 </style>

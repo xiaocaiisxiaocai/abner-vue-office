@@ -23,4 +23,5 @@ pnpm-debug.log*
 *.sw?
 packages/**/lib
 packages/**/README.md
+packages/**/LICENSE
 pnpm-lock.yaml

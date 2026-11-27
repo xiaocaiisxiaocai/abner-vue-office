@@ -50,16 +50,20 @@ export function normalizeFetchOptions(options) {
 
 export function loadScript(src) {
     return new Promise((resolve, reject) => {
-        if (typeof document === 'undefined') {
+        if (!src || typeof src !== 'string' || typeof document === 'undefined') {
             reject(new Error(`Failed to load script: ${src}`));
             return;
         }
         const script = document.createElement('script');
         script.src = src;
         script.onload = function () {
+            script.onload = null;
+            script.onerror = null;
             resolve();
         };
         script.onerror = function () {
+            script.onload = null;
+            script.onerror = null;
             if (script.parentNode) {
                 script.parentNode.removeChild(script);
             }
@@ -78,19 +82,28 @@ export async function download(filename, data) {
     if (!data || typeof document === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
         return;
     }
+    const target = document.body || document.documentElement;
+    if (!target) {
+        return;
+    }
     const blob = (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) ? new Blob([data]) : data;
     if (!(blob instanceof Blob)) {
         return;
     }
     const objectUrl = URL.createObjectURL(blob);
-    downloadFile(filename, objectUrl);
+    try {
+        downloadFile(filename, objectUrl);
+    } catch (err) {
+        revokeUrl(objectUrl);
+        throw err;
+    }
     setTimeout(() => {
-        URL.revokeObjectURL(objectUrl);
+        revokeUrl(objectUrl);
     }, 10000);
 }
 
 export function downloadFile(filename, href) {
-    if (typeof document === 'undefined') {
+    if (!href || typeof document === 'undefined') {
         return;
     }
     const target = document.body || document.documentElement;
@@ -98,7 +111,9 @@ export function downloadFile(filename, href) {
         return;
     }
     const eleLink = document.createElement('a');
-    eleLink.download = filename;
+    if (filename != null) {
+        eleLink.download = String(filename);
+    }
     eleLink.style.display = 'none';
     eleLink.href = href;
     target.appendChild(eleLink);

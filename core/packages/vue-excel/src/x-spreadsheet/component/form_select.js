@@ -13,8 +13,11 @@ export default class FormSelect {
       change(it.key);
       this.vchange(it.key);
     }, width);
+    this.itemEl = h('div', 'input-text');
+    const initTitle = this.getTitle(key);
+    this.itemEl.el.textContent = initTitle != null ? String(initTitle) : '';
     this.el.children(
-      this.itemEl = h('div', 'input-text').html(this.getTitle(key)),
+      this.itemEl,
       this.suggest.el,
     ).on('click', () => this.show());
   }
@@ -25,13 +28,15 @@ export default class FormSelect {
 
   itemClick(it) {
     this.key = it;
-    this.itemEl.html(this.getTitle(it));
+    const title = this.getTitle(it);
+    this.itemEl.el.textContent = title != null ? String(title) : '';
   }
 
   val(v) {
     if (v !== undefined) {
       this.key = v;
-      this.itemEl.html(this.getTitle(v));
+      const title = this.getTitle(v);
+      this.itemEl.el.textContent = title != null ? String(title) : '';
       return this;
     }
     return this.key;

@@ -1,30 +1,25 @@
 <script setup>
-import {ref} from 'vue';
+import { ref } from 'vue';
 import AbnerVueOfficeDocx from '../../packages/vue-docx/index';
 import PreviewWrapper from '../common/PreviewWrapper.vue';
 import useLoading from '../hooks/useLoading.js';
-function onRendered(){
+import { getStaticFileUrl } from '../hooks/usePreview.js';
+
+function onRendered() {
     useLoading.hideLoading();
 }
-function onError(e){
+function onError(e) {
     console.log('出错', e);
     useLoading.hideLoading();
 }
 
-const defaultSrc = location.origin +
-    (location.pathname + '/').replace('//', '/')
-    + 'static/test-files/test.docx';
-
+const defaultSrc = getStaticFileUrl('static/test-files/test.docx');
 const docxRef = ref();
 const requestOptions = {
     headers: {
         'component-name': 'AbnerVueOfficeDocx'
     }
 };
-
-// setTimeout(()=>{
-//    console.log( docxRef.value.download());
-// }, 2000);
 </script>
 
 <template>
@@ -33,7 +28,7 @@ const requestOptions = {
       placeholder="请输入docx文件地址"
       :default-src="defaultSrc"
   >
-    <template  v-slot="slotProps">
+    <template v-slot="slotProps">
       <AbnerVueOfficeDocx
           ref="docxRef"
           :src="slotProps.src"
@@ -43,16 +38,8 @@ const requestOptions = {
           @error="onError"
       />
     </template>
-
   </PreviewWrapper>
-
 </template>
 
 <style scoped>
-.operate-area {
-  display: flex;
-  margin: 10px;
-  align-items: center;
-}
-
 </style>
