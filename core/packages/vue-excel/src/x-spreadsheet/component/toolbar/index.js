@@ -49,16 +49,43 @@ function initBtns2() {
   });
 }
 
+function hideAllDropdowns() {
+  [
+    this.formatEl,
+    this.fontEl,
+    this.fontSizeEl,
+    this.textColorEl,
+    this.fillColorEl,
+    this.borderEl,
+    this.alignEl,
+    this.valignEl,
+    this.formulaEl,
+    this.moreEl,
+  ].forEach((it) => {
+    if (it && it.dd && typeof it.dd.hide === 'function') {
+      it.dd.hide();
+    }
+  });
+}
+
 function moreResize() {
   const {
-    el, btns, moreEl, btns2,
+    el, btns, moreEl,
   } = this;
-  if (!btns2) return;
-  hideTooltip();
+  if (!this.btns2) return;
+  hideTooltip(el.el);
+  hideAllDropdowns.call(this);
   const { moreBtns, contentEl } = moreEl.dd;
   el.css('width', `${this.widthFn()}px`);
   const elBox = el.box();
   if (!elBox || elBox.width <= 0) return;
+
+  if (this.btns2.length > 0 && this.btns2.every(([, w]) => w === 0)) {
+    moreBtns.html('');
+    btns.html('').children(...this.btns2.map(([it]) => it));
+    initBtns2.call(this);
+  }
+  const { btns2 } = this;
 
   let sumWidth = 160;
   let sumWidth2 = 12;
@@ -173,6 +200,19 @@ export default class Toolbar {
     }
 
     this.items.push([this.moreEl = new More()]);
+    if (this.moreEl && this.moreEl.dd) {
+      this.moreEl.dd.childDropdowns = [
+        this.formatEl && this.formatEl.dd,
+        this.fontEl && this.fontEl.dd,
+        this.fontSizeEl && this.fontSizeEl.dd,
+        this.textColorEl && this.textColorEl.dd,
+        this.fillColorEl && this.fillColorEl.dd,
+        this.borderEl && this.borderEl.dd,
+        this.alignEl && this.alignEl.dd,
+        this.valignEl && this.valignEl.dd,
+        this.formulaEl && this.formulaEl.dd,
+      ].filter(Boolean);
+    }
 
     this.el = h('div', `${cssPrefix}-toolbar`);
     this.btns = h('div', `${cssPrefix}-toolbar-btns`);
@@ -210,7 +250,7 @@ export default class Toolbar {
   }
 
   destroy() {
-    hideTooltip();
+    hideTooltip(this.el && this.el.el);
     if (this._resizeTimer) {
       clearTimeout(this._resizeTimer);
       this._resizeTimer = null;
@@ -221,22 +261,7 @@ export default class Toolbar {
       }
       this._onWindowResize = null;
     }
-    [
-      this.formatEl,
-      this.fontEl,
-      this.fontSizeEl,
-      this.textColorEl,
-      this.fillColorEl,
-      this.borderEl,
-      this.alignEl,
-      this.valignEl,
-      this.formulaEl,
-      this.moreEl,
-    ].forEach((it) => {
-      if (it && it.dd && typeof it.dd.hide === 'function') {
-        it.dd.hide();
-      }
-    });
+    hideAllDropdowns.call(this);
   }
 
   paintformatActive() {
@@ -256,13 +281,19 @@ export default class Toolbar {
 
   resetData(data) {
     this.data = data;
+    hideAllDropdowns.call(this);
     this.reset();
   }
 
   reset() {
-    if (this.isHide) return;
     const { data } = this;
-    const style = data.getSelectedCellStyle();
+    const style = data.defaultStyle ? data.getSelectedCellStyle() : { font: {} };
+    const font = style.font || {};
+    this.boldEl.setState(font.bold);
+    this.italicEl.setState(font.italic);
+    this.underlineEl.setState(style.underline);
+    this.strikeEl.setState(style.strike);
+    if (this.isHide) return;
     // console.log('canUndo:', data.canUndo());
     this.undoEl.setState(!data.canUndo());
     this.redoEl.setState(!data.canRedo());
@@ -270,14 +301,10 @@ export default class Toolbar {
     this.autofilterEl.setState(!data.canAutofilter());
     // this.mergeEl.disabled();
     // console.log('selectedCell:', style, cell);
-    const { font, format } = style;
+    const { format } = style;
     this.formatEl.setState(format);
     this.fontEl.setState(font.name);
     this.fontSizeEl.setState(font.size);
-    this.boldEl.setState(font.bold);
-    this.italicEl.setState(font.italic);
-    this.underlineEl.setState(style.underline);
-    this.strikeEl.setState(style.strike);
     this.textColorEl.setState(style.color);
     this.fillColorEl.setState(style.bgcolor);
     this.alignEl.setState(style.align);

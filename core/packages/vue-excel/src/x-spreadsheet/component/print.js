@@ -1,7 +1,7 @@
 import { h } from './element';
 import { cssPrefix } from '../config';
 import Button from './button';
-import { Draw } from '../canvas/draw';
+import { Draw, npx } from '../canvas/draw';
 import { renderCell } from './table';
 import { t } from '../locale/locale';
 
@@ -143,7 +143,6 @@ export default class Print {
     for (let i = 0; i < maxPages && (ri <= cr.eri || i === 0); i += 1) {
       let th = 0;
       let yo = 0;
-      const startRi = ri;
       const wrap = h('div', `${cssPrefix}-canvas-card`);
       const canvas = h('canvas', `${cssPrefix}-canvas`);
       this.canvases.push(canvas.el);
@@ -151,7 +150,7 @@ export default class Print {
       const clipAndTransform = (cb) => {
         draw.save();
         if (draw.ctx && typeof draw.ctx.rect === 'function' && typeof draw.ctx.clip === 'function') {
-          draw.ctx.rect(padding, top, iwidth, iheight);
+          draw.ctx.rect(npx(padding), npx(top), npx(iwidth), npx(iheight));
           draw.ctx.clip();
         }
         draw.translate(left, top);
@@ -161,6 +160,7 @@ export default class Print {
       };
       // cell-content
       let pageHiddenOffset = 0;
+      let hasRenderedRow = false;
       clipAndTransform(() => {
         for (; ri <= cr.eri; ri += 1) {
           if (exceptRowSet && exceptRowSet.has(ri)) {
@@ -170,9 +170,10 @@ export default class Print {
           }
           const rh = data.rows.getHeight(ri);
           th += rh;
-          if (th < effHeight || ri === startRi) {
+          if (th < effHeight || !hasRenderedRow) {
+            hasRenderedRow = true;
             for (let ci = 0; ci <= cr.eci; ci += 1) {
-              renderCell(draw, data, ri, ci, yoffset + pageHiddenOffset);
+              renderCell(draw, data, ri, ci, yoffset + pageHiddenOffset, true);
               mViewRange.eci = ci;
             }
             if (th >= effHeight) {
@@ -195,7 +196,7 @@ export default class Print {
           const hiddenAbove = exceptRowSet
             ? (data.rows.sumHeight(mViewRange.sri, sri, exceptRowSet) - data.rows.sumHeight(mViewRange.sri, sri))
             : 0;
-          renderCell(draw, data, sri, sci, yof + hiddenAbove);
+          renderCell(draw, data, sri, sci, yof + hiddenAbove, true);
         });
       });
 
@@ -224,7 +225,15 @@ export default class Print {
     if (!this.canvases || this.canvases.length === 0) return;
     if (typeof window === 'undefined' || !window.document || !window.document.body) return;
     const { paper } = this;
-    const iframe = h('iframe', '').hide();
+    const iframe = h('iframe', '').css({
+      position: 'fixed',
+      left: '-9999px',
+      top: '0',
+      width: '0',
+      height: '0',
+      border: '0',
+      visibility: 'hidden',
+    });
     const { el } = iframe;
     this._printIframe = el;
     window.document.body.appendChild(el);
@@ -261,13 +270,16 @@ export default class Print {
     if (typeof contentWindow.print === 'function') {
       contentWindow.print();
     }
-    this._iframeTimer = setTimeout(() => {
-      this.removePrintIframe();
-    }, 60000);
+    if (this._printIframe) {
+      this._iframeTimer = setTimeout(() => {
+        this.removePrintIframe();
+      }, 60000);
+    }
   }
 
   destroy() {
     this.el.hide();
     this.removePrintIframe();
+    this.canvases = [];
   }
 }

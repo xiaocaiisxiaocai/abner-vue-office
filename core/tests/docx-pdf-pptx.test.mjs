@@ -120,7 +120,8 @@ test('vue-docx/src/docx.js validates data, serializes container commits, and ski
     const { mockDocument } = createDomMocks();
     const container = mockDocument.createElement('div');
     let rejectFirstRender = false;
-    let releaseFirstRender = null;
+    let firstGate = null;
+    let firstStartedResolve = null;
 
     const docxHelper = loadStrippedModule('packages/vue-docx/src/docx.js', {
         normalizeFetchOptions: opts => opts || {},
@@ -131,10 +132,9 @@ test('vue-docx/src/docx.js validates data, serializes container commits, and ski
         },
         renderDocument: async (doc, target) => {
             events.push(`commit:${doc.txt}`);
-            if (doc.txt === 'first' && releaseFirstRender) {
-                await new Promise(resolve => {
-                    releaseFirstRender = resolve;
-                });
+            if (doc.txt === 'first' && firstGate) {
+                firstStartedResolve();
+                await firstGate;
             }
             if (rejectFirstRender && doc.txt === 'first') {
                 throw new Error('first render err');
@@ -156,13 +156,27 @@ test('vue-docx/src/docx.js validates data, serializes container commits, and ski
     await docxHelper.render(new Blob(['fresh']), container, {}, () => true);
     assert.equal(container.innerHTML, '<p>fresh</p>');
 
-    // Concurrent container serialization + recovery after first rejects
+    // True concurrent container serialization: second waits for first even after parsing faster
+    let releaseFirst;
+    const firstStarted = new Promise(r => { firstStartedResolve = r; });
+    firstGate = new Promise(r => { releaseFirst = r; });
     rejectFirstRender = true;
+    events.length = 0;
     const p1 = docxHelper.render(new Blob(['first']), container, {}, () => true);
+    await firstStarted;
     const p2 = docxHelper.render(new Blob(['second']), container, {}, () => true);
+    await Promise.resolve();
+    assert.ok(events.includes('commit:first'));
+    assert.equal(events.includes('commit:second'), false);
+    releaseFirst();
     await assert.rejects(p1, /first render err/);
     await p2;
     assert.equal(container.innerHTML, '<p>second</p>');
+    const firstCommitIdx = events.indexOf('commit:first');
+    const secondCommitIdx = events.indexOf('commit:second');
+    assert.ok(firstCommitIdx !== -1 && secondCommitIdx > firstCommitIdx);
+    assert.deepEqual(events.slice(firstCommitIdx), ['commit:first', 'parse:second', 'commit:second']);
+    firstGate = null;
 
     await docxHelper.render('', container, {}, () => true);
     assert.equal(container.innerHTML, '');

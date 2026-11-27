@@ -272,8 +272,8 @@ class AbnerJsPdfPreview {
             const wrapperWidth = this.wrapper.getBoundingClientRect().width - 20;
             if (domWidth > wrapperWidth && wrapperWidth > 0 && domWidth > 0) {
                 const scale = wrapperWidth / domWidth;
-                domWidth = Math.floor(wrapperWidth);
-                domHeight = Math.floor(domHeight * scale);
+                domWidth = Math.max(1, Math.floor(wrapperWidth));
+                domHeight = Math.max(1, Math.floor(domHeight * scale));
             }
 
             return {
@@ -302,9 +302,14 @@ class AbnerJsPdfPreview {
         return canvas;
     }
 
-    clearAllCanvas() {
+    clearAllCanvas(resetStyle = false) {
         this.cancelRenderTasks();
-        this.wrapperMain && (this.wrapperMain.innerHTML = '');
+        if (this.wrapperMain) {
+            this.wrapperMain.innerHTML = '';
+            if (resetStyle) {
+                this.wrapperMain.style.height = '';
+            }
+        }
     }
 
     setOptions(options = {}) {
@@ -325,6 +330,7 @@ class AbnerJsPdfPreview {
         if (this.isDestroyed || currentId !== this.renderId || !this.pdfDocument || !this.wrapper || !this.wrapperMain) {
             return Promise.resolve();
         }
+        this.onScroll.cancel();
         return this.getPageSize(this.pdfDocument).then(res => {
             if (!res || this.isDestroyed || currentId !== this.renderId || !this.pdfDocument || !this.wrapper || !this.wrapperMain) {
                 return;
@@ -358,8 +364,9 @@ class AbnerJsPdfPreview {
             return Promise.resolve();
         }
         const currentId = ++this.renderId;
+        this.onScroll.cancel();
         if (!src) {
-            this.clearAllCanvas();
+            this.clearAllCanvas(true);
             this.cleanupPdfResources();
             const err = new Error('预览地址不能为空');
             this.options.onError && this.options.onError(err);
@@ -382,7 +389,7 @@ class AbnerJsPdfPreview {
             });
         }).catch(e => {
             if (!this.isDestroyed && currentId === this.renderId) {
-                this.clearAllCanvas();
+                this.clearAllCanvas(true);
                 this.cleanupPdfResources();
                 this.options.onError && this.options.onError(e);
                 return Promise.reject(e);

@@ -70,16 +70,30 @@ const infixExprToSuffixExpr = (src) => {
 
   while (i < len) {
     const c = src.charAt(i);
-    if (c === ' ' || c === '\t') {
+    if (c === ' ' || c === '\t' || c === '\r' || c === '\n') {
       i += 1;
     } else if (c === '"') {
       i += 1;
       let str = '';
-      while (i < len && src.charAt(i) !== '"') {
-        str += src.charAt(i);
+      let closed = false;
+      while (i < len) {
+        const ch = src.charAt(i);
+        if (ch === '"') {
+          if (src.charAt(i + 1) === '"') {
+            str += '"';
+            i += 2;
+            continue;
+          }
+          i += 1;
+          closed = true;
+          break;
+        }
+        str += ch;
         i += 1;
       }
-      if (i < len && src.charAt(i) === '"') i += 1;
+      if (!closed) {
+        throw new Error('Unclosed string literal');
+      }
       stack.push(`"${str}`);
       if (callStack.length > 0 && callStack[callStack.length - 1].expectFirstArg) {
         const frame = callStack[callStack.length - 1];
@@ -97,18 +111,21 @@ const infixExprToSuffixExpr = (src) => {
         } else if (ch >= 'a' && ch <= 'z') {
           token += ch.toUpperCase();
           i += 1;
-        } else {
-          break;
-        }
-      }
-      while (i < len && (src.charAt(i) === ' ' || src.charAt(i) === '\t')) {
-        if (src.charAt(i + 1) === '(') {
+        } else if ((ch === '+' || ch === '-')
+          && /^(?:\d+(?:\.\d*)?|\.\d+)E$/.test(token)
+          && src.charAt(i + 1) >= '0' && src.charAt(i + 1) <= '9') {
+          token += ch;
           i += 1;
         } else {
           break;
         }
       }
-      if (i < len && src.charAt(i) === '(') {
+      let look = i;
+      while (look < len && (src.charAt(look) === ' ' || src.charAt(look) === '\t' || src.charAt(look) === '\r' || src.charAt(look) === '\n')) {
+        look += 1;
+      }
+      if (look < len && src.charAt(look) === '(') {
+        i = look;
         if (callStack.length > 0 && callStack[callStack.length - 1].expectFirstArg) {
           const parentFrame = callStack[callStack.length - 1];
           parentFrame.expectFirstArg = false;
@@ -137,6 +154,9 @@ const infixExprToSuffixExpr = (src) => {
       i += 1;
       expectUnary = true;
     } else if (c === ')') {
+      if (expectUnary && callStack.length > 0 && !callStack[callStack.length - 1].expectFirstArg) {
+        stack.push('"');
+      }
       while (operatorStack.length > 0) {
         const top = operatorStack[operatorStack.length - 1];
         if (top === ':') {
@@ -147,16 +167,25 @@ const infixExprToSuffixExpr = (src) => {
           stack.push(operatorStack.pop());
         }
       }
-      if (operatorStack.length > 0) {
-        const opener = operatorStack.pop();
-        if (typeof opener === 'object' && opener.type === 'fn') {
-          const frame = callStack.pop();
-          stack.push([opener.name, frame ? frame.argCount : 0]);
-        }
+      if (operatorStack.length === 0) {
+        throw new Error('Unexpected closing parenthesis');
+      }
+      const opener = operatorStack.pop();
+      if (typeof opener === 'object' && opener.type === 'fn') {
+        const frame = callStack.pop();
+        stack.push([opener.name, frame ? frame.argCount : 0]);
       }
       i += 1;
       expectUnary = false;
     } else if (c === ',') {
+      if (expectUnary && callStack.length > 0) {
+        const frame = callStack[callStack.length - 1];
+        stack.push('"');
+        if (frame.expectFirstArg) {
+          frame.expectFirstArg = false;
+          frame.argCount = 1;
+        }
+      }
       while (operatorStack.length > 0) {
         const top = operatorStack[operatorStack.length - 1];
         if (top === ':') {
@@ -171,6 +200,8 @@ const infixExprToSuffixExpr = (src) => {
         const frame = callStack[callStack.length - 1];
         frame.argCount += 1;
         frame.expectFirstArg = false;
+      } else {
+        throw new Error('Unexpected comma');
       }
       i += 1;
       expectUnary = true;
@@ -208,6 +239,8 @@ const infixExprToSuffixExpr = (src) => {
           }
         }
         operatorStack.push(op);
+      } else {
+        throw new Error(`Unsupported token: ${op}`);
       }
       expectUnary = true;
     }
@@ -217,12 +250,8 @@ const infixExprToSuffixExpr = (src) => {
     const top = operatorStack[operatorStack.length - 1];
     if (top === ':') {
       flushRange();
-    } else if (top === '(') {
-      operatorStack.pop();
-    } else if (typeof top === 'object' && top.type === 'fn') {
-      operatorStack.pop();
-      const frame = callStack.pop();
-      stack.push([top.name, frame ? frame.argCount : 0]);
+    } else if (top === '(' || (typeof top === 'object' && top.type === 'fn')) {
+      throw new Error('Unclosed parenthesis');
     } else {
       stack.push(operatorStack.pop());
     }
@@ -242,7 +271,11 @@ const evalSubExpr = (subExpr, cellRender, unarySign = 1) => {
     expr = subExpr.substring(1);
     sign = -sign;
   }
-  if (expr[0] >= '0' && expr[0] <= '9') {
+  if (expr === 'TRUE' || expr === 'FALSE') {
+    const boolVal = expr === 'TRUE';
+    return sign === -1 ? (boolVal ? -1 : 0) : boolVal;
+  }
+  if ((expr[0] >= '0' && expr[0] <= '9') || expr[0] === '.') {
     const numVal = Number(expr);
     if (Number.isNaN(numVal)) {
       throw new Error(`Invalid number literal: ${expr}`);
@@ -272,43 +305,42 @@ const evalSuffixExpr = (srcStack, formulaMap, cellRender, cellList) => {
   const stack = [];
   for (let i = 0; i < srcStack.length; i += 1) {
     const expr = srcStack[i];
-    if (expr === '+') {
-      const right = stack.pop();
-      stack.push(numberCalc('+', stack.pop(), right));
-    } else if (expr === '-') {
-      if (stack.length === 1) {
-        const top = stack.pop();
-        stack.push(numberCalc('*', top, -1));
-      } else {
-        const right = stack.pop();
-        stack.push(numberCalc('-', stack.pop(), right));
+    if (expr === '+' || expr === '-' || expr === '*' || expr === '/'
+      || expr === '=' || expr === '<>' || expr === '>' || expr === '>=' || expr === '<' || expr === '<=') {
+      if (stack.length < 2) {
+        throw new Error(`Missing operand for operator: ${expr}`);
       }
-    } else if (expr === 'u-') {
+      if (expr === '+' || expr === '-' || expr === '*' || expr === '/') {
+        const right = stack.pop();
+        stack.push(numberCalc(expr, stack.pop(), right));
+      } else {
+        const right = toComparable(stack.pop());
+        const left = toComparable(stack.pop());
+        let ret = false;
+        if (expr === '=') ret = (left === right);
+        else if (expr === '<>') ret = (left !== right);
+        else if (expr === '>') ret = (left > right);
+        else if (expr === '>=') ret = (left >= right);
+        else if (expr === '<') ret = (left < right);
+        else if (expr === '<=') ret = (left <= right);
+        stack.push(ret);
+      }
+    } else if (expr === 'u-' || expr === 'u+') {
+      if (stack.length < 1) {
+        throw new Error(`Missing operand for unary operator: ${expr}`);
+      }
       const top = stack.pop();
-      const n = Number(top);
-      stack.push(Number.isNaN(n) ? NaN : (n === 0 ? 0 : -n));
-    } else if (expr === 'u+') {
-      const top = stack.pop();
-      stack.push(typeof top === 'string' && top.trim() !== '' && !Number.isNaN(Number(top)) ? Number(top) : top);
-    } else if (expr === '*') {
-      const right = stack.pop();
-      stack.push(numberCalc('*', stack.pop(), right));
-    } else if (expr === '/') {
-      const right = stack.pop();
-      stack.push(numberCalc('/', stack.pop(), right));
-    } else if (expr === '=' || expr === '<>' || expr === '>' || expr === '>=' || expr === '<' || expr === '<=') {
-      const right = toComparable(stack.pop());
-      const left = toComparable(stack.pop());
-      let ret = false;
-      if (expr === '=') ret = (left === right);
-      else if (expr === '<>') ret = (left !== right);
-      else if (expr === '>') ret = (left > right);
-      else if (expr === '>=') ret = (left >= right);
-      else if (expr === '<') ret = (left < right);
-      else if (expr === '<=') ret = (left <= right);
-      stack.push(ret);
+      if (expr === 'u-') {
+        const n = Number(top);
+        stack.push(Number.isNaN(n) ? NaN : (n === 0 ? 0 : -n));
+      } else {
+        stack.push(typeof top === 'string' && top.trim() !== '' && !Number.isNaN(Number(top)) ? Number(top) : top);
+      }
     } else if (Array.isArray(expr)) {
       const [formula, len] = expr;
+      if (stack.length < len) {
+        throw new Error(`Missing arguments for formula: ${formula}`);
+      }
       const params = [];
       for (let j = 0; j < len; j += 1) {
         params.push(stack.pop());
@@ -322,11 +354,13 @@ const evalSuffixExpr = (srcStack, formulaMap, cellRender, cellList) => {
       const fc = exprStr[0];
       const stripped = fc === '-' ? exprStr.substring(1) : exprStr;
       const sc = stripped[0];
-      const isCellRef = stripped !== '' && sc !== '"' && !((sc >= '0' && sc <= '9'))
-        && ((sc >= 'A' && sc <= 'Z') || (sc >= 'a' && sc <= 'z') || sc === '$');
       const normalizedRef = stripped.replace(/\$/g, '').toUpperCase();
+      const isCellRef = stripped !== '' && sc !== '"' && !((sc >= '0' && sc <= '9')) && sc !== '.'
+        && normalizedRef !== 'TRUE' && normalizedRef !== 'FALSE'
+        && ((sc >= 'A' && sc <= 'Z') || (sc >= 'a' && sc <= 'z') || sc === '$');
       if (isCellRef && cellList.includes(normalizedRef)) {
-        return 0;
+        stack.push(0);
+        continue;
       }
       if (isCellRef) {
         cellList.push(normalizedRef);
@@ -340,19 +374,22 @@ const evalSuffixExpr = (srcStack, formulaMap, cellRender, cellList) => {
       }
     }
   }
+  if (stack.length !== 1) {
+    throw new Error('Malformed formula expression');
+  }
   return stack[0];
 };
 
-const cellRender = (src, formulaMap, getCellText, cellList = []) => {
+const cellRender = (src, formulaMap, getCellText, cellList = [], selfRef = null) => {
   if (typeof src === 'string' && src[0] === '=') {
-    let stack;
-    try {
-      stack = infixExprToSuffixExpr(src.substring(1));
-    } catch (e) {
-      return src;
+    const normalizedSelf = typeof selfRef === 'string' && selfRef ? selfRef.replace(/\$/g, '').toUpperCase() : null;
+    const pushedSelf = Boolean(normalizedSelf && cellList.length === 0);
+    if (pushedSelf) {
+      cellList.push(normalizedSelf);
     }
-    if (stack.length <= 0) return src;
     try {
+      const stack = infixExprToSuffixExpr(src.substring(1));
+      if (stack.length <= 0) return src;
       const evaluated = evalSuffixExpr(
         stack,
         formulaMap,
@@ -362,6 +399,10 @@ const cellRender = (src, formulaMap, getCellText, cellList = []) => {
       return evaluated === undefined ? src : evaluated;
     } catch (e) {
       return src;
+    } finally {
+      if (pushedSelf) {
+        cellList.pop();
+      }
     }
   }
   return src;

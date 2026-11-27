@@ -3,16 +3,21 @@ import { CellRange } from './cell_range';
 // value:
 //   in => []
 //   be => [min, max]
+function toStrictNum(v) {
+  if (v === '' || v == null || /^\s*$/.test(String(v))) return NaN;
+  return Number(v);
+}
+
 class Filter {
   constructor(ci, operator, value) {
     this.ci = ci;
     this.operator = operator;
-    this.value = value;
+    this.value = Array.isArray(value) ? value.slice() : value;
   }
 
   set(operator, value) {
     this.operator = operator;
-    this.value = value;
+    this.value = Array.isArray(value) ? value.slice() : value;
   }
 
   includes(v) {
@@ -29,13 +34,13 @@ class Filter {
     if (operator === 'neq') {
       return v !== value;
     }
-    const nv = Number(v);
+    const nv = toStrictNum(v);
     if (operator === 'be' && Array.isArray(value) && value.length >= 2) {
-      const min = Number(value[0]);
-      const max = Number(value[1]);
-      return !Number.isNaN(nv) && nv >= min && nv <= max;
+      const min = toStrictNum(value[0]);
+      const max = toStrictNum(value[1]);
+      return !Number.isNaN(nv) && !Number.isNaN(min) && !Number.isNaN(max) && nv >= min && nv <= max;
     }
-    const target = Number(value);
+    const target = toStrictNum(value);
     if (Number.isNaN(nv) || Number.isNaN(target)) return false;
     if (operator === 'gt') return nv > target;
     if (operator === 'gte') return nv >= target;
@@ -54,7 +59,7 @@ class Filter {
 
   getData() {
     const { ci, operator, value } = this;
-    return { ci, operator, value };
+    return { ci, operator, value: Array.isArray(value) ? value.slice() : value };
   }
 }
 
@@ -89,19 +94,25 @@ export default class AutoFilter {
 
   setData(d) {
     this.clear();
-    if (!d || typeof d !== 'object' || d.ref == null) {
+    if (!d || typeof d !== 'object' || !CellRange.isValidRef(d.ref)) {
       return;
     }
     const { ref, filters, sort } = d;
     this.ref = ref;
-    this.filters = (filters || []).map(it => new Filter(it.ci, it.operator, it.value));
-    this.sort = sort ? new Sort(sort.ci, sort.order) : null;
+    this.filters = Array.isArray(filters)
+      ? filters.filter(it => it && typeof it === 'object').map(it => new Filter(it.ci, it.operator, it.value))
+      : [];
+    this.sort = (sort && typeof sort === 'object' && sort.order) ? new Sort(sort.ci, sort.order) : null;
   }
 
   getData() {
     if (this.active()) {
       const { ref, filters, sort } = this;
-      return { ref, filters: filters.map(it => it.getData()), sort };
+      return {
+        ref,
+        filters: filters.map(it => it.getData()),
+        sort: sort ? { ci: sort.ci, order: sort.order } : null,
+      };
     }
     return {};
   }
@@ -116,7 +127,11 @@ export default class AutoFilter {
   }
 
   setSort(ci, order) {
-    this.sort = order ? new Sort(ci, order) : null;
+    if (order) {
+      this.sort = new Sort(ci, order);
+    } else if (this.sort && this.sort.ci === ci) {
+      this.sort = null;
+    }
   }
 
   includes(ri, ci) {

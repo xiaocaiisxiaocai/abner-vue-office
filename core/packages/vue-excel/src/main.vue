@@ -57,8 +57,21 @@ export default defineComponent({
         let fileData = null;
         let isUnmounted = false;
         let renderId = 0;
+        let tableRenderVersion = 0;
+        let activeAbortController = null;
         let renderImageDebounce = null;
         let swapTimer = null;
+
+        function abortActiveRequest() {
+            if (activeAbortController) {
+                try {
+                    activeAbortController.abort();
+                } catch (e) {
+                    // ignore
+                }
+                activeAbortController = null;
+            }
+        }
 
         function clearSwapTimer() {
             if (swapTimer) {
@@ -78,23 +91,35 @@ export default defineComponent({
             xs && xs.loadData({});
         }
 
+        function hasValidWorksheets(wb) {
+            if (!wb) {
+                return false;
+            }
+            if (Array.isArray(wb.worksheets)) {
+                return wb.worksheets.length > 0;
+            }
+            return Array.isArray(wb._worksheets) && wb._worksheets.some(Boolean);
+        }
+
         function renderExcel(buffer, currentId) {
             if (isUnmounted || currentId !== renderId || !xs) {
                 return;
             }
             const opts = props.options || {};
-            fileData = buffer;
             readExcelData(buffer, opts.xls).then(workbook => {
                 if (isUnmounted || currentId !== renderId || !xs) {
                     return;
                 }
-                if (!workbook._worksheets || workbook._worksheets.length === 0) {
+                if (!hasValidWorksheets(workbook)) {
                     throw new Error('未获取到数据，可能文件格式不正确或文件已损坏');
                 }
                 if (opts.beforeTransformData && typeof opts.beforeTransformData === 'function') {
                     const nextWb = opts.beforeTransformData(workbook);
                     if (nextWb !== undefined) {
                         workbook = nextWb;
+                    }
+                    if (!hasValidWorksheets(workbook)) {
+                        throw new Error('未获取到数据，可能文件格式不正确或文件已损坏');
                     }
                 }
                 let { workbookData, medias, workbookSource } = transferExcelToSpreadSheet(workbook, { ...defaultOptions, ...opts });
@@ -105,6 +130,7 @@ export default defineComponent({
                     }
                 }
                 clearSwapTimer();
+                fileData = buffer;
                 mediasSource = medias;
                 workbookDataSource = workbookSource;
                 offset = null;
@@ -127,15 +153,28 @@ export default defineComponent({
 
         function loadExcelFromSrc() {
             const currentId = ++renderId;
+            abortActiveRequest();
+            fileData = null;
             if (!props.src) {
-                fileData = null;
                 resetEmptyState();
                 emit('error', new Error('src属性不能为空'));
                 return;
             }
-            getData(props.src, props.requestOptions).then(buffer => {
+            const reqOpts = props.requestOptions || {};
+            let fetchOpts = reqOpts;
+            if (!reqOpts.signal && typeof AbortController !== 'undefined') {
+                activeAbortController = new AbortController();
+                fetchOpts = { ...reqOpts, signal: activeAbortController.signal };
+            }
+            getData(props.src, fetchOpts).then(buffer => {
+                if (currentId === renderId) {
+                    activeAbortController = null;
+                }
                 renderExcel(buffer, currentId);
             }).catch(e => {
+                if (currentId === renderId) {
+                    activeAbortController = null;
+                }
                 if (isUnmounted || currentId !== renderId) {
                     return;
                 }
@@ -191,8 +230,12 @@ export default defineComponent({
 
             const swapFunc = xs.bottombar.swapFunc;
             xs.bottombar.swapFunc = function (index) {
+                if (!xs || !xs.datas || !xs.datas[index]) {
+                    return;
+                }
                 sheetIndex = index;
-                offset = (xs.datas && xs.datas[index]) ? xs.datas[index].getSelectedRect() : null;
+                offset = xs.datas[index].getSelectedRect();
+                renderImageDebounce && renderImageDebounce.cancel();
                 swapFunc.call(xs.bottombar, index);
                 offset = xs.sheet.data.getSelectedRect();
                 clearSwapTimer();
@@ -201,8 +244,6 @@ export default defineComponent({
                     if (isUnmounted || !xs) {
                         return;
                     }
-                    renderImageDebounce && renderImageDebounce.cancel();
-                    xs.reRender();
                     emit('switchSheet', index);
                 });
             };
@@ -213,19 +254,21 @@ export default defineComponent({
                 }
                 const targetRenderId = renderId;
                 const targetSheetIndex = sheetIndex;
+                const targetTableVersion = tableRenderVersion;
                 renderImage(
                     ctx,
                     mediasSource,
                     workbookDataSource._worksheets[targetSheetIndex],
                     offset,
                     props.options || {},
-                    () => !isUnmounted && targetRenderId === renderId && targetSheetIndex === sheetIndex
+                    () => !isUnmounted && targetRenderId === renderId && targetSheetIndex === sheetIndex && targetTableVersion === tableRenderVersion
                 );
             }, 200, {
                 leading: true
             });
             const tableRender = xs.sheet.table.render;
             xs.sheet.table.render = function (...args) {
+                tableRenderVersion += 1;
                 xs && xs.sheet && tableRender.apply(xs.sheet.table, args);
                 renderImageDebounce && renderImageDebounce();
             };
@@ -245,6 +288,7 @@ export default defineComponent({
         onBeforeUnmount(() => {
             isUnmounted = true;
             ++renderId;
+            abortActiveRequest();
             clearSwapTimer();
             renderImageDebounce && renderImageDebounce.cancel();
             renderImageDebounce = null;

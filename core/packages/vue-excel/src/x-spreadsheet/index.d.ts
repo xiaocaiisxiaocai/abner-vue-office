@@ -108,7 +108,7 @@ export interface RowData {
 
 export interface SheetData {
   name?: string;
-  freeze?: string;
+  freeze?: string | [number, number];
   styles?: CellStyle[];
   merges?: string[];
   validations?: any[];
@@ -150,12 +150,18 @@ export interface CellStyle {
 }
 
 export default class Spreadsheet {
+  options: Options;
+  datas: any[];
+  data: any;
+  sheet: any;
+  bottombar: any;
+  rootEl: any;
   constructor(container: string | HTMLElement, opts?: Options);
   addSheet(name?: string, active?: boolean): any;
   on: SpreadsheetEventHandler;
   cell(rowIndex: number, colIndex: number, sheetIndex?: number): CellData | null;
   cellStyle(rowIndex: number, colIndex: number, sheetIndex?: number): CellStyle | null;
-  cellText(rowIndex: number, colIndex: number, text: string, sheetIndex?: number): this;
+  cellText(rowIndex: number, colIndex: number, text: string | number, sheetIndex?: number): this;
   deleteSheet(): void;
   loadData(data: SheetData | SheetData[]): this;
   getData(): SheetData[];

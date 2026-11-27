@@ -37,11 +37,13 @@ export default defineConfig({
       },
       plugins: [
         babel({
+          babelrc: false,
+          configFile: false,
+          exclude: /node_modules/,
           extensions: ['.js', '.ts', '.vue'],
           babelHelpers: 'runtime',
           plugins: [
-              '@babel/plugin-transform-runtime',
-            '@babel/plugin-transform-template-literals'
+            '@babel/plugin-transform-runtime'
           ],
           presets: [
             [
@@ -49,7 +51,7 @@ export default defineConfig({
               {
                 useBuiltIns: false,
                 targets: {
-                  chrome: '40'
+                  browsers: ['> 1%', 'last 2 versions', 'not dead']
                 },
               },
             ],

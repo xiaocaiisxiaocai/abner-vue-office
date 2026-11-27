@@ -82,6 +82,7 @@ export default class Bottombar {
     this.activeEl = null;
     this.deleteEl = null;
     this.items = [];
+    this._cancelRename = null;
     this.moreEl = new DropdownMore((i) => {
       this.clickSwap2(this.items[i]);
     });
@@ -122,30 +123,38 @@ export default class Bottombar {
       const input = new FormInput('auto', '');
       input.val(v);
       let committed = false;
-      const finishRename = (newVal) => {
+      this._cancelRename = () => {
+        committed = true;
+        input.clearTimer();
+      };
+      const finishRename = (newVal, cancelled = false) => {
         if (committed) return;
         committed = true;
+        this._cancelRename = null;
         input.clearTimer();
         const nindex = this.items.indexOf(item);
         if (nindex < 0) return;
+        if (cancelled) {
+          item.html('').child(this.dataNames[nindex]);
+          return;
+        }
         const trimmed = newVal != null ? String(newVal) : '';
         const finalVal = /^\s*$/.test(trimmed) ? this.dataNames[nindex] : trimmed;
-        this.renameItem(nindex, finalVal);
+        this.renameItem(nindex, finalVal, finalVal !== this.dataNames[nindex]);
       };
       input.input
         .on('click.stop', () => {})
         .on('keydown', (evt) => {
           if (evt.keyCode === 13) {
             evt.stopPropagation();
-            finishRename(evt.target.value);
+            finishRename(evt.target.value, false);
           } else if (evt.keyCode === 27) {
             evt.stopPropagation();
-            const nindex = this.items.indexOf(item);
-            finishRename(nindex >= 0 ? this.dataNames[nindex] : v);
+            finishRename(v, true);
           }
         })
         .on('blur', ({ target }) => {
-          finishRename(target.value);
+          finishRename(target.value, false);
         });
       item.html('').child(input.el);
       input.focus();
@@ -158,28 +167,35 @@ export default class Bottombar {
     this.moreEl.reset(this.dataNames);
   }
 
-  renameItem(index, value) {
+  renameItem(index, value, notify = true) {
     if (index < 0 || index >= this.items.length) return;
     this.dataNames.splice(index, 1, value);
     this.moreEl.reset(this.dataNames);
     this.items[index].html('').child(value);
-    this.updateFunc(index, value);
+    if (notify) {
+      this.updateFunc(index, value);
+    }
   }
 
   clear() {
+    if (typeof this._cancelRename === 'function') {
+      this._cancelRename();
+      this._cancelRename = null;
+    }
     if (this.contextMenu) {
       this.contextMenu.hide();
     }
     if (this.moreEl) {
       this.moreEl.hide();
     }
-    this.items.forEach((it) => {
-      this.menuEl.removeChild(it.el);
-    });
+    const oldItems = this.items;
     this.items = [];
     this.dataNames = [];
     this.activeEl = null;
     this.deleteEl = null;
+    oldItems.forEach((it) => {
+      this.menuEl.removeChild(it.el);
+    });
     this.moreEl.reset(this.dataNames);
   }
 
@@ -188,6 +204,10 @@ export default class Bottombar {
   }
 
   deleteItem() {
+    if (typeof this._cancelRename === 'function') {
+      this._cancelRename();
+      this._cancelRename = null;
+    }
     const { activeEl, deleteEl } = this;
     if (!deleteEl) return [-1];
     if (this.items.length > 1) {

@@ -24,10 +24,12 @@ class CellRange {
   // cell-index: ri, ci
   // cell-ref: A10
   includes(...args) {
+    if (args.length === 0) return false;
     let [ri, ci] = [0, 0];
     if (args.length === 1) {
       [ci, ri] = expr2xy(args[0]);
-    } else if (args.length === 2) {
+      if (Number.isNaN(ri) || Number.isNaN(ci)) return false;
+    } else if (args.length >= 2) {
       [ri, ci] = args;
     }
     const {
@@ -156,9 +158,22 @@ class CellRange {
       && this.sci === other.sci;
   }
 
+  static isValidRef(ref) {
+    if (typeof ref !== 'string') return false;
+    const refs = ref.split(':');
+    if (refs.length === 0 || refs.length > 2) return false;
+    const [sci, sri] = expr2xy(refs[0]);
+    if (Number.isNaN(sri) || Number.isNaN(sci) || sri < 0 || sci < 0) return false;
+    if (refs.length === 2) {
+      const [eci, eri] = expr2xy(refs[1]);
+      if (Number.isNaN(eri) || Number.isNaN(eci) || eri < 0 || eci < 0) return false;
+    }
+    return true;
+  }
+
   static valueOf(ref) {
     // B1:B8, B1 => 1 x 1 cell range
-    if (typeof ref !== 'string') {
+    if (!CellRange.isValidRef(ref)) {
       return new CellRange(0, 0, 0, 0);
     }
     const refs = ref.split(':');

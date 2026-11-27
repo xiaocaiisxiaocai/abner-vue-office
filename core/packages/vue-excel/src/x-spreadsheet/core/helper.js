@@ -1,5 +1,6 @@
 /* eslint-disable no-param-reassign */
 function cloneDeep(obj) {
+  if (obj === undefined) return undefined;
   return JSON.parse(JSON.stringify(obj));
 }
 
@@ -8,6 +9,7 @@ function isPlainObject(v) {
 }
 
 const mergeDeep = (object = {}, ...sources) => {
+  if (!object || typeof object !== 'object') object = {};
   sources.forEach((source) => {
     if (!source || typeof source !== 'object') return;
     Object.keys(source).forEach((key) => {
@@ -32,8 +34,16 @@ const mergeDeep = (object = {}, ...sources) => {
 
 function equals(obj1, obj2) {
   if (obj1 === obj2) return true;
+  if (Number.isNaN(obj1) && Number.isNaN(obj2)) return true;
   if (!obj1 || !obj2 || typeof obj1 !== 'object' || typeof obj2 !== 'object') {
     return false;
+  }
+  if (obj1 instanceof Date || obj2 instanceof Date) {
+    return obj1 instanceof Date && obj2 instanceof Date && obj1.getTime() === obj2.getTime();
+  }
+  if (obj1 instanceof RegExp || obj2 instanceof RegExp) {
+    return obj1 instanceof RegExp && obj2 instanceof RegExp
+      && obj1.source === obj2.source && obj1.flags === obj2.flags;
   }
   if (Array.isArray(obj1) || Array.isArray(obj2)) {
     if (!Array.isArray(obj1) || !Array.isArray(obj2) || obj1.length !== obj2.length) {
@@ -122,13 +132,13 @@ function digits(a) {
 export function numberCalc(type, a1, a2) {
   const s1 = a1 == null ? '' : String(a1).trim();
   const s2 = a2 == null ? '' : String(a2).trim();
-  const num1 = s1 === '' ? NaN : Number(s1);
-  const num2 = s2 === '' ? NaN : Number(s2);
+  const num1 = s1 === '' ? 0 : Number(s1);
+  const num2 = s2 === '' ? 0 : Number(s2);
   if (Number.isNaN(num1) || Number.isNaN(num2)) {
     return `${a1}${type}${a2}`;
   }
-  const al1 = digits(s1);
-  const al2 = digits(s2);
+  const al1 = digits(s1 || '0');
+  const al2 = digits(s2 || '0');
   let ret = 0;
   let precision = Math.min(Math.max(al1, al2), 100);
   if (type === '-') {
@@ -142,10 +152,16 @@ export function numberCalc(type, a1, a2) {
     if (num2 === 0) return String(num1 / num2);
     ret = num1 / num2;
     if (!Number.isFinite(ret)) return String(ret);
-    return String(Number(ret.toPrecision(12)));
+    const cleanedDiv = Number(ret.toPrecision(15));
+    return String(Object.is(cleanedDiv, -0) ? 0 : cleanedDiv);
   }
   if (!Number.isFinite(ret)) return String(ret);
-  return ret.toFixed(precision);
+  if (Object.is(ret, -0)) return '0';
+  const rounded = ret.toFixed(precision);
+  const stripped = rounded.includes('.')
+    ? rounded.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1')
+    : rounded;
+  return stripped === '-0' ? '0' : stripped;
 }
 
 export default {

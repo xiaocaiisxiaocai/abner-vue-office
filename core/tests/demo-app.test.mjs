@@ -63,16 +63,45 @@ test('App.vue and PreviewWrapper.vue handle menu sync, query preservation, loadi
 
         appComp.bindings.go({ key: 'excel' });
         assert.deepEqual(pushed[0], { path: '/excel', query: { token: '1' } });
+        appComp.bindings.go({ key: '/pdf' });
+        assert.deepEqual(pushed[1], { path: '/pdf', query: { token: '1' } });
+    });
+
+    await runWithDomGlobals({ location: undefined }, () => {
+        const ssrApp = mountScriptSetup('src/App.vue', {
+            useRouter: () => ({ push: () => {} }),
+            useRoute: () => ({ path: '', query: {} })
+        }, {}, ['current', 'syncMenu']);
+        ssrApp.mount();
+        assert.deepEqual(ssrApp.bindings.current.value, ['docx']);
     });
 
     const loadingEvents = [];
-    const wrapComp = mountScriptSetup('src/common/PreviewWrapper.vue', {
+    let canceledCount = 0;
+    const refList = [];
+    const makeLocalRef = (init) => {
+        let val = init;
+        const r = {
+            get value() { return val; },
+            set value(next) {
+                if (next !== val) {
+                    val = next;
+                    wrapCompRef && wrapCompRef.triggerWatchers();
+                }
+            }
+        };
+        refList.push(r);
+        return r;
+    };
+    let wrapCompRef = null;
+    wrapCompRef = mountScriptSetup('src/common/PreviewWrapper.vue', {
         usePreview: def => ({
-            type: { value: 'url' },
-            inputSrc: { value: def },
-            src: { value: def },
-            xls: { value: false },
-            beforeUpload: () => false
+            type: makeLocalRef('url'),
+            inputSrc: makeLocalRef(def),
+            src: makeLocalRef(def),
+            xls: makeLocalRef(false),
+            beforeUpload: () => false,
+            cancelRead: () => { canceledCount++; }
         }),
         isXlsName: name => typeof name === 'string' && /\.xls$/i.test(name),
         useLoading: {
@@ -84,11 +113,17 @@ test('App.vue and PreviewWrapper.vue handle menu sync, query preservation, loadi
 
     // Immediate watch called showLoading on mount
     assert.deepEqual(loadingEvents, ['show']);
-    wrapComp.bindings.handlePreview();
-    assert.equal(wrapComp.bindings.retryKey.value, 1);
+    wrapCompRef.bindings.handlePreview();
+    assert.equal(wrapCompRef.bindings.retryKey.value, 1);
+    assert.equal(canceledCount, 1);
     assert.deepEqual(loadingEvents, ['show', 'show']);
-    wrapComp.unmount();
-    assert.deepEqual(loadingEvents, ['show', 'show', 'hide']);
+    wrapCompRef.bindings.inputSrc.value = '  https://example.com/b.xls  ';
+    wrapCompRef.bindings.handlePreview();
+    assert.equal(wrapCompRef.bindings.src.value, 'https://example.com/b.xls');
+    assert.equal(wrapCompRef.bindings.xls.value, true);
+    wrapCompRef.unmount();
+    assert.equal(canceledCount, 3);
+    assert.deepEqual(loadingEvents, ['show', 'show', 'show', 'hide']);
 });
 
 test('all 7 Demo components resolve static URLs, handle rendered/error, and clean up on unmount', async () => {
@@ -113,7 +148,7 @@ test('all 7 Demo components resolve static URLs, handle rendered/error, and clea
     await runWithDomGlobals({
         window: { innerWidth: 720 },
         location: { origin: 'http://localhost:5173', pathname: '/' }
-    }, () => {
+    }, async () => {
         for (const [file, componentDep] of [
             ['src/components/DocxDemo.vue', { AbnerVueOfficeDocx: {} }],
             ['src/components/PdfDemo.vue', { AbnerVueOfficePdf: {} }],
@@ -126,16 +161,30 @@ test('all 7 Demo components resolve static URLs, handle rendered/error, and clea
         }
         assert.equal(hideCount, 6);
 
+        const pptxWide = mountScriptSetup('src/components/PptxDemo.vue', { ...commonDeps, AbnerVueOfficePptx: {} }, {}, ['pptxWidth']);
+        assert.ok(pptxWide.bindings.pptxWidth < 960);
+        await runWithDomGlobals({ window: undefined, location: { origin: 'http://localhost', pathname: '/' } }, () => {
+            const pptxSsr = mountScriptSetup('src/components/PptxDemo.vue', { ...commonDeps, AbnerVueOfficePptx: {} }, {}, ['pptxWidth']);
+            assert.equal(pptxSsr.bindings.pptxWidth, 960);
+        });
+
         const excelDemo = mountScriptSetup(
             'src/components/ExcelDemo.vue',
             { ...commonDeps, AbnerVueOfficeExcel: {} },
             {},
-            ['beforeTransformData', 'transformData', 'switchSheet', 'cellSelected', 'cellsSelected']
+            ['beforeTransformData', 'transformData', 'switchSheet', 'cellSelected', 'cellsSelected', 'onRendered', 'onError']
         );
         const wbSample = { _worksheets: [{ _rows: [{ _cells: [{ style: { bgcolor: '#123456' } }] }] }] };
         assert.equal(excelDemo.bindings.beforeTransformData(wbSample), wbSample);
         assert.equal(wbSample._worksheets[0]._rows[0]._cells[0].style.bgcolor, '#123456');
         assert.equal(excelDemo.bindings.beforeTransformData(null), null);
+        assert.deepEqual(excelDemo.bindings.transformData([{ name: 'S1' }]), [{ name: 'S1' }]);
+        excelDemo.bindings.onRendered();
+        excelDemo.bindings.onError(new Error('excel err'));
+        excelDemo.bindings.switchSheet(0);
+        excelDemo.bindings.cellSelected({});
+        excelDemo.bindings.cellsSelected({});
+        assert.equal(hideCount, 8);
     });
 
     let docxDestroyed = 0;

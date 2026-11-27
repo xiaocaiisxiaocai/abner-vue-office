@@ -57,4 +57,4 @@ export default {
 
 和docx的上传文件预览一样，获取文件的ArrayBuffer，传给组件的src属性。
 
-需要注意：如果允许用户同时上传 `.xlsx` 和 `.xls` 本地文件，请根据上传文件名的后缀动态设置 `options.xls`（例如：`this.options.xls = /\.xls$/i.test(file.name)`），因为传入 `ArrayBuffer` 后组件无法仅凭二进制自动判断为 `.xls`（可通过 `this.options.xls = /\.xls$/i.test(file.name)` 在解析前切换）。
+需要注意：如果允许用户同时上传 `.xlsx` 和 `.xls` 本地文件，请根据上传文件名的后缀动态设置 `options.xls`（例如：`this.options.xls = /\.xls$/i.test(file.name)`），因为传入 `ArrayBuffer` 后组件无法仅凭二进制自动判断为 `.xls`。

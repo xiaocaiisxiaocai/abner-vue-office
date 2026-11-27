@@ -2,7 +2,7 @@ export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob | Respo
 
 export interface RequestOptions {
     method?: string;
-    headers?: Record<string, string>;
+    headers?: Record<string, string> | Headers | [string, string][];
     withCredentials?: boolean;
     credentials?: RequestCredentials;
     timeout?: number;
@@ -40,9 +40,9 @@ export interface Options {
 }
 
 export interface AbnerJsExcelPreview {
-    preview: (src: OfficeSource) => Promise<any>;
+    preview: (src: OfficeSource) => Promise<void>;
     save: (fileName?: string) => void;
-    setOptions: (options: Options) => void;
+    setOptions: (options?: Options) => void;
     setRequestOptions: (requestOptions?: RequestOptions) => void;
     destroy: () => void;
 }

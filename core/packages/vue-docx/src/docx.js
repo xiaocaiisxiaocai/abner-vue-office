@@ -43,7 +43,7 @@ function enqueueOnContainer(container, fn, shouldCommit) {
         }
         return fn();
     });
-    const tracked = next.finally(() => {
+    const tracked = next.catch(() => {}).finally(() => {
         if (containerRenderQueue.get(container) === tracked) {
             containerRenderQueue.delete(container);
         }

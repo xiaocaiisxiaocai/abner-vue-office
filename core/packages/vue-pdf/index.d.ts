@@ -1,7 +1,6 @@
 export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob | Response;
 
 export interface RequestOptions {
-    method?: string;
     headers?: Record<string, string>;
     withCredentials?: boolean;
     credentials?: RequestCredentials;
@@ -43,7 +42,8 @@ export interface PdfProps {
 
 export interface AbnerVueOfficePdfInstance {
     $props: PdfProps;
-    userScale: { value: number };
+    $slots?: { default?: () => any };
+    userScale: number;
     rerender: () => Promise<void>;
     save: (fileName?: string) => void;
     getScale: () => number;
@@ -51,6 +51,7 @@ export interface AbnerVueOfficePdfInstance {
 }
 
 export interface AbnerVueOfficePdfComponent {
+    readonly name: 'AbnerVueOfficePdf';
     new (): AbnerVueOfficePdfInstance;
     install(app: any): void;
 }

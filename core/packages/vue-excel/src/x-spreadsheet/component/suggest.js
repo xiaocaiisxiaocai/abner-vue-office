@@ -7,9 +7,11 @@ function inputMovePrev(evt) {
   const { filterItems } = this;
   if (filterItems.length <= 0) return;
   evt.preventDefault();
-  if (this.itemIndex >= 0) filterItems[this.itemIndex].toggle();
+  if (this.itemIndex >= 0 && this.itemIndex < filterItems.length) {
+    filterItems[this.itemIndex].toggle();
+  }
   this.itemIndex -= 1;
-  if (this.itemIndex < 0) {
+  if (this.itemIndex < 0 || this.itemIndex >= filterItems.length) {
     this.itemIndex = filterItems.length - 1;
   }
   filterItems[this.itemIndex].toggle();
@@ -20,9 +22,11 @@ function inputMoveNext(evt) {
   const { filterItems } = this;
   if (filterItems.length <= 0) return;
   evt.preventDefault();
-  if (this.itemIndex >= 0) filterItems[this.itemIndex].toggle();
+  if (this.itemIndex >= 0 && this.itemIndex < filterItems.length) {
+    filterItems[this.itemIndex].toggle();
+  }
   this.itemIndex += 1;
-  if (this.itemIndex > filterItems.length - 1) {
+  if (this.itemIndex < 0 || this.itemIndex > filterItems.length - 1) {
     this.itemIndex = 0;
   }
   filterItems[this.itemIndex].toggle();
@@ -34,7 +38,9 @@ function inputEnter(evt) {
   const { filterItems } = this;
   if (filterItems.length <= 0) return;
   evt.stopPropagation();
-  if (this.itemIndex < 0) this.itemIndex = 0;
+  if (this.itemIndex < 0 || this.itemIndex >= filterItems.length) {
+    this.itemIndex = 0;
+  }
   filterItems[this.itemIndex].el.click();
   this.hide();
 }
@@ -106,6 +112,7 @@ export default class Suggest {
   }
 
   search(word) {
+    this.itemIndex = -1;
     let { items } = this;
     if (!/^\s*$/.test(word)) {
       const upperWord = String(word).toUpperCase();

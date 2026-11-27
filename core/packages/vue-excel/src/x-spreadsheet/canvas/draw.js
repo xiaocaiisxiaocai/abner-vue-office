@@ -47,28 +47,28 @@ class DrawBox {
     return this.height - (this.padding * 2) - 2;
   }
 
-  textx(align) {
+  textx(align = 'left') {
     const { width, padding } = this;
     let { x } = this;
-    if (align === 'left') {
-      x += padding;
-    } else if (align === 'center') {
+    if (align === 'center') {
       x += width / 2;
     } else if (align === 'right') {
       x += width - padding;
+    } else {
+      x += padding;
     }
     return x;
   }
 
-  texty(align, h) {
+  texty(align = 'middle', h = 0) {
     const { height, padding } = this;
     let { y } = this;
     if (align === 'top') {
       y += padding;
-    } else if (align === 'middle') {
-      y += height / 2 - h / 2;
     } else if (align === 'bottom') {
       y += height - padding - h;
+    } else {
+      y += height / 2 - h / 2;
     }
     return y;
   }
@@ -129,19 +129,32 @@ function drawFontLine(type, tx, ty, align, valign, blheight, blwidth) {
   );
 }
 
+function formatCssFontFamily(name) {
+  const s = typeof name === 'string' ? name.trim() : '';
+  if (!s) return 'Arial';
+  if (s.includes(',') || /^['"]/.test(s) || /^[a-zA-Z_-][a-zA-Z0-9_-]*$/.test(s)) {
+    return s;
+  }
+  return `"${s.replace(/["\\]/g, '\\$&')}"`;
+}
+
 class Draw {
   constructor(el, width, height) {
     this.el = el;
-    this.ctx = el.getContext('2d');
-    this.resize(width, height);
+    this.ctx = el ? el.getContext('2d') : null;
+    if (this.el) {
+      this.resize(width, height);
+    }
   }
 
   resize(width, height) {
-    // console.log('dpr:', dpr);
-    this.el.style.width = `${width}px`;
-    this.el.style.height = `${height}px`;
-    this.el.width = npx(width);
-    this.el.height = npx(height);
+    if (!this.el) return;
+    const w = Math.max(0, width || 0);
+    const h = Math.max(0, height || 0);
+    this.el.style.width = `${w}px`;
+    this.el.style.height = `${h}px`;
+    this.el.width = npx(w);
+    this.el.height = npx(h);
   }
 
   clear() {
@@ -215,14 +228,24 @@ class Draw {
   */
   text(mtxt, box, attr = {}, textWrap = true) {
     const { ctx } = this;
+    const rawAlign = attr.align;
+    const align = (rawAlign === 'center' || rawAlign === 'right' || rawAlign === 'left') ? rawAlign : 'left';
+    const rawValign = attr.valign;
+    const valign = (rawValign === 'top' || rawValign === 'bottom' || rawValign === 'middle') ? rawValign : 'middle';
     const {
-      align = 'left',
-      valign = 'middle',
       color = '#0a0a0a',
       strike = false,
       underline = false,
     } = attr;
-    const font = Object.assign({ name: 'Arial', size: 10, bold: false, italic: false }, attr.font || {});
+    const rawFont = attr.font || {};
+    const font = {
+      name: formatCssFontFamily(rawFont.name),
+      size: (typeof rawFont.size === 'number' && Number.isFinite(rawFont.size) && rawFont.size > 0)
+        ? rawFont.size
+        : 10,
+      bold: Boolean(rawFont.bold),
+      italic: Boolean(rawFont.italic),
+    };
     const tx = box.textx(align);
     ctx.save();
     ctx.beginPath();
@@ -234,7 +257,7 @@ class Draw {
       strokeStyle: color,
     });
     const safeText = mtxt == null ? '' : String(mtxt);
-    const txts = safeText.split('\n');
+    const txts = safeText.split(/\r\n|\r|\n/);
     const maxW = Math.max(npx(box.innerWidth()), 1);
     const ntxts = [];
     txts.forEach((it) => {
@@ -289,16 +312,32 @@ class Draw {
     }
     ctx.lineWidth = thinLineWidth();
     ctx.strokeStyle = color;
+    const dashLen = n => Math.max(1, npx(n));
     if (style === 'medium') {
       ctx.lineWidth = Math.max(1, npx(2) - 0.5);
     } else if (style === 'thick') {
       ctx.lineWidth = Math.max(1.5, npx(3));
+    } else if (style === 'hair') {
+      ctx.lineWidth = Math.max(0.5, thinLineWidth() * 0.75);
     } else if (style === 'dashed' && hasDash) {
-      ctx.setLineDash([npx(3), npx(2)]);
+      ctx.setLineDash([dashLen(3), dashLen(2)]);
+    } else if (style === 'mediumDashed') {
+      ctx.lineWidth = Math.max(1, npx(2) - 0.5);
+      if (hasDash) ctx.setLineDash([dashLen(4), dashLen(2)]);
+    } else if ((style === 'dashDot' || style === 'slantDashDot') && hasDash) {
+      ctx.setLineDash([dashLen(4), dashLen(2), dashLen(1), dashLen(2)]);
+    } else if (style === 'mediumDashDot') {
+      ctx.lineWidth = Math.max(1, npx(2) - 0.5);
+      if (hasDash) ctx.setLineDash([dashLen(4), dashLen(2), dashLen(1), dashLen(2)]);
+    } else if (style === 'dashDotDot' && hasDash) {
+      ctx.setLineDash([dashLen(4), dashLen(2), dashLen(1), dashLen(1), dashLen(1), dashLen(2)]);
+    } else if (style === 'mediumDashDotDot') {
+      ctx.lineWidth = Math.max(1, npx(2) - 0.5);
+      if (hasDash) ctx.setLineDash([dashLen(4), dashLen(2), dashLen(1), dashLen(1), dashLen(1), dashLen(2)]);
     } else if (style === 'dotted' && hasDash) {
-      ctx.setLineDash([npx(1), npx(1)]);
+      ctx.setLineDash([dashLen(1), dashLen(1)]);
     } else if (style === 'double' && hasDash) {
-      ctx.setLineDash([npx(2), npx(1)]);
+      ctx.setLineDash([dashLen(2), dashLen(1)]);
     }
     return this;
   }
@@ -369,9 +408,9 @@ class Draw {
     const sx = x + width - 1;
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(npx(sx - 8), npx(y - 1));
-    ctx.lineTo(npx(sx), npx(y - 1));
-    ctx.lineTo(npx(sx), npx(y + 8));
+    ctx.moveTo(npx(sx - 8), npx(y + 1));
+    ctx.lineTo(npx(sx), npx(y + 1));
+    ctx.lineTo(npx(sx), npx(y + 9));
     ctx.closePath();
     ctx.fillStyle = 'rgba(255, 0, 0, .65)';
     ctx.fill();
@@ -384,9 +423,9 @@ class Draw {
     const sx = x + width - 1;
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(npx(sx - 8), npx(y - 1));
-    ctx.lineTo(npx(sx), npx(y - 1));
-    ctx.lineTo(npx(sx), npx(y + 8));
+    ctx.moveTo(npx(sx - 8), npx(y + 1));
+    ctx.lineTo(npx(sx), npx(y + 1));
+    ctx.lineTo(npx(sx), npx(y + 9));
     ctx.closePath();
     ctx.fillStyle = 'rgba(0, 255, 0, .85)';
     ctx.fill();

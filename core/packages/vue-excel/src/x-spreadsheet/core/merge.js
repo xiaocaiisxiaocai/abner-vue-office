@@ -102,16 +102,14 @@ class Merges {
         } else {
           // partial overlap
           const newSri = sri < index ? sri : index;
+          const newEri = eri > delEnd ? eri - delCount : index - 1;
           const overlapBeforeEnd = Math.min(eri, delEnd) - Math.max(sri, index) + 1;
-          const newEri = eri - overlapBeforeEnd;
           if (newEri >= newSri) {
             range.sri = newSri;
             range.eri = newEri;
+            cbWithin(newSri, sci, -overlapBeforeEnd, 0);
             if (range.multiple()) {
-              cbWithin(newSri, sci, (eri - sri) - (newEri - newSri) > 0 ? -overlapBeforeEnd : 0, 0);
               kept.push(range);
-            } else {
-              cbWithin(newSri, sci, -overlapBeforeEnd, 0);
             }
           }
         }
@@ -129,16 +127,14 @@ class Merges {
           // fully deleted merge
         } else {
           const newSci = sci < index ? sci : index;
+          const newEci = eci > delEnd ? eci - delCount : index - 1;
           const overlapBeforeEnd = Math.min(eci, delEnd) - Math.max(sci, index) + 1;
-          const newEci = eci - overlapBeforeEnd;
           if (newEci >= newSci) {
             range.sci = newSci;
             range.eci = newEci;
+            cbWithin(sri, newSci, 0, -overlapBeforeEnd);
             if (range.multiple()) {
-              cbWithin(sri, newSci, 0, -overlapBeforeEnd);
               kept.push(range);
-            } else {
-              cbWithin(sri, newSci, 0, -overlapBeforeEnd);
             }
           }
         }

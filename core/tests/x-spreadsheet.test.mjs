@@ -97,7 +97,8 @@ test('x-spreadsheet core cell/formula/alphabet/range/merges/rows/cols/helper log
     assert.equal(cellMod.render('=IF("a"="a", 1, 0)', formulam, getter), 1);
     assert.equal(cellMod.render('=IF("a"="b", 1, 0)', formulam, getter), 0);
     const circularCells = { '0,0': '=A1+50' };
-    assert.equal(cellMod.render('=A1+50', formulam, (x, y) => circularCells[`${x},${y}`] ?? ''), '50');
+    assert.equal(cellMod.render('=A1+50', formulam, (x, y) => circularCells[`${x},${y}`] ?? '', [], 'A1'), '50');
+    assert.equal(cellMod.render('=A1', formulam, (x, y) => circularCells[`${x},${y}`] ?? '', [], 'B1'), '50');
     assert.equal(formulam.AVERAGE.render([]), 0);
 
     // CellRange.difference edge cases
@@ -337,11 +338,11 @@ test('x-spreadsheet DataProxy, locale SSR, Bottombar, Modal, and Dropdown clicko
         const dd = new Dropdown('Menu', '120px', true, 'bottom-left');
         parentWrap.child(dd);
         dd.show();
-        assert.equal(mockDocument.body.listeners.get('click').size, 1);
+        assert.equal(mockDocument.listeners.get('click').size, 1);
         dd.show();
-        assert.equal(mockDocument.body.listeners.get('click').size, 1);
+        assert.equal(mockDocument.listeners.get('click').size, 1);
         dd.hide();
-        assert.equal(mockDocument.body.listeners.get('click').size, 0);
+        assert.equal(mockDocument.listeners.get('click').size, 0);
 
         const detachedDd = new Dropdown('Detached', '100px', false, 'bottom-left');
         detachedDd.show();

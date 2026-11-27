@@ -11,7 +11,17 @@ class DropdownMore extends Dropdown {
     const moreBtns = h('div', `${cssPrefix}-toolbar-more`);
     super(icon, 'auto', false, 'bottom-right', moreBtns);
     this.moreBtns = moreBtns;
+    this.childDropdowns = [];
     this.contentEl.css('max-width', '420px');
+  }
+
+  hide() {
+    if (Array.isArray(this.childDropdowns)) {
+      this.childDropdowns.forEach((d) => {
+        if (d && typeof d.hide === 'function') d.hide();
+      });
+    }
+    super.hide();
   }
 }
 

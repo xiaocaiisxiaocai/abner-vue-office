@@ -21,12 +21,16 @@ class Spreadsheet {
       if (this.options.mode === 'read') return;
       const d = this.addSheet();
       this.data = d;
-      this.sheet.resetData(d);
+      if (this.sheet) {
+        this.sheet.resetData(d);
+      }
     }, (index) => {
       const d = this.datas[index];
       if (d) {
         this.data = d;
-        this.sheet.resetData(d);
+        if (this.sheet) {
+          this.sheet.resetData(d);
+        }
       }
     }, () => {
       this.deleteSheet();
@@ -34,7 +38,9 @@ class Spreadsheet {
       if (this.datas[index]) {
         this.datas[index].name = value;
       }
-      this.sheet.trigger('change', this.data ? this.data.getData() : undefined);
+      if (this.sheet) {
+        this.sheet.trigger('change', this.data ? this.data.getData() : undefined);
+      }
     }, this.options) : null;
     this.data = null;
     this.sheet = null;
@@ -74,16 +80,20 @@ class Spreadsheet {
   }
 
   deleteSheet() {
-    if (this.bottombar === null) return;
+    if (this.options.mode === 'read' || this.bottombar === null) return;
 
     const [oldIndex, nindex] = this.bottombar.deleteItem();
     if (oldIndex >= 0) {
       this.datas.splice(oldIndex, 1);
       if (nindex >= 0 && this.datas[nindex]) {
         this.data = this.datas[nindex];
-        this.sheet.resetData(this.data);
+        if (this.sheet) {
+          this.sheet.resetData(this.data);
+        }
       }
-      this.sheet.trigger('change', this.data ? this.data.getData() : undefined);
+      if (this.sheet) {
+        this.sheet.trigger('change', this.data ? this.data.getData() : undefined);
+      }
     }
   }
 
@@ -96,24 +106,25 @@ class Spreadsheet {
     this.sheetIndex = 1;
     this.data = null;
     if (ds.length > 0) {
+      let firstData = null;
       for (let i = 0; i < ds.length; i += 1) {
         const it = ds[i];
         const sheetName = (it && typeof it.name === 'string' && it.name.trim()) ? it.name : `sheet${this.sheetIndex}`;
-        const nd = this.addSheet(sheetName, i === 0);
+        const nd = this.addSheet(sheetName, false);
         nd.setData(it);
         if (i === 0) {
+          firstData = nd;
           this.data = nd;
-          this.sheet.resetData(nd);
         }
       }
-    } else if (this.sheet) {
-      const emptyData = new DataProxy('sheet1', this.options);
-      emptyData.change = (...args) => {
-        if (this.sheet) {
-          this.sheet.trigger('change', ...args);
-        }
-      };
-      this.sheet.resetData(emptyData);
+      if (this.bottombar !== null && this.bottombar.items && this.bottombar.items[0]) {
+        this.bottombar.clickSwap2(this.bottombar.items[0]);
+      }
+      if (firstData && this.sheet) {
+        this.sheet.resetData(firstData);
+      }
+    } else {
+      this.addSheet('sheet1', true);
     }
     return this;
   }

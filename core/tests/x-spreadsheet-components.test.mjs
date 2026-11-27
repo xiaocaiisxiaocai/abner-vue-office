@@ -179,7 +179,7 @@ test('x-spreadsheet element, event, modal, tooltip, suggest, calendar, and sortF
         assert.equal(sug.filterItems.length, 1);
         sug.search('zzz');
         assert.equal(sug.el.css('display'), 'none');
-        assert.equal(mockDocument.body.listeners.get('click').size, 0);
+        assert.equal(mockDocument.listeners.get('click').size, 0);
 
         // Calendar Jan 31 rollover & year check & missing locale fallback
         const Calendar = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/calendar.js', {
@@ -436,6 +436,7 @@ test('x-spreadsheet Bottombar, Editor, Selector, ModalValidation, FormField, Dro
             cssPrefix: 'x-spreadsheet',
             Button,
             Draw,
+            npx: v => v,
             renderCell: () => {},
             t: k => k
         });
@@ -589,8 +590,9 @@ test('x-spreadsheet Bottombar, Editor, Selector, ModalValidation, FormField, Dro
             toolbarHideCount++;
             origMoreHide();
         };
+        toolbarHideCount = 0;
         tb.destroy();
-        assert.equal(toolbarHideCount, 10);
+        assert.equal(toolbarHideCount, 19);
         assert.equal(windowListeners.get('resize')?.size || 0, 0);
 
         // table.js: uses nrindex for validation errors and draws single-axis freeze line only

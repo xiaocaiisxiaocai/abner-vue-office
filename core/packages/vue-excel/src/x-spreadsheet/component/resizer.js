@@ -72,7 +72,7 @@ export default class Resizer {
   }
 
   mousedblclickHandler() {
-    if (this.unhideIndex) this.unhideFn(this.unhideIndex);
+    if (this.unhideIndex != null) this.unhideFn(this.unhideIndex);
   }
 
   mousedownHandler(evt) {
@@ -112,7 +112,7 @@ export default class Resizer {
             rawDistance += Number(e.movementX) || 0;
           }
           distance = Math.max(minDistance, rawDistance);
-          el.css('left', `${cRect.left + distance}px`);
+          el.css('left', `${cRect.left + distance - 5}px`);
         } else {
           if (startClientY !== null && typeof e.clientY === 'number') {
             rawDistance = baseDistance + (e.clientY - startClientY);
@@ -120,7 +120,7 @@ export default class Resizer {
             rawDistance += Number(e.movementY) || 0;
           }
           distance = Math.max(minDistance, rawDistance);
-          el.css('top', `${cRect.top + distance}px`);
+          el.css('top', `${cRect.top + distance - 5}px`);
         }
         startEvt = e;
       } else if (e.buttons === 0 && typeof this._cancelMove === 'function') {

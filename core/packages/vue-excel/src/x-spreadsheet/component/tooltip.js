@@ -3,9 +3,13 @@ import { bind, unbind } from './event';
 import { cssPrefix } from '../config';
 
 let activeCleanup = null;
+let activeTarget = null;
 
-export function hideTooltip() {
+export function hideTooltip(scopeEl = null) {
   if (typeof activeCleanup === 'function') {
+    if (scopeEl && activeTarget && typeof scopeEl.contains === 'function' && !scopeEl.contains(activeTarget)) {
+      return;
+    }
     activeCleanup();
   }
 }
@@ -44,10 +48,12 @@ export default function tooltip(html, target) {
     }
     if (activeCleanup === cleanup) {
       activeCleanup = null;
+      activeTarget = null;
     }
   };
   target._xTooltipCleanup = cleanup;
   activeCleanup = cleanup;
+  activeTarget = target;
 
   bind(target, 'mouseleave', cleanup);
   bind(target, 'click', cleanup);

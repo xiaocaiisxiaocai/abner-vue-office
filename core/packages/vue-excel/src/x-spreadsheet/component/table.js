@@ -51,7 +51,7 @@ function renderCellBorders(bboxes, translateFunc) {
 }
 */
 
-export function renderCell(draw, data, rindex, cindex, yoffset = 0) {
+export function renderCell(draw, data, rindex, cindex, yoffset = 0, isPrint = false) {
   const { sortedRowMap, rows, cols } = data;
   if (rows.isHide(rindex) || cols.isHide(cindex)) return;
   let nrindex = rindex;
@@ -61,6 +61,7 @@ export function renderCell(draw, data, rindex, cindex, yoffset = 0) {
 
   const cell = data.getCell(nrindex, cindex);
   if (cell === null) return;
+  if (isPrint && cell.printable === false) return;
   let frozen = false;
   if ('editable' in cell && cell.editable === false) {
     frozen = true;
@@ -78,7 +79,13 @@ export function renderCell(draw, data, rindex, cindex, yoffset = 0) {
     // render text
     let cellText = '';
     if (!data.settings.evalPaused) {
-      cellText = _cell.render(cell.text != null ? cell.text : '', formulam, (y, x) => (data.getCellTextOrDefault(x, y)));
+      cellText = _cell.render(
+        cell.text != null ? cell.text : '',
+        formulam,
+        (y, x) => (data.getCellTextOrDefault(x, y)),
+        [],
+        `${stringAt(cindex)}${nrindex + 1}`,
+      );
     } else {
       cellText = cell.text != null ? cell.text : '';
     }
@@ -117,6 +124,7 @@ function renderAutofilter(viewRange) {
     const afRange = autoFilter.hrange();
     if (viewRange.intersects(afRange)) {
       afRange.each((ri, ci) => {
+        if (data.rows.isHide(ri) || data.cols.isHide(ci)) return;
         const dbox = getDrawBox(data, ri, ci);
         draw.dropdown(dbox);
       });

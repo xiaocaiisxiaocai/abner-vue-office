@@ -216,10 +216,9 @@ test('vue-excel/src/main.vue covers mount, swapFunc, table.render -> renderImage
         assert.equal(renderImageCalls.length, 1);
         assert.equal(renderImageCalls[0].shouldDraw, true);
 
-        // bottombar.swapFunc switches sheet, reRenders, and emits switchSheet(1)
+        // bottombar.swapFunc switches sheet and emits switchSheet(1) without redundant double render
         sheets[0].bottombar.swapFunc(1);
         await new Promise(r => setTimeout(r, 15));
-        assert.equal(sheets[0].reRenderCount, 1);
         assert.ok(sfc.emitted.some(e => e.name === 'switchSheet' && e.args[0] === 1));
 
         sheets[0].events['cell-selected']('c', 1, 2);
@@ -231,11 +230,17 @@ test('vue-excel/src/main.vue covers mount, swapFunc, table.render -> renderImage
         assert.match(downloads[0].n, /\.xlsx$/);
 
         // Slow request superseded by newer src must be ignored when resolved
+        const renderedBeforeRace = sfc.emitted.filter(e => e.name === 'rendered').length;
+        const loadedBeforeRace = sheets[0].loaded.length;
         sfc.setProp('src', 'slow.xlsx');
         sfc.setProp('src', 'winner.xlsx');
         await new Promise(r => setTimeout(r, 15));
+        assert.equal(sfc.emitted.filter(e => e.name === 'rendered').length, renderedBeforeRace + 1);
+        assert.equal(sheets[0].loaded.length, loadedBeforeRace + 1);
         releasedGetData(new ArrayBuffer(4));
         await new Promise(r => setTimeout(r, 10));
+        assert.equal(sfc.emitted.filter(e => e.name === 'rendered').length, renderedBeforeRace + 1);
+        assert.equal(sheets[0].loaded.length, loadedBeforeRace + 1);
 
         shouldFail = true;
         sfc.setProp('src', 'bad.xlsx');

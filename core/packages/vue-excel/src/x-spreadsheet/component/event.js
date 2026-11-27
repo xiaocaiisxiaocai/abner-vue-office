@@ -11,8 +11,8 @@ export function unbind(target, name, fn, options) {
 export function unbindClickoutside(el) {
   const dom = el && el.el ? el.el : el;
   if (dom && dom.xclickoutside) {
-    if (typeof window !== 'undefined' && window.document && window.document.body) {
-      unbind(window.document.body, 'click', dom.xclickoutside);
+    if (typeof window !== 'undefined' && window.document) {
+      unbind(window.document, 'click', dom.xclickoutside);
     }
     delete dom.xclickoutside;
   }
@@ -20,7 +20,7 @@ export function unbindClickoutside(el) {
 
 export function bindClickoutside(el, cb) {
   const dom = el && el.el ? el.el : el;
-  if (!dom || typeof window === 'undefined' || !window.document || !window.document.body) {
+  if (!dom || typeof window === 'undefined' || !window.document) {
     return;
   }
   unbindClickoutside(el);
@@ -36,7 +36,7 @@ export function bindClickoutside(el, cb) {
       unbindClickoutside(el);
     }
   };
-  bind(window.document.body, 'click', dom.xclickoutside);
+  bind(window.document, 'click', dom.xclickoutside);
 }
 
 export function mouseMoveUp(target, movefunc, upfunc, cancelfunc) {

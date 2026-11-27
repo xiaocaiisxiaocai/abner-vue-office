@@ -5,13 +5,21 @@ export default class Clipboard {
   }
 
   copy(cellRange) {
-    this.range = cellRange && typeof cellRange.clone === 'function' ? cellRange.clone() : cellRange;
+    if (!cellRange) {
+      this.clear();
+      return this;
+    }
+    this.range = typeof cellRange.clone === 'function' ? cellRange.clone() : cellRange;
     this.state = 'copy';
     return this;
   }
 
   cut(cellRange) {
-    this.range = cellRange && typeof cellRange.clone === 'function' ? cellRange.clone() : cellRange;
+    if (!cellRange) {
+      this.clear();
+      return this;
+    }
+    this.range = typeof cellRange.clone === 'function' ? cellRange.clone() : cellRange;
     this.state = 'cut';
     return this;
   }

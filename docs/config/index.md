@@ -25,7 +25,7 @@
 excel相关的配置项如下：
 
 - `xls`：预览 `.xlsx` 文件设为 `false`（默认）；预览 `.xls` 文件设为 `true`
-- `showContextmenu`：是否显示右键菜单，默认 `false`
+- `showContextmenu`：是否在初始化时启用右键菜单（仅在挂载/初始化时生效；只读预览模式下仅展示复制操作），默认 `false`
 - `minColLength`：excel最少渲染多少列，如果想实现excel文件内容有几列，就渲染几列，可以将此值设置为0，默认 `20`
 - `minRowLength`：excel最少渲染多少行，如果想实现根据excel实际行数渲染，可以将此值设置为0，默认 `100`
 - `widthOffset`：在默认渲染的列宽上再加 Npx 宽
@@ -54,7 +54,7 @@ excel相关的配置项如下：
 
 - docx预览
 
-docx预览组件支持的可配置项如下（对应 `docx-preview@0.3.2`）：
+docx预览组件支持的可配置项如下（对应 `docx-preview@0.3.x`）：
 
 ```typescript
 {

@@ -127,30 +127,48 @@ function canPaste(src, dst, error = () => {}) {
   return true;
 }
 function copyPaste(srcCellRange, dstCellRange, what, autofill = false) {
-  const { rows, merges } = this;
-  // delete dest merge
-  if (what === 'all' || what === 'format') {
-    rows.deleteCells(dstCellRange, what);
-    merges.deleteWithin(dstCellRange);
-  } else if (what === 'text') {
-    rows.deleteCells(dstCellRange, what);
+  const { rows, merges, validations } = this;
+  const [srn, scn] = srcCellRange.size();
+  const effectiveDst = dstCellRange.clone();
+  if (!autofill) {
+    effectiveDst.eri = Math.max(dstCellRange.eri, dstCellRange.sri + srn - 1);
+    effectiveDst.eci = Math.max(dstCellRange.eci, dstCellRange.sci + scn - 1);
   }
-  rows.copyPaste(srcCellRange, dstCellRange, what, autofill, (ri, ci, cell) => {
-    if (cell && cell.merge) {
-      // console.log('cell:', ri, ci, cell);
+  const beforeWrite = () => {
+    if (what === 'all' || what === 'format') {
+      rows.deleteCells(effectiveDst, what);
+      merges.deleteWithin(effectiveDst);
+    } else if (what === 'text') {
+      rows.deleteCells(effectiveDst, what);
+    }
+  };
+  rows.copyPaste(srcCellRange, effectiveDst, what, autofill, (ri, ci, cell) => {
+    if (what !== 'text' && cell && cell.merge) {
       const [rn, cn] = cell.merge;
       if (rn <= 0 && cn <= 0) return;
+      if (ri + rn > effectiveDst.eri || ci + cn > effectiveDst.eci) return;
       merges.add(new CellRange(ri, ci, ri + rn, ci + cn));
     }
-  });
+    if (what === 'all' || what === 'text') {
+      validations.validate(ri, ci, cell && cell.text != null ? cell.text : '');
+    }
+  }, beforeWrite);
 }
 
 function cutPaste(srcCellRange, dstCellRange) {
-  const { clipboard, rows, merges } = this;
+  const {
+    clipboard, rows, merges, validations,
+  } = this;
   rows.cutPaste(srcCellRange, dstCellRange);
-  merges.move(srcCellRange,
-    dstCellRange.sri - srcCellRange.sri,
-    dstCellRange.sci - srcCellRange.sci);
+  const dRi = dstCellRange.sri - srcCellRange.sri;
+  const dCi = dstCellRange.sci - srcCellRange.sci;
+  merges.move(srcCellRange, dRi, dCi);
+  srcCellRange.each((ri, ci) => {
+    const sc = rows.getCell(ri, ci);
+    validations.validate(ri, ci, sc && sc.text != null ? sc.text : '');
+    const dc = rows.getCell(ri + dRi, ci + dCi);
+    validations.validate(ri + dRi, ci + dCi, dc && dc.text != null ? dc.text : '');
+  });
   clipboard.clear();
 }
 
@@ -297,21 +315,23 @@ function getCellRowByY(y, scrollOffsety) {
   let ri = 0;
   let top = inits;
   let { height } = rows;
+  let lastVisibleRi = -1;
   for (; ri < rows.len; ri += 1) {
     if (top > y) break;
     if (!frset.has(ri)) {
       height = rows.getHeight(ri);
       top += height;
+      lastVisibleRi = ri;
     }
   }
   top -= height;
   // console.log('ri:', ri, ', top:', top, ', height:', height);
 
-  if (top <= 0) {
+  if (top <= 0 || lastVisibleRi < 0) {
     return { ri: -1, top: 0, height };
   }
 
-  return { ri: ri - 1, top, height };
+  return { ri: lastVisibleRi, top, height };
 }
 
 function getCellColByX(x, scrollOffsetx) {
@@ -375,15 +395,19 @@ export default class DataProxy {
     });
   }
 
+  mapRowIndex(ri) {
+    return (this.sortedRowMap && this.sortedRowMap.has(ri)) ? this.sortedRowMap.get(ri) : ri;
+  }
+
   getSelectedValidator() {
     const { ri, ci } = this.selector;
-    const v = this.validations.get(ri, ci);
+    const v = this.validations.get(this.mapRowIndex(ri), ci);
     return v ? v.validator : null;
   }
 
   getSelectedValidation() {
     const { ri, ci, range } = this.selector;
-    const v = this.validations.get(ri, ci);
+    const v = this.validations.get(this.mapRowIndex(ri), ci);
     const ret = { ref: range.toString() };
     if (v !== null) {
       ret.mode = v.mode;
@@ -483,13 +507,19 @@ export default class DataProxy {
     const { selector } = this;
     return navigator.clipboard.readText().then((content) => {
       const contentToPaste = this.parseClipboardContent(content);
-      let startRow = selector.ri;
+      if (contentToPaste.length === 0) return;
+      let startRow = selector.range.sri >= 0 ? selector.range.sri : selector.ri;
+      const baseCol = selector.range.sci >= 0 ? selector.range.sci : selector.ci;
       this.changeData(() => {
         contentToPaste.forEach((row) => {
-          let startColumn = selector.ci;
+          const targetRow = this.mapRowIndex(startRow);
+          let startColumn = baseCol;
           row.forEach((cellContent) => {
-            this.rows.setCellText(startRow, startColumn, cellContent);
-            this.validations.validate(startRow, startColumn, cellContent);
+            this.rows.setCellText(targetRow, startColumn, cellContent);
+            const updatedCell = this.rows.getCell(targetRow, startColumn);
+            if (!updatedCell || updatedCell.editable !== false) {
+              this.validations.validate(targetRow, startColumn, cellContent);
+            }
             startColumn += 1;
           });
           startRow += 1;
@@ -501,30 +531,70 @@ export default class DataProxy {
   }
 
   parseClipboardContent(clipboardContent) {
-    const parsedData = [];
-    const rows = String(clipboardContent || '').split(/\r?\n/);
-    let i = 0;
-    rows.forEach((row) => {
-      parsedData[i] = row.split('\t');
-      i += 1;
-    });
-    return parsedData;
+    const raw = String(clipboardContent == null ? '' : clipboardContent);
+    if (raw === '') return [];
+    const normalized = raw.endsWith('\r\n')
+      ? raw.slice(0, -2)
+      : (raw.endsWith('\n') || raw.endsWith('\r') ? raw.slice(0, -1) : raw);
+    const rows = [];
+    let currentRow = [];
+    let currentField = '';
+    let inQuotes = false;
+    for (let i = 0; i < normalized.length; i += 1) {
+      const ch = normalized[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (normalized[i + 1] === '"') {
+            currentField += '"';
+            i += 1;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          currentField += ch;
+        }
+      } else if (ch === '"' && currentField.length === 0) {
+        inQuotes = true;
+      } else if (ch === '\t') {
+        currentRow.push(currentField);
+        currentField = '';
+      } else if (ch === '\r' || ch === '\n') {
+        if (ch === '\r' && normalized[i + 1] === '\n') {
+          i += 1;
+        }
+        currentRow.push(currentField);
+        rows.push(currentRow);
+        currentRow = [];
+        currentField = '';
+      } else {
+        currentField += ch;
+      }
+    }
+    currentRow.push(currentField);
+    rows.push(currentRow);
+    return rows;
   }
 
   pasteFromText(txt) {
-    const normalizeCell = (cell) => {
-      if (cell.length >= 2 && cell.startsWith('"') && cell.endsWith('"')) {
-        return cell.slice(1, -1).replace(/""/g, '"');
-      }
-      return cell;
-    };
-    const lines = String(txt || '').split(/\r?\n/).map(it => it.split('\t').map(normalizeCell));
-
+    const raw = String(txt == null ? '' : txt);
+    if (raw === '') return;
+    const lines = this.parseClipboardContent(raw);
     if (lines.length) {
-      const { rows, selector } = this;
-
+      const { rows, selector, validations } = this;
       this.changeData(() => {
-        rows.paste(lines, selector.range);
+        const baseRi = selector.range.sri >= 0 ? selector.range.sri : selector.ri;
+        const baseCi = selector.range.sci >= 0 ? selector.range.sci : selector.ci;
+        lines.forEach((row, i) => {
+          const ri = this.mapRowIndex(baseRi + i);
+          row.forEach((cellVal, j) => {
+            const ci = baseCi + j;
+            rows.setCellText(ri, ci, cellVal);
+            const updatedCell = rows.getCell(ri, ci);
+            if (!updatedCell || updatedCell.editable !== false) {
+              validations.validate(ri, ci, cellVal);
+            }
+          });
+        });
       });
     }
   }
@@ -596,31 +666,46 @@ export default class DataProxy {
       if (property === 'border') {
         setStyleBorders.call(this, value);
       } else if (property === 'formula') {
-        // console.log('>>>', selector.multiple());
         const { ri, ci, range } = selector;
-        if (selector.multiple()) {
+        if (!this.isSingleSelected()) {
           const [rn, cn] = selector.size();
           const {
             sri, sci, eri, eci,
           } = range;
           if (rn > 1) {
-            const targetRi = Math.min(eri + 1, Math.max(0, rows.len - 1));
+            const targetRi = eri + 1;
+            if (targetRi >= rows.len) {
+              rows.len = targetRi + 1;
+            }
             for (let i = sci; i <= eci; i += 1) {
-              const cell = rows.getCellOrNew(targetRi, i);
-              cell.text = `=${value}(${xy2expr(i, sri)}:${xy2expr(i, eri)})`;
+              const mappedTarget = this.mapRowIndex(targetRi);
+              const cell = rows.getCellOrNew(mappedTarget, i);
+              if (cell.editable !== false) {
+                cell.text = `=${value}(${xy2expr(i, sri)}:${xy2expr(i, eri)})`;
+              }
             }
           } else if (cn > 1) {
-            const targetCi = Math.min(eci + 1, Math.max(0, this.cols.len - 1));
-            const cell = rows.getCellOrNew(ri, targetCi);
-            cell.text = `=${value}(${xy2expr(sci, ri)}:${xy2expr(eci, ri)})`;
+            const targetCi = eci + 1;
+            if (targetCi >= this.cols.len) {
+              this.cols.len = targetCi + 1;
+            }
+            const mappedRi = this.mapRowIndex(ri);
+            const cell = rows.getCellOrNew(mappedRi, targetCi);
+            if (cell.editable !== false) {
+              cell.text = `=${value}(${xy2expr(sci, ri)}:${xy2expr(eci, ri)})`;
+            }
           }
         } else {
-          const cell = rows.getCellOrNew(ri, ci);
-          cell.text = `=${value}()`;
+          const mappedRi = this.mapRowIndex(ri);
+          const cell = rows.getCellOrNew(mappedRi, ci);
+          if (cell.editable !== false) {
+            cell.text = `=${value}()`;
+          }
         }
       } else {
         selector.range.each((ri, ci) => {
-          const cell = rows.getCellOrNew(ri, ci);
+          const nri = this.mapRowIndex(ri);
+          const cell = rows.getCellOrNew(nri, ci);
           let cstyle = {};
           if (cell.style !== undefined && styles[cell.style]) {
             cstyle = helper.cloneDeep(styles[cell.style]);
@@ -652,36 +737,33 @@ export default class DataProxy {
   setSelectedCellText(text, state = 'input') {
     const { autoFilter, selector, rows } = this;
     const { ri, ci } = selector;
-    let nri = ri;
-    if (this.sortedRowMap.has(ri)) {
-      nri = this.sortedRowMap.get(ri);
-    }
+    const nri = this.mapRowIndex(ri);
     const oldCell = rows.getCell(nri, ci);
-    const oldText = (oldCell && oldCell.text != null) ? oldCell.text : '';
+    const oldText = (oldCell && oldCell.text != null && !/^\s*$/.test(String(oldCell.text)))
+      ? String(oldCell.text)
+      : '';
     this.setCellText(nri, ci, text, state);
-    // replace filter.value
-    if (autoFilter.active() && autoFilter.range().includes(nri, ci)) {
-      const filter = autoFilter.getFilter(ci);
-      if (filter && Array.isArray(filter.value)) {
-        const items = autoFilter.items(ci, (r, c) => rows.getCell(r, c));
-        if (!items[String(oldText)] && !filter.value.includes(String(text))) {
-          const vIndex = filter.value.findIndex(v => v === oldText);
-          if (vIndex >= 0) {
-            filter.value.splice(vIndex, 1, text);
+    if (state === 'finished' && autoFilter.active()) {
+      const afRange = autoFilter.range();
+      if (afRange.includes(nri, ci) && nri > afRange.sri) {
+        const filter = autoFilter.getFilter(ci);
+        if (filter && filter.operator === 'in' && Array.isArray(filter.value)) {
+          const items = autoFilter.items(ci, (r, c) => rows.getCell(r, c));
+          const normalizedNew = (text != null && !/^\s*$/.test(String(text))) ? String(text) : '';
+          if (!items[oldText] && !filter.value.includes(normalizedNew)) {
+            const vIndex = filter.value.findIndex(v => String(v) === oldText);
+            if (vIndex >= 0) {
+              filter.value.splice(vIndex, 1, normalizedNew);
+            }
           }
         }
       }
     }
-    // this.resetAutoFilter();
   }
 
   getSelectedCell() {
     const { ri, ci } = this.selector;
-    let nri = ri;
-    if (this.sortedRowMap.has(ri)) {
-      nri = this.sortedRowMap.get(ri);
-    }
-    return this.rows.getCell(nri, ci);
+    return this.rows.getCell(this.mapRowIndex(ri), ci);
   }
 
   xyInSelectedRect(x, y) {
@@ -718,13 +800,13 @@ export default class DataProxy {
     // no selector
     if (sri < 0 && sci < 0) {
       return {
-        left: 0, l: 0, top: 0, t: 0, scroll,
+        left: 0, l: 0, top: 0, t: 0, width: 0, height: 0, scroll,
       };
     }
-    const left = cols.sumWidth(0, sci);
-    const top = rows.sumHeight(0, sri, exceptRowSet);
-    const height = rows.sumHeight(sri, eri + 1, exceptRowSet);
-    const width = cols.sumWidth(sci, eci + 1);
+    const left = sci > 0 ? cols.sumWidth(0, sci) : 0;
+    const top = sri > 0 ? rows.sumHeight(0, sri, exceptRowSet) : 0;
+    const height = eri >= Math.max(0, sri) ? rows.sumHeight(Math.max(0, sri), eri + 1, exceptRowSet) : 0;
+    const width = eci >= Math.max(0, sci) ? cols.sumWidth(Math.max(0, sci), eci + 1) : 0;
     // console.log('sri:', sri, ', sci:', sci, ', eri:', eri, ', eci:', eci);
     let left0 = left - scroll.x;
     let top0 = top - scroll.y;
@@ -820,11 +902,14 @@ export default class DataProxy {
   }
 
   unmerge() {
-    const { selector } = this;
+    const { selector, rows } = this;
     if (!this.canUnmerge()) return;
     const { sri, sci } = selector.range;
+    const nri = this.mapRowIndex(sri);
+    const cell = rows.getCell(nri, sci);
+    if (cell && cell.editable === false) return;
     this.changeData(() => {
-      this.rows.deleteCell(sri, sci, 'merge');
+      this.rows.deleteCell(nri, sci, 'merge');
       this.merges.deleteWithin(selector.range);
     });
   }
@@ -876,13 +961,25 @@ export default class DataProxy {
       fary.sort((a, b) => {
         const va = getSortText(a);
         const vb = getSortText(b);
-        const na = va.trim() === '' ? NaN : Number(va);
-        const nb = vb.trim() === '' ? NaN : Number(vb);
+        const trimA = va.trim();
+        const trimB = vb.trim();
+        const na = trimA === '' ? NaN : Number(trimA);
+        const nb = trimB === '' ? NaN : Number(trimB);
+        const isNumA = Number.isFinite(na);
+        const isNumB = Number.isFinite(nb);
         let cmp = 0;
-        if (!Number.isNaN(na) && !Number.isNaN(nb)) {
+        if (isNumA && isNumB) {
           cmp = na - nb;
+        } else if (isNumA !== isNumB) {
+          cmp = isNumA ? -1 : 1;
         } else {
-          cmp = va.localeCompare(vb);
+          const emptyA = trimA === '';
+          const emptyB = trimB === '';
+          if (emptyA !== emptyB) {
+            cmp = emptyA ? 1 : -1;
+          } else {
+            cmp = va.localeCompare(vb);
+          }
         }
         if (sort.order === 'asc') return cmp;
         if (sort.order === 'desc') return -cmp;
@@ -899,17 +996,133 @@ export default class DataProxy {
   }
 
   deleteCell(what = 'all') {
-    const { selector } = this;
+    const {
+      selector, rows, merges, validations,
+    } = this;
     this.changeData(() => {
-      this.rows.deleteCells(selector.range, what);
+      selector.range.each((ri, ci) => {
+        const nri = this.mapRowIndex(ri);
+        rows.deleteCell(nri, ci, what);
+        if (what === 'all' || what === 'text') {
+          const afterCell = rows.getCell(nri, ci);
+          if (!afterCell || afterCell.editable !== false) {
+            validations.validate(nri, ci, '');
+          }
+        }
+      });
       if (what === 'all' || what === 'format') {
-        this.merges.deleteWithin(selector.range);
+        merges._ = merges._.filter((it) => {
+          if (!it.within(selector.range)) return true;
+          const masterCell = rows.getCell(this.mapRowIndex(it.sri), it.sci);
+          return Boolean(masterCell && masterCell.editable === false);
+        });
       }
     });
   }
 
+  shiftRefsAndMeta(type, si, delta, delEnd = -1) {
+    const shiftRef = (ref) => {
+      if (!CellRange.isValidRef(ref)) return null;
+      const cr = CellRange.valueOf(ref);
+      if (delta > 0) {
+        if (type === 'row') {
+          if (cr.sri >= si) cr.sri += delta;
+          if (cr.eri >= si) cr.eri += delta;
+        } else if (type === 'column') {
+          if (cr.sci >= si) cr.sci += delta;
+          if (cr.eci >= si) cr.eci += delta;
+        }
+        return cr.toString();
+      }
+      const delCount = -delta;
+      if (type === 'row') {
+        if (cr.sri >= si && cr.eri <= delEnd) return null;
+        if (cr.sri > delEnd) cr.sri -= delCount;
+        else if (cr.sri >= si) cr.sri = si;
+        if (cr.eri > delEnd) cr.eri -= delCount;
+        else if (cr.eri >= si) cr.eri = si - 1;
+        if (cr.eri < cr.sri) return null;
+      } else if (type === 'column') {
+        if (cr.sci >= si && cr.eci <= delEnd) return null;
+        if (cr.sci > delEnd) cr.sci -= delCount;
+        else if (cr.sci >= si) cr.sci = si;
+        if (cr.eci > delEnd) cr.eci -= delCount;
+        else if (cr.eci >= si) cr.eci = si - 1;
+        if (cr.eci < cr.sci) return null;
+      }
+      return cr.toString();
+    };
+    if (this.autoFilter && this.autoFilter.active()) {
+      const nextAfRef = shiftRef(this.autoFilter.ref);
+      if (!nextAfRef) {
+        this.autoFilter.clear();
+      } else {
+        this.autoFilter.ref = nextAfRef;
+        if (type === 'column') {
+          const delCount = delta < 0 ? -delta : 0;
+          this.autoFilter.filters = this.autoFilter.filters.filter((f) => {
+            if (delta > 0) {
+              if (f.ci >= si) f.ci += delta;
+              return true;
+            }
+            if (f.ci >= si && f.ci <= delEnd) return false;
+            if (f.ci > delEnd) f.ci -= delCount;
+            return true;
+          });
+          if (this.autoFilter.sort) {
+            if (delta > 0) {
+              if (this.autoFilter.sort.ci >= si) this.autoFilter.sort.ci += delta;
+            } else if (this.autoFilter.sort.ci >= si && this.autoFilter.sort.ci <= delEnd) {
+              this.autoFilter.sort = null;
+            } else if (this.autoFilter.sort.ci > delEnd) {
+              this.autoFilter.sort.ci -= delCount;
+            }
+          }
+        }
+      }
+      this.resetAutoFilter();
+    }
+    if (this.validations && Array.isArray(this.validations._)) {
+      this.validations._.forEach((v) => {
+        v.refs = v.refs.map(shiftRef).filter(Boolean);
+      });
+      this.validations._ = this.validations._.filter(v => v.refs.length > 0);
+      if (this.validations.errors && this.validations.errors.size > 0) {
+        const nextErrors = new Map();
+        const delCount = delta < 0 ? -delta : 0;
+        this.validations.errors.forEach((msg, key) => {
+          const [rStr, cStr] = key.split('_');
+          let r = parseInt(rStr, 10);
+          let c = parseInt(cStr, 10);
+          if (type === 'row') {
+            if (delta > 0) {
+              if (r >= si) r += delta;
+            } else if (r >= si && r <= delEnd) {
+              return;
+            } else if (r > delEnd) {
+              r -= delCount;
+            }
+          } else if (type === 'column') {
+            if (delta > 0) {
+              if (c >= si) c += delta;
+            } else if (c >= si && c <= delEnd) {
+              return;
+            } else if (c > delEnd) {
+              c -= delCount;
+            }
+          }
+          nextErrors.set(`${r}_${c}`, msg);
+        });
+        this.validations.errors = nextErrors;
+      }
+    }
+  }
+
   // type: row | column
   insert(type, n = 1) {
+    if ((type !== 'row' && type !== 'column') || !Number.isInteger(n) || n <= 0) {
+      return;
+    }
     this.changeData(() => {
       const { sri, sci } = this.selector.range;
       const { rows, merges, cols } = this;
@@ -935,11 +1148,15 @@ export default class DataProxy {
           cell.merge[1] += cn;
         }
       });
+      this.shiftRefsAndMeta(type, si, n);
     });
   }
 
   // type: row | column
   delete(type) {
+    if (type !== 'row' && type !== 'column') {
+      return;
+    }
     this.changeData(() => {
       const {
         rows, merges, selector, cols,
@@ -951,12 +1168,42 @@ export default class DataProxy {
       const [rsize, csize] = selector.range.size();
       let si = sri;
       let size = rsize;
+      const delEnd = type === 'row' ? eri : eci;
+      if (type === 'column') {
+        si = range.sci;
+        size = csize;
+      }
+      const survivingMasters = [];
+      merges.forEach((m) => {
+        if (type === 'row' && m.sri >= si && m.sri <= delEnd && m.eri > delEnd) {
+          const mc = rows.getCell(m.sri, m.sci);
+          if (mc) {
+            survivingMasters.push({
+              ri: si,
+              ci: m.sci,
+              cell: helper.cloneDeep(mc),
+              rn: m.eri - delEnd - 1,
+              cn: m.eci - m.sci,
+            });
+          }
+        } else if (type === 'column' && m.sci >= si && m.sci <= delEnd && m.eci > delEnd) {
+          const mc = rows.getCell(m.sri, m.sci);
+          if (mc) {
+            survivingMasters.push({
+              ri: m.sri,
+              ci: si,
+              cell: helper.cloneDeep(mc),
+              rn: m.eri - m.sri,
+              cn: m.eci - delEnd - 1,
+            });
+          }
+        }
+      });
+
       if (type === 'row') {
         rows.delete(sri, eri);
       } else if (type === 'column') {
         rows.deleteColumn(sci, eci);
-        si = range.sci;
-        size = csize;
         cols.len = Math.max(0, cols.len - (eci - sci + 1));
         Object.keys(cols._).forEach((colIndex) => {
           const col = parseInt(colIndex, 10);
@@ -976,6 +1223,30 @@ export default class DataProxy {
           }
         }
       });
+      survivingMasters.forEach(({
+        ri, ci, cell, rn, cn,
+      }) => {
+        if (rn <= 0 && cn <= 0) {
+          delete cell.merge;
+        } else {
+          cell.merge = [rn, cn];
+        }
+        rows.setCell(ri, ci, cell, 'all');
+      });
+
+      const maxRi = Math.max(0, rows.len - 1);
+      const maxCi = Math.max(0, cols.len - 1);
+      selector.range.sri = Math.min(selector.range.sri, maxRi);
+      selector.range.eri = Math.min(Math.max(selector.range.sri, selector.range.eri), maxRi);
+      selector.range.sci = Math.min(selector.range.sci, maxCi);
+      selector.range.eci = Math.min(Math.max(selector.range.sci, selector.range.eci), maxCi);
+      selector.setIndexes(
+        Math.min(selector.ri, maxRi),
+        Math.min(selector.ci, maxCi),
+      );
+      if (this.freeze[0] > rows.len) this.freeze[0] = rows.len;
+      if (this.freeze[1] > cols.len) this.freeze[1] = cols.len;
+      this.shiftRefsAndMeta(type, si, -size, delEnd);
     });
   }
 
@@ -985,11 +1256,10 @@ export default class DataProxy {
     const [
       ci, left, width,
     ] = helper.rangeReduceIf(fci, cols.len, 0, 0, x, i => cols.getWidth(i));
-    // console.log('fci:', fci, ', ci:', ci);
     let x1 = left;
     if (x > 0) x1 += width;
     if (scroll.x !== x1) {
-      scroll.ci = x > 0 ? ci : 0;
+      scroll.ci = x > 0 ? Math.min(ci, Math.max(fci, cols.len - 1)) : 0;
       scroll.x = x1;
       cb();
     }
@@ -1005,28 +1275,28 @@ export default class DataProxy {
     ] = helper.rangeReduceIf(fri, rows.len, 0, 0, y, i => (exceptRowSet.has(i) ? 0 : rows.getHeight(i)));
     let y1 = top;
     if (y > 0) y1 += height;
-    // console.log('ri:', ri, ' ,y:', y1);
     if (scroll.y !== y1) {
-      scroll.ri = y > 0 ? ri : 0;
+      scroll.ri = y > 0 ? Math.min(ri, Math.max(fri, rows.len - 1)) : 0;
       scroll.y = y1;
       cb();
     }
   }
 
   cellRect(ri, ci) {
-    const { rows, cols } = this;
+    const { rows, cols, exceptRowSet } = this;
     const left = cols.sumWidth(0, ci);
     const top = rows.sumHeight(0, ri);
-    const cell = rows.getCell(ri, ci);
+    const cell = rows.getCell(this.mapRowIndex(ri), ci);
     let width = cols.getWidth(ci);
     let height = rows.getHeight(ri);
     if (cell !== null) {
       if (cell.merge) {
         const [rn, cn] = cell.merge;
-        // console.log('cell.merge:', cell.merge);
         if (rn > 0) {
           for (let i = 1; i <= rn; i += 1) {
-            height += rows.getHeight(ri + i);
+            if (!exceptRowSet.has(ri + i)) {
+              height += rows.getHeight(ri + i);
+            }
           }
         }
         if (cn > 0) {
@@ -1036,7 +1306,6 @@ export default class DataProxy {
         }
       }
     }
-    // console.log('data:', this.d);
     return {
       left, top, width, height, cell,
     };
@@ -1068,14 +1337,19 @@ export default class DataProxy {
 
   getSelectedCellStyle() {
     const { ri, ci } = this.selector;
-    return this.getCellStyleOrDefault(ri, ci);
+    return this.getCellStyleOrDefault(this.mapRowIndex(ri), ci);
   }
 
   // state: input | finished
   setCellText(ri, ci, text, state) {
     const { rows, history, validations } = this;
+    const existingCell = rows.getCell(ri, ci);
+    if (existingCell && existingCell.editable === false) {
+      this._editingOrigin = null;
+      return;
+    }
     if (state === 'finished') {
-      const originCell = rows.getCell(ri, ci);
+      const originCell = existingCell;
       const hasOrigin = this._editingOrigin
         && this._editingOrigin.ri === ri
         && this._editingOrigin.ci === ci;
@@ -1089,7 +1363,7 @@ export default class DataProxy {
       this.change(this.getData());
     } else {
       if (!this._editingOrigin || this._editingOrigin.ri !== ri || this._editingOrigin.ci !== ci) {
-        const prevCell = rows.getCell(ri, ci);
+        const prevCell = existingCell;
         this._editingOrigin = {
           ri,
           ci,
@@ -1109,8 +1383,13 @@ export default class DataProxy {
   }
 
   setFreeze(ri, ci) {
+    const fy = Number(ri);
+    const fx = Number(ci);
+    if (!Number.isInteger(fy) || !Number.isInteger(fx) || fy < 0 || fx < 0) {
+      return;
+    }
     this.changeData(() => {
-      this.freeze = [ri, ci];
+      this.freeze = [fy, fx];
     });
   }
 
@@ -1119,7 +1398,7 @@ export default class DataProxy {
   }
 
   freezeTotalHeight() {
-    return this.rows.sumHeight(0, this.freeze[0]);
+    return this.rows.sumHeight(0, this.freeze[0], this.exceptRowSet);
   }
 
   setRowHeight(ri, height) {
@@ -1143,11 +1422,11 @@ export default class DataProxy {
     if (showToolbar) {
       h -= toolbarHeight;
     }
-    return h;
+    return Math.max(0, h);
   }
 
   viewWidth() {
-    return this.settings.view.width();
+    return Math.max(0, this.settings.view.width());
   }
 
   freezeViewRange() {
@@ -1209,12 +1488,15 @@ export default class DataProxy {
   }
 
   hideRowsOrCols() {
+    const { rows, cols, selector } = this;
+    const [rlen, clen] = selector.size();
+    const {
+      sri, sci, eri, eci,
+    } = selector.range;
+    if (rlen !== rows.len && clen !== cols.len) {
+      return;
+    }
     this.changeData(() => {
-      const { rows, cols, selector } = this;
-      const [rlen, clen] = selector.size();
-      const {
-        sri, sci, eri, eci,
-      } = selector.range;
       if (rlen === rows.len) {
         for (let ci = sci; ci <= eci; ci += 1) {
           cols.setHide(ci, true);
@@ -1230,6 +1512,9 @@ export default class DataProxy {
   // type: row | col
   // index row-index | col-index
   unhideRowsOrCols(type, index) {
+    if (type !== 'row' && type !== 'col') {
+      return;
+    }
     this.changeData(() => {
       this[`${type}s`].unhide(index);
     });
@@ -1254,7 +1539,8 @@ export default class DataProxy {
   colEach(min, max, cb) {
     let x = 0;
     const { cols } = this;
-    for (let i = min; i <= max; i += 1) {
+    const last = Math.min(max, cols.len - 1);
+    for (let i = min; i <= last; i += 1) {
       const colWidth = cols.getWidth(i);
       if (colWidth > 0) {
         cb(i, x, colWidth);
@@ -1280,6 +1566,7 @@ export default class DataProxy {
   }
 
   changeData(cb) {
+    this._editingOrigin = null;
     this.history.add(this.getData());
     cb();
     this.change(this.getData());
@@ -1289,27 +1576,36 @@ export default class DataProxy {
     if (!d || typeof d !== 'object') {
       return this;
     }
-    const allowedProps = new Set(['name', 'styles', 'hyperlinks', 'comments']);
+    this._editingOrigin = null;
+    if (!Object.prototype.hasOwnProperty.call(d, 'freeze')) this.freeze = [0, 0];
+    if (!Object.prototype.hasOwnProperty.call(d, 'styles')) this.styles = [];
+    if (!Object.prototype.hasOwnProperty.call(d, 'merges')) this.merges.setData([]);
+    if (!Object.prototype.hasOwnProperty.call(d, 'cols')) this.cols.setData({ len: this.settings.col.len });
+    if (!Object.prototype.hasOwnProperty.call(d, 'validations')) this.validations.setData([]);
+    if (!Object.prototype.hasOwnProperty.call(d, 'hyperlinks')) this.hyperlinks = {};
+    if (!Object.prototype.hasOwnProperty.call(d, 'comments')) this.comments = {};
     Object.keys(d).forEach((property) => {
       if (property === 'merges' || property === 'rows'
         || property === 'cols' || property === 'validations') {
         this[property].setData(d[property]);
+      } else if (property === 'styles') {
+        this.styles = Array.isArray(d.styles) ? d.styles.slice() : [];
       } else if (property === 'freeze') {
         if (typeof d[property] === 'string' && d[property]) {
           const [x, y] = expr2xy(d[property]);
-          if (!Number.isNaN(x) && !Number.isNaN(y) && x >= 0 && y >= 0) {
+          if (Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0) {
             this.freeze = [y, x];
           }
         } else if (Array.isArray(d[property]) && d[property].length >= 2) {
           const fy = Number(d[property][0]);
           const fx = Number(d[property][1]);
-          if (!Number.isNaN(fy) && !Number.isNaN(fx) && fy >= 0 && fx >= 0) {
+          if (Number.isInteger(fy) && Number.isInteger(fx) && Number.isFinite(fy) && Number.isFinite(fx) && fy >= 0 && fx >= 0) {
             this.freeze = [fy, fx];
           }
         }
       } else if (property === 'autofilter') {
         this.autoFilter.setData(d[property]);
-      } else if (allowedProps.has(property) && d[property] !== undefined) {
+      } else if ((property === 'name' || property === 'hyperlinks' || property === 'comments') && d[property] !== undefined) {
         this[property] = d[property];
       }
     });
@@ -1322,7 +1618,7 @@ export default class DataProxy {
 
   getData() {
     const {
-      name, freeze, styles, merges, rows, cols, validations, autoFilter,
+      name, freeze, styles, merges, rows, cols, validations, autoFilter, hyperlinks, comments,
     } = this;
     return {
       name,
@@ -1333,6 +1629,8 @@ export default class DataProxy {
       cols: cols.getData(),
       validations: validations.getData(),
       autofilter: autoFilter.getData(),
+      hyperlinks,
+      comments,
     };
   }
 }

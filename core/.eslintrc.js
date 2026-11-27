@@ -1,7 +1,8 @@
 module.exports = {
+    'root': true,
     'env': {
         'browser': true,
-        'node': true,
+        'node': false,
         'es2021': true
     },
     'extends': [
@@ -9,6 +10,26 @@ module.exports = {
         'plugin:vue/vue3-essential'
     ],
     'overrides': [
+        {
+            'files': ['script/*.js', '.eslintrc.js'],
+            'env': {
+                'node': true,
+                'browser': false
+            },
+            'parserOptions': {
+                'sourceType': 'script'
+            }
+        },
+        {
+            'files': ['*.config.js', 'packages/*/*.config.js', 'tests/**/*.mjs'],
+            'env': {
+                'node': true,
+                'browser': false
+            },
+            'parserOptions': {
+                'sourceType': 'module'
+            }
+        }
     ],
     'parserOptions': {
         'ecmaVersion': 'latest',

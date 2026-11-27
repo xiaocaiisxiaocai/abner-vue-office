@@ -11,10 +11,13 @@ const props = defineProps({
   defaultSrc: String
 });
 
-const { type, inputSrc, src, xls, beforeUpload } = usePreview(props.defaultSrc);
+const { type, inputSrc, src, xls, beforeUpload, cancelRead } = usePreview(props.defaultSrc);
 const retryKey = ref(0);
 
 function handlePreview() {
+    if (typeof cancelRead === 'function') {
+        cancelRead();
+    }
     const trimmed = typeof inputSrc.value === 'string' ? inputSrc.value.trim() : inputSrc.value;
     inputSrc.value = trimmed;
     xls.value = isXlsName(trimmed);
@@ -36,6 +39,9 @@ watch([src, retryKey], ([val]) => {
 });
 
 onBeforeUnmount(() => {
+    if (typeof cancelRead === 'function') {
+        cancelRead();
+    }
     useLoading.hideLoading();
 });
 </script>

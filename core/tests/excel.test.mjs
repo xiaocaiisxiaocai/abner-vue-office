@@ -187,7 +187,7 @@ test('excel.js correctly formats multi-section numFmt, currency, dates, formulas
     assert.equal(row0[15].text, '08:05:09');
     assert.equal(sheet.cols.len, 35);
     assert.equal(hiddenRowCells.length, 1);
-    assert.equal(sheet.rows[1].height, 0.1);
+    assert.equal(sheet.rows[1].hide, true);
     assert.equal(sheet.styles[row0[16].style].bgcolor, '#000000');
     assert.deepEqual(sheet.styles[row0[16].style].border.top, ['thin', '#000000']);
 });
@@ -348,7 +348,7 @@ test('excel.js formatNumberValue, getCellText, getStyle, and transferExcelToSpre
     const edgeSheet = resUndefinedOpts.workbookData[0];
     assert.equal(Number.isNaN(edgeSheet.rows.len), false);
     assert.equal(edgeSheet.rows.len, 100);
-    assert.equal(edgeSheet.cols['0'].width, 0.1);
+    assert.equal(edgeSheet.cols['0'].hide, true);
     assert.equal(edgeSheet.cols['1'].width, 95);
     assert.equal(edgeSheet.rows[0].cells[1].text, undefined);
 
@@ -386,7 +386,7 @@ test('x-spreadsheet alphabet, cell formula fallback/unclosed quote, and DataProx
     });
     const formulaMap = { SUM: { render: ary => ary.reduce((a, b) => Number(a) + Number(b), 0) } };
     assert.equal(cellMod.render('=VLOOKUP(A1,B1:C2,2,0)', formulaMap, () => ''), '=VLOOKUP(A1,B1:C2,2,0)');
-    assert.equal(cellMod.render('="unclosed', formulaMap, () => ''), 'unclosed');
+    assert.equal(cellMod.render('="unclosed', formulaMap, () => ''), '="unclosed');
     assert.equal(cellMod.render('=1+2', formulaMap, () => ''), '3');
     assert.equal(cellMod.render(0, formulaMap, () => ''), 0);
 

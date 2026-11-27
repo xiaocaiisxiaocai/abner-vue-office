@@ -49,12 +49,15 @@ function insertText({ target }, itxt) {
 }
 
 function keydownEventHandler(evt) {
+  if (evt.isComposing || evt.keyCode === 229 || evt.key === 'Process') {
+    return;
+  }
   const { keyCode, altKey } = evt;
   if (keyCode !== 13 && keyCode !== 9) evt.stopPropagation();
   if (keyCode === 27) {
     evt.preventDefault();
     evt.stopPropagation();
-    this.clear(true);
+    this.cancel();
     return;
   }
   if (keyCode === 13 && altKey) {
@@ -220,6 +223,16 @@ export default class Editor {
     this.freeze.h = height;
   }
 
+  cancel() {
+    if (this._editing) {
+      const revertText = this._initialText;
+      this.clear(true);
+      this.change('cancel', revertText);
+      return;
+    }
+    this.clear(true);
+  }
+
   clear(silent = false) {
     if (this._focusTimer) {
       clearTimeout(this._focusTimer);
@@ -271,7 +284,7 @@ export default class Editor {
     }
   }
 
-  setCell(cell, validator) {
+  setCell(cell, validator, initialTextOverride) {
     if (cell && cell.editable === false) return;
 
     const { el, datepicker, suggest } = this;
@@ -280,7 +293,7 @@ export default class Editor {
     this._editing = true;
     this.cell = cell;
     const text = (cell && cell.text != null) ? String(cell.text) : '';
-    this._initialText = text;
+    this._initialText = initialTextOverride !== undefined ? String(initialTextOverride) : text;
     this.setText(text);
 
     this.validator = validator;

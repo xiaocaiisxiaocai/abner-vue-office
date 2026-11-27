@@ -13,17 +13,33 @@
 import { tf } from '../locale/locale';
 import { numberCalc } from './helper';
 
+function toBool(v) {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v !== 0 && !Number.isNaN(v);
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (s === '') return false;
+    const u = s.toUpperCase();
+    if (u === 'FALSE') return false;
+    if (u === 'TRUE') return true;
+    const n = Number(s);
+    if (!Number.isNaN(n)) return n !== 0;
+    return true;
+  }
+  return Boolean(v);
+}
+
 function toNumericValues(ary) {
   const nums = [];
   for (let i = 0; i < ary.length; i += 1) {
     const v = ary[i];
     if (typeof v === 'number') {
-      if (Number.isFinite(v)) nums.push(v);
+      if (!Number.isNaN(v)) nums.push(v);
     } else if (typeof v === 'string') {
       const trimmed = v.trim();
       if (trimmed !== '') {
         const n = Number(trimmed);
-        if (Number.isFinite(n)) nums.push(n);
+        if (!Number.isNaN(n)) nums.push(n);
       }
     }
   }
@@ -47,8 +63,8 @@ const baseFormulas = [
     render: (ary) => {
       const nums = toNumericValues(ary);
       if (nums.length === 0) return 0;
-      const total = nums.reduce((a, b) => a + b, 0);
-      return total / nums.length;
+      const total = nums.reduce((a, b) => numberCalc('+', a, b), 0);
+      return Number(numberCalc('/', total, nums.length));
     },
   },
   {
@@ -80,17 +96,17 @@ const baseFormulas = [
   {
     key: 'IF',
     title: tf('formula._if'),
-    render: ([b, t = true, f = false]) => (b ? t : f),
+    render: ([b, t = true, f = false]) => (toBool(b) ? t : f),
   },
   {
     key: 'AND',
     title: tf('formula.and'),
-    render: ary => ary.every(it => it),
+    render: ary => (ary.length > 0 ? ary.every(it => toBool(it)) : false),
   },
   {
     key: 'OR',
     title: tf('formula.or'),
-    render: ary => ary.some(it => it),
+    render: ary => ary.some(it => toBool(it)),
   },
   {
     key: 'CONCAT',

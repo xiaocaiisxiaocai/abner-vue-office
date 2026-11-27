@@ -239,7 +239,7 @@ export default class Selector {
 
   resetData(data) {
     this.data = data;
-    this.br.autoFocus = data.settings.autoFocus;
+    this.br.autoFocus = data.settings.autoFocus !== undefined ? data.settings.autoFocus : true;
     this.indexes = [data.selector.ri, data.selector.ci];
     this.moveIndexes = [data.selector.range.sri, data.selector.range.sci];
     this.range = data.selector.range;
@@ -312,9 +312,7 @@ export default class Selector {
     const cellRange = data.calSelectedRangeByStart(ri, ci);
     const { sri, sci } = cellRange;
     if (indexesUpdated) {
-      let [cri, cci] = [ri, ci];
-      if (ri < 0) cri = 0;
-      if (ci < 0) cci = 0;
+      let [cri, cci] = [ri >= 0 ? sri : 0, ci >= 0 ? sci : 0];
       data.selector.setIndexes(cri, cci);
       this.indexes = [cri, cci];
     }

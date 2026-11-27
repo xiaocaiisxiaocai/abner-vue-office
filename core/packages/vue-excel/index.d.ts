@@ -2,7 +2,7 @@ export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob | Respo
 
 export interface RequestOptions {
     method?: string;
-    headers?: Record<string, string>;
+    headers?: Record<string, string> | Headers | [string, string][];
     withCredentials?: boolean;
     credentials?: RequestCredentials;
     timeout?: number;
@@ -58,6 +58,7 @@ export interface AbnerVueOfficeExcelInstance {
 }
 
 export interface AbnerVueOfficeExcelComponent {
+    readonly name: 'AbnerVueOfficeExcel';
     new (): AbnerVueOfficeExcelInstance;
     install(app: any): void;
 }

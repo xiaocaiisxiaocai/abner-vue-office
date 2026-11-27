@@ -43,8 +43,8 @@ test('media.js getImageMimeType and calcPosition handle anchors, hidden tracks, 
         );
         assert.equal(twoCellPos.x, (60 + 10 - 10) * 2);
         assert.equal(twoCellPos.y, (24 + 10 - 5) * 2);
-        assert.equal(twoCellPos.width, ((125 - 10) + 0.1 + 20) * 2);
-        assert.equal(twoCellPos.height, ((32 - 10) + 0.1 + 10) * 2);
+        assert.equal(twoCellPos.width, ((125 - 10) + 0 + 20) * 2);
+        assert.equal(twoCellPos.height, ((32 - 10) + 0 + 10) * 2);
 
         const sameCellPos = calcPosition(
             sheet,
@@ -85,8 +85,8 @@ test('media.js getImageMimeType and calcPosition handle anchors, hidden tracks, 
         );
         assert.equal(clampedPos.x, 61);
         assert.equal(clampedPos.y, 25);
-        assert.ok(clampedPos.width > 1);
-        assert.ok(clampedPos.height > 1);
+        assert.equal(clampedPos.width, 1);
+        assert.equal(clampedPos.height, 1);
     });
 });
 
@@ -232,6 +232,10 @@ test('js-excel/src/main.js lifecycle, transform hooks, race guard, save, and des
             this.loaded = [];
             this.destroyed = false;
             this.reRenderCount = 0;
+            this.datas = [
+                { getSelectedRect: () => ({ scroll: { x: 0, y: 0 } }) },
+                { getSelectedRect: () => ({ scroll: { x: 5, y: 6 } }) }
+            ];
             this.bottombar = {
                 swapFunc: () => {}
             };
@@ -348,15 +352,37 @@ test('js-excel/src/main.js lifecycle, transform hooks, race guard, save, and des
         assert.equal(createdSheets[0].loaded[createdSheets[0].loaded.length - 1][0].name, 'Mutated');
         assert.equal(createdSheets[0].loaded[createdSheets[0].loaded.length - 1][0].transformed, true);
 
-        // table.render triggers debounce -> renderImage, editor.setOffset updates offset
-        excel.xs.sheet.editor.setOffset({ scroll: { x: 4, y: 8 } });
-        assert.deepEqual(excel.offset, { scroll: { x: 4, y: 8 } });
-        excel.xs.sheet.table.render();
+        const renderCalls = [];
+        const { init: initReal } = new Function(
+            'Spreadsheet', 'getData', 'readExcelData', 'transferExcelToSpreadSheet', 'renderImage', 'clearCache', 'readOnlyInput', 'debounce', 'downloadFile',
+            `${src}\nreturn { init };`
+        )(
+            MockSpreadsheet,
+            mockGetData,
+            mockReadExcelData,
+            mockTransfer,
+            (_ctx, _m, sheet, off, _opts, shouldDraw) => {
+                renderCalls.push({ sheetName: sheet.name, offset: off, ok: shouldDraw() });
+            },
+            () => {},
+            () => {},
+            debounce,
+            (name, data) => downloads.push({ name, data })
+        );
+        const excel2 = initReal(mockDocument.createElement('div'), {
+            switchSheet: idx => switched.push(idx)
+        });
+        await excel2.preview('fast');
+        excel2.xs.sheet.editor.setOffset({ scroll: { x: 4, y: 8 } });
+        assert.deepEqual(excel2.offset, { scroll: { x: 4, y: 8 } });
+        excel2.xs.sheet.table.render();
+        assert.equal(renderCalls.length, 1);
+        assert.equal(renderCalls[0].ok, true);
 
-        excel.xs.bottombar.swapFunc(1);
+        excel2.xs.bottombar.swapFunc(1);
         await new Promise(r => setTimeout(r, 15));
         assert.equal(switched[switched.length - 1], 1);
-        assert.equal(createdSheets[0].reRenderCount, 1);
+        excel2.destroy();
 
         excel.save('explicit.xlsx');
         excel.save();
@@ -407,13 +433,18 @@ test('js-excel/src/main.js lifecycle, transform hooks, race guard, save, and des
             };
         }
     }
+    let readOnlyCount = 0;
     const { init: initObs } = new Function(
         'Spreadsheet', 'getData', 'readExcelData', 'transferExcelToSpreadSheet', 'renderImage', 'clearCache', 'readOnlyInput', 'debounce', 'downloadFile',
         `${src}\nreturn { init };`
-    )(MockSheetWithRender, mockGetData, async () => ({ _worksheets: [{ name: 'S1' }, { name: 'S2' }] }), mockTransfer, () => {}, () => {}, () => {}, debounce, () => {});
+    )(MockSheetWithRender, mockGetData, async () => ({ _worksheets: [{ name: 'S1' }, { name: 'S2' }] }), mockTransfer, () => {}, () => {}, () => { readOnlyCount++; }, debounce, () => {});
     let excelObs;
     await runWithDomGlobals({ document: mockDocument, MutationObserver: MockObserver }, async () => {
         excelObs = initObs(mockDocument.createElement('div'));
+        assert.equal(readOnlyCount, 1);
+        excelObs.observer.cb();
+        await new Promise(r => setTimeout(r, 220));
+        assert.equal(readOnlyCount, 2);
         excelObs.xs.bottombar.swapFunc(1);
         assert.equal(renderedSheets[0], 1);
         excelObs.destroy();

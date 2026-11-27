@@ -119,7 +119,7 @@ test('algorithm/expression.js, bitmap.js, helper.js, and alphabet.js handle all 
     assert.equal(helperMod.numberCalc('*', 0.5, 0.5), '0.25');
     assert.equal(helperMod.numberCalc('*', 0.1, 0.1), '0.01');
     assert.equal(helperMod.numberCalc('/', 1, 64), '0.015625');
-    assert.equal(helperMod.numberCalc('+', 1.5e-7, 2.5e-7), '0.00000040');
+    assert.equal(helperMod.numberCalc('+', 1.5e-7, 2.5e-7), '0.0000004');
     assert.equal(helperMod.numberCalc('+', 'foo', 2), 'foo+2');
 
     // alphabet.js lowercase, $ anchors, negative shift bounds

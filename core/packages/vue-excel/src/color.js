@@ -2,15 +2,21 @@ function HexToRgb(str) {
     if (!str || typeof str !== 'string') {
         return [0, 0, 0];
     }
-    let hex = str.replace('#', '').trim();
-    if (hex.length === 3) {
+    let hex = str.trim();
+    if (hex.startsWith('#')) {
+        hex = hex.slice(1);
+    }
+    if (/^[0-9a-fA-F]{3}$/.test(hex)) {
         hex = hex.split('').map(c => c + c).join('');
     }
-    const hxs = hex.match(/[0-9a-fA-F]{2}/g);
-    if (!hxs || hxs.length < 3) {
+    if (!/^[0-9a-fA-F]{6}$/.test(hex)) {
         return [0, 0, 0];
     }
-    return [parseInt(hxs[0], 16), parseInt(hxs[1], 16), parseInt(hxs[2], 16)];
+    return [
+        parseInt(hex.slice(0, 2), 16),
+        parseInt(hex.slice(2, 4), 16),
+        parseInt(hex.slice(4, 6), 16)
+    ];
 }
 
 function RgbToHex(a, b, c) {
@@ -22,8 +28,15 @@ function RgbToHex(a, b, c) {
     return '#' + channels.join('');
 }
 
+function clampLevel(level) {
+    if (typeof level !== 'number' || !Number.isFinite(level)) {
+        return 0;
+    }
+    return Math.max(0, Math.min(1, level));
+}
+
 export function getDarkColor(color, level) {
-    const lv = (typeof level === 'number' && Number.isFinite(level)) ? level : 0;
+    const lv = clampLevel(level);
     const rgbc = HexToRgb(color);
     for (let i = 0; i < 3; i++) {
         rgbc[i] = Math.max(0, Math.min(255, Math.floor(rgbc[i] * (1 - lv))));
@@ -32,7 +45,7 @@ export function getDarkColor(color, level) {
 }
 
 export function getLightColor(color, level) {
-    const lv = (typeof level === 'number' && Number.isFinite(level)) ? level : 0;
+    const lv = clampLevel(level);
     const rgbc = HexToRgb(color);
     for (let i = 0; i < 3; i++) {
         rgbc[i] = Math.max(0, Math.min(255, Math.floor((255 - rgbc[i]) * lv + rgbc[i])));

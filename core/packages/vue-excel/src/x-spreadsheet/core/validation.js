@@ -42,14 +42,24 @@ class Validation {
       type, required, operator, value,
     } = validator;
     return {
-      refs: refs.slice(), mode, type, required, operator, value,
+      refs: refs.slice(),
+      mode,
+      type,
+      required,
+      operator,
+      value: Array.isArray(value) ? value.slice() : value,
     };
   }
 
-  static valueOf({
-    refs, mode, type, required, operator, value,
-  }) {
-    return new Validation(mode, Array.isArray(refs) ? refs.slice() : [], new Validator(type, required, value, operator));
+  static valueOf(d) {
+    if (!d || typeof d !== 'object') {
+      return null;
+    }
+    const {
+      refs, mode, type, required, operator, value,
+    } = d;
+    const clonedValue = Array.isArray(value) ? value.slice() : value;
+    return new Validation(mode, Array.isArray(refs) ? refs.slice() : [], new Validator(type, required, clonedValue, operator));
   }
 }
 
@@ -139,7 +149,7 @@ class Validations {
 
   setData(d) {
     this.errors.clear();
-    this._ = Array.isArray(d) ? d.map(it => Validation.valueOf(it)) : [];
+    this._ = Array.isArray(d) ? d.map(it => Validation.valueOf(it)).filter(Boolean) : [];
   }
 }
 

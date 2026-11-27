@@ -10,6 +10,7 @@ const alphabets = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', '
  * @returns {string}
  */
 export function stringAt(index) {
+  if (!Number.isInteger(index) || index < 0) return '';
   let str = '';
   let cindex = index;
   while (cindex >= 0) {
@@ -72,7 +73,7 @@ export function xy2expr(x, y) {
  * @param {number} yn
  * @returns {tagA1}
  */
-export function expr2expr(src, xn, yn, condition = () => true) {
+export function expr2expr(src, xn, yn, condition = () => true, ignoreAbs = false) {
   if (xn === 0 && yn === 0) return src;
   if (typeof src !== 'string') return src;
   const match = src.trim().match(/^(\$?)([A-Za-z]+)(\$?)(\d+)$/);
@@ -82,8 +83,8 @@ export function expr2expr(src, xn, yn, condition = () => true) {
   const y = parseInt(rowStr, 10) - 1;
   if (Number.isNaN(x) || Number.isNaN(y) || x < 0 || y < 0) return src;
   if (!condition(x, y)) return src;
-  const nx = absCol ? x : x + xn;
-  const ny = absRow ? y : y + yn;
+  const nx = (absCol && !ignoreAbs) ? x : x + xn;
+  const ny = (absRow && !ignoreAbs) ? y : y + yn;
   if (nx < 0 || ny < 0) return src;
   return `${absCol}${stringAt(nx)}${absRow}${ny + 1}`;
 }

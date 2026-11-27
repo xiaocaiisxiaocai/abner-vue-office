@@ -60,7 +60,16 @@ export default class ContextMenu {
 
   // row-col: the whole rows or the whole cols
   // range: select range
+  // read: copy only
   setMode(mode) {
+    if (mode === 'read') {
+      this.menuItems.forEach((item, idx) => {
+        if (idx === 0) item.show();
+        else item.hide();
+      });
+      return;
+    }
+    this.menuItems.forEach(item => item.show());
     const hideEl = this.menuItems[12];
     if (mode === 'row-col') {
       hideEl.show();

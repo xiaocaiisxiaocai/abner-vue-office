@@ -7,13 +7,13 @@ const babelOptions = {
     babelHelpers: 'bundled',
     babelrc: false,
     configFile: false,
-    exclude: [/node_modules/, /src[\\/](pdf|worker)\.js$/],
+    exclude: /node_modules/,
     presets: [
         [
             '@babel/preset-env',
             {
                 targets: {
-                    browsers: ['chrome >= 49', 'edge >= 15', 'firefox >= 52', 'safari >= 10', 'ie >= 11']
+                    browsers: ['> 1%', 'last 2 versions', 'not dead']
                 }
             }
         ]

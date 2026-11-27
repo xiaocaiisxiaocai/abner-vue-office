@@ -66,6 +66,9 @@ app.listen(3000);
 - 可以看看@error事件，抛出了什么错误信息
 
 
+## Vue 2 环境下组件未生效或版本入口不一致
+如果使用 `pnpm` 或在安装依赖时启用了 `--ignore-scripts`，`postinstall` 自动版本切换脚本可能被跳过。可执行对应包的 CLI 切换命令（如 `npx abner-vue-office-docx-switch 2`），或直接从 `@abner-vue-office/<pkg>/lib/v2` 及 `@abner-vue-office/<pkg>/lib/v2/index.css`（`docx`、`excel`）引入。
+
 ## **.defineComponent is not a function
 
 出现这个问题一般是通过CDN的方式加载了vue.js文件，且CDN中的vue版本和开发环境安装的vue版本不一致。

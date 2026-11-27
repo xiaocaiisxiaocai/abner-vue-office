@@ -8,9 +8,11 @@ const OP_PREC = {
 };
 
 const infix2suffix = (src) => {
+  if (typeof src !== 'string') return [];
   const operatorStack = [];
   const stack = [];
   let numBuf = '';
+  let expectUnary = true;
   const flushNum = () => {
     if (numBuf.length > 0) {
       stack.push(numBuf);
@@ -19,15 +21,17 @@ const infix2suffix = (src) => {
   };
   for (let i = 0; i < src.length; i += 1) {
     const c = src.charAt(i);
-    if (c === ' ') {
+    if (/\s/.test(c)) {
       flushNum();
       continue;
     }
     if ((c >= '0' && c <= '9') || c === '.') {
       numBuf += c;
+      expectUnary = false;
     } else if (c === '(') {
       flushNum();
       operatorStack.push(c);
+      expectUnary = true;
     } else if (c === ')') {
       flushNum();
       while (operatorStack.length > 0) {
@@ -35,7 +39,14 @@ const infix2suffix = (src) => {
         if (c1 === '(') break;
         stack.push(c1);
       }
+      expectUnary = false;
     } else if (OP_PREC[c]) {
+      if (expectUnary && (c === '-' || c === '+')) {
+        if (c === '-' && numBuf.length === 0) {
+          numBuf = '-';
+        }
+        continue;
+      }
       flushNum();
       while (operatorStack.length > 0) {
         const last = operatorStack[operatorStack.length - 1];
@@ -45,6 +56,9 @@ const infix2suffix = (src) => {
         stack.push(operatorStack.pop());
       }
       operatorStack.push(c);
+      expectUnary = true;
+    } else {
+      flushNum();
     }
   }
   flushNum();

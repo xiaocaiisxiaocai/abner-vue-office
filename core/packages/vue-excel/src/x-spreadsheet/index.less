@@ -340,6 +340,7 @@
     }
   }
   .@{css-prefix}-selector-area {
+    box-sizing: content-box;
     position: absolute;
     border: 2px solid rgb(75, 137, 255);
     background: rgba(75, 137, 255, .1);
@@ -372,6 +373,7 @@
 .@{css-prefix}-editor {
   z-index: 20;
   .@{css-prefix}-editor-area {
+    box-sizing: content-box;
     position: absolute;
     text-align: left;
     border: 2px solid rgb(75, 137, 255);
@@ -552,6 +554,7 @@
 }
 
 .@{css-prefix}-toolbar, .@{css-prefix}-bottombar {
+  box-sizing: content-box;
   height: 40px;
   padding: 0 30px;
   text-align: left;
@@ -574,13 +577,17 @@
 }
 
 .@{css-prefix}-menu {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
   list-style: none;
   margin: 0;
   padding: 0;
   user-select: none;
 }
 .@{css-prefix}-menu > li {
-  float: left;
+  flex: 0 0 auto;
   line-height: 1.25em;
   padding: .785em 1em;
   margin: 0;
@@ -613,6 +620,7 @@
 }
 
 .@{css-prefix}-toolbar {
+  box-sizing: border-box;
   border-bottom: 1px solid #e0e2e4;
 
   .@{css-prefix}-toolbar-btns {
@@ -790,7 +798,7 @@
   box-shadow: 2px 2px 5px rgba(0,0,0,.2);
   position: absolute;
   left: 0;
-  top: calc(100% + 5px);
+  top: calc(~'100% + 5px');
   z-index: 10;
   width: auto;
 }

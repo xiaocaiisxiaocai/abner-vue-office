@@ -30,7 +30,20 @@ class AbnerJsExcelPreview {
     swapTimer = null;
     fileData = null;
     renderId = 0;
+    tableRenderVersion = 0;
+    activeAbortController = null;
     isDestroyed = false;
+
+    abortActiveRequest() {
+        if (this.activeAbortController) {
+            try {
+                this.activeAbortController.abort();
+            } catch (e) {
+                // ignore
+            }
+            this.activeAbortController = null;
+        }
+    }
 
     constructor(container, options = {}, requestOptions = {}) {
         if (!container) {
@@ -101,8 +114,12 @@ class AbnerJsExcelPreview {
 
         const swapFunc = this.xs.bottombar.swapFunc;
         this.xs.bottombar.swapFunc = function (index) {
+            if (!that.xs || !that.xs.datas || !that.xs.datas[index]) {
+                return;
+            }
             that.sheetIndex = index;
-            that.offset = (that.xs.datas && that.xs.datas[index]) ? that.xs.datas[index].getSelectedRect() : null;
+            that.offset = that.xs.datas[index].getSelectedRect();
+            that.renderImageDebounce && that.renderImageDebounce.cancel();
             swapFunc.call(that.xs.bottombar, index);
             that.offset = that.xs.sheet.data.getSelectedRect();
             that.clearSwapTimer();
@@ -111,8 +128,6 @@ class AbnerJsExcelPreview {
                 if (that.isDestroyed || !that.xs) {
                     return;
                 }
-                that.renderImageDebounce && that.renderImageDebounce.cancel();
-                that.xs.reRender();
                 that.options && typeof that.options.switchSheet === 'function' && that.options.switchSheet(index);
             });
         };
@@ -128,19 +143,21 @@ class AbnerJsExcelPreview {
             }
             const targetRenderId = that.renderId;
             const targetSheetIndex = that.sheetIndex;
+            const targetTableVersion = that.tableRenderVersion;
             renderImage(
                 that.ctx,
                 that.mediasSource,
                 that.workbookDataSource._worksheets[targetSheetIndex],
                 that.offset,
                 that.options,
-                () => !that.isDestroyed && targetRenderId === that.renderId && targetSheetIndex === that.sheetIndex
+                () => !that.isDestroyed && targetRenderId === that.renderId && targetSheetIndex === that.sheetIndex && targetTableVersion === that.tableRenderVersion
             );
         }, 200, {
             leading: true
         });
         const tableRender = this.xs.sheet.table.render;
         this.xs.sheet.table.render = function (...args) {
+            that.tableRenderVersion += 1;
             that.xs && that.xs.sheet && tableRender.apply(that.xs.sheet.table, args);
             that.renderImageDebounce && that.renderImageDebounce();
         };
@@ -173,22 +190,34 @@ class AbnerJsExcelPreview {
         this.xs && this.xs.loadData({});
     }
 
+    hasValidWorksheets(wb) {
+        if (!wb) {
+            return false;
+        }
+        if (Array.isArray(wb.worksheets)) {
+            return wb.worksheets.length > 0;
+        }
+        return Array.isArray(wb._worksheets) && wb._worksheets.some(Boolean);
+    }
+
     renderExcel(buffer, currentId = this.renderId) {
         if (this.isDestroyed || currentId !== this.renderId || !this.xs) {
             return Promise.resolve();
         }
-        this.fileData = buffer;
         return readExcelData(buffer, this.options.xls).then(workbook => {
             if (this.isDestroyed || currentId !== this.renderId || !this.xs) {
                 return;
             }
-            if (!workbook._worksheets || workbook._worksheets.length === 0) {
+            if (!this.hasValidWorksheets(workbook)) {
                 throw new Error('未获取到数据，可能文件格式不正确或文件已损坏');
             }
             if (this.options.beforeTransformData && typeof this.options.beforeTransformData === 'function') {
                 const nextWb = this.options.beforeTransformData(workbook);
                 if (nextWb !== undefined) {
                     workbook = nextWb;
+                }
+                if (!this.hasValidWorksheets(workbook)) {
+                    throw new Error('未获取到数据，可能文件格式不正确或文件已损坏');
                 }
             }
             let { workbookData, medias, workbookSource } = transferExcelToSpreadSheet(workbook, this.options);
@@ -199,6 +228,7 @@ class AbnerJsExcelPreview {
                 }
             }
             this.clearSwapTimer();
+            this.fileData = buffer;
             this.mediasSource = medias;
             this.workbookDataSource = workbookSource;
             this.offset = null;
@@ -238,18 +268,31 @@ class AbnerJsExcelPreview {
             return;
         }
         const currentId = ++this.renderId;
+        this.abortActiveRequest();
+        this.fileData = null;
         if (!src) {
-            this.fileData = null;
             this.resetEmptyState();
             throw new Error('预览地址不能为空');
         }
         try {
-            const res = await getData(src, this.requestOptions);
+            const reqOpts = this.requestOptions || {};
+            let fetchOpts = reqOpts;
+            if (!reqOpts.signal && typeof AbortController !== 'undefined') {
+                this.activeAbortController = new AbortController();
+                fetchOpts = { ...reqOpts, signal: this.activeAbortController.signal };
+            }
+            const res = await getData(src, fetchOpts);
+            if (currentId === this.renderId) {
+                this.activeAbortController = null;
+            }
             if (this.isDestroyed || currentId !== this.renderId) {
                 return;
             }
             await this.renderExcel(res, currentId);
         } catch (e) {
+            if (currentId === this.renderId) {
+                this.activeAbortController = null;
+            }
             if (!this.isDestroyed && currentId === this.renderId) {
                 this.fileData = null;
                 this.resetEmptyState();
@@ -266,6 +309,7 @@ class AbnerJsExcelPreview {
     destroy() {
         this.isDestroyed = true;
         ++this.renderId;
+        this.abortActiveRequest();
         this.clearSwapTimer();
         this.renderImageDebounce && this.renderImageDebounce.cancel();
         this.renderImageDebounce = null;

@@ -348,7 +348,7 @@ test('all 8 previously uncovered UI components and all 21 toolbar modules operat
         dfm.contentEl.el.children[0].dispatchEvent({ type: 'click' });
         assert.equal(formulaChanged.key, 'SUM');
 
-        // Scrollbar silent vs normal move & clamp
+        // Scrollbar silent vs normal move & clamp (suppresses async scroll at expected pos)
         const sb = new ui.Scrollbar(true);
         let movedDist = null;
         sb.moveFn = d => { movedDist = d; };
@@ -356,7 +356,10 @@ test('all 8 previously uncovered UI components and all 21 toolbar modules operat
         assert.equal(sb.el.css('height'), '0px');
         sb.move({ top: 40 }, true);
         sb.el.el.dispatchEvent({ type: 'scroll', target: sb.el.el, stopPropagation: () => {} });
-        assert.equal(movedDist, 40);
+        assert.equal(movedDist, null);
+        sb.move({ top: 55 }, false);
+        sb.el.el.dispatchEvent({ type: 'scroll', target: sb.el.el, stopPropagation: () => {} });
+        assert.equal(movedDist, 55);
 
         // xtoast XSS-safe textContent + dimmer cleanup on Esc
         ui.messageMod.xtoast('Alert', '<img src=x onerror=1>');
@@ -446,9 +449,10 @@ test('real Spreadsheet and Sheet lifecycle covers addSheet, loadData([]), edit/r
         assert.equal(xs.getData().length, 2);
 
         // No-op editor open/close does not push phantom undo snapshot
+        const undoLenBefore = xs.data.history.undoItems.length;
         xs.sheet.editor.setCell(xs.cell(0, 0, 1));
         xs.sheet.editor.clear();
-        assert.equal(xs.data.canUndo(), true); // from cellText
+        assert.equal(xs.data.history.undoItems.length, undoLenBefore);
 
         // Scroll round-trip via resetData does not advance scrollTop/scrollLeft
         xs.data.scroll.ri = 1;
@@ -458,10 +462,19 @@ test('real Spreadsheet and Sheet lifecycle covers addSheet, loadData([]), edit/r
         let scrollMoves = 0;
         xs.sheet.verticalScrollbar.moveFn = () => { scrollMoves++; };
         xs.sheet.resetData(xs.data);
-        assert.equal(scrollMoves, 0);
+        sbAsyncCheck: {
+          xs.sheet.verticalScrollbar.el.el.dispatchEvent({
+            type: 'scroll',
+            target: xs.sheet.verticalScrollbar.el.el,
+            stopPropagation: () => {}
+          });
+          assert.equal(scrollMoves, 0);
+          break sbAsyncCheck;
+        }
 
         xs.loadData([]);
-        assert.equal(xs.data, null);
+        assert.equal(xs.data.name, 'sheet1');
+        assert.equal(xs.getData().length, 1);
         assert.equal(xs.sheet.data.name, 'sheet1');
 
         xs.destroy();

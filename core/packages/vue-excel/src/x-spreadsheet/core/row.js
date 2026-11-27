@@ -1,7 +1,84 @@
 import helper from './helper';
-import { expr2expr } from './alphabet';
+import { expr2expr, expr2xy, stringAt } from './alphabet';
 
-const FORMULA_REF_RE = /\$?[a-zA-Z]{1,3}\$?\d+/g;
+function shiftFormulaRefs(formula, xn, yn, condition, ignoreAbs = false, delBounds = null) {
+  let out = '';
+  let i = 0;
+  while (i < formula.length) {
+    const ch = formula[i];
+    if (ch === '"') {
+      let end = i + 1;
+      while (end < formula.length) {
+        if (formula[end] === '"') {
+          if (formula[end + 1] === '"') {
+            end += 2;
+            continue;
+          }
+          end += 1;
+          break;
+        }
+        end += 1;
+      }
+      out += formula.slice(i, end);
+      i = end;
+      continue;
+    }
+    const tail = formula.slice(i);
+    const prevChar = i > 0 ? formula[i - 1] : '';
+    const isBoundaryBefore = !prevChar || !/[A-Za-z0-9_!]/.test(prevChar);
+    const m = isBoundaryBefore && tail.match(/^(\$?[A-Za-z]{1,3}\$?\d+)(?![A-Za-z0-9_(])/);
+    if (m) {
+      const word = m[1];
+      const afterPos = i + word.length;
+      const nextChar = formula[afterPos] || '';
+      if (nextChar === '!') {
+        out += word;
+        i = afterPos;
+        continue;
+      }
+      if (delBounds) {
+        const refMatch = word.match(/^(\$?)([A-Za-z]+)(\$?)(\d+)$/);
+        if (refMatch) {
+          const [, absCol, , absRow] = refMatch;
+          const [x, y] = expr2xy(word);
+          if (!Number.isNaN(x) && !Number.isNaN(y)) {
+            if (delBounds.axis === 'row' && y >= delBounds.start && y <= delBounds.end) {
+              if (prevChar === ':') {
+                const clampedY = Math.max(0, delBounds.start - 1);
+                out += `${absCol}${stringAt(x)}${absRow}${clampedY + 1}`;
+                i = afterPos;
+                continue;
+              }
+              if (nextChar === ':') {
+                out += `${absCol}${stringAt(x)}${absRow}${delBounds.start + 1}`;
+                i = afterPos;
+                continue;
+              }
+            } else if (delBounds.axis === 'col' && x >= delBounds.start && x <= delBounds.end) {
+              if (prevChar === ':') {
+                const clampedX = Math.max(0, delBounds.start - 1);
+                out += `${absCol}${stringAt(clampedX)}${absRow}${y + 1}`;
+                i = afterPos;
+                continue;
+              }
+              if (nextChar === ':') {
+                out += `${absCol}${stringAt(delBounds.start)}${absRow}${y + 1}`;
+                i = afterPos;
+                continue;
+              }
+            }
+          }
+        }
+      }
+      out += expr2expr(word, xn, yn, condition, ignoreAbs);
+      i = afterPos;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
 
 class Rows {
   constructor({ len, height }) {
@@ -70,7 +147,11 @@ class Rows {
   }
 
   getOrNew(ri) {
-    this._[ri] = this._[ri] || { cells: {} };
+    if (!this._[ri]) {
+      this._[ri] = { cells: {} };
+    } else if (!this._[ri].cells) {
+      this._[ri].cells = {};
+    }
     return this._[ri];
   }
 
@@ -97,15 +178,19 @@ class Rows {
   // what: all | text | format
   setCell(ri, ci, cell, what = 'all') {
     const row = this.getOrNew(ri);
+    const existing = row.cells[ci];
+    if (existing && existing.editable === false) {
+      return;
+    }
     if (what === 'all') {
-      row.cells[ci] = cell;
+      row.cells[ci] = helper.cloneDeep(cell);
     } else if (what === 'text') {
-      row.cells[ci] = row.cells[ci] || {};
+      row.cells[ci] = existing || {};
       row.cells[ci].text = cell.text;
     } else if (what === 'format') {
-      row.cells[ci] = row.cells[ci] || {};
+      row.cells[ci] = existing || {};
       row.cells[ci].style = cell.style;
-      if (cell.merge) row.cells[ci].merge = cell.merge;
+      if (cell.merge) row.cells[ci].merge = cell.merge.slice();
     }
   }
 
@@ -115,7 +200,7 @@ class Rows {
   }
 
   // what: all | format | text
-  copyPaste(srcCellRange, dstCellRange, what, autofill = false, cb = () => {}) {
+  copyPaste(srcCellRange, dstCellRange, what, autofill = false, cb = () => {}, beforeWrite = null) {
     const {
       sri, sci, eri, eci,
     } = srcCellRange;
@@ -134,6 +219,9 @@ class Rows {
         }
       }
     }
+    if (typeof beforeWrite === 'function') {
+      beforeWrite();
+    }
     snapshot.forEach(([i, j, srcCell]) => {
       for (let ii = dsri; ii <= deri; ii += rn) {
         for (let jj = dsci; jj <= deci; jj += cn) {
@@ -147,12 +235,12 @@ class Rows {
               if (textStr[0] === '=') {
                 const dx = nci - j;
                 const dy = nri - i;
-                ncell.text = textStr.replace(FORMULA_REF_RE, word => expr2expr(word, dx, dy));
+                ncell.text = shiftFormulaRefs(textStr, dx, dy, () => true, false);
               } else if ((rn <= 1 && cn > 1 && (dsri > eri || deri < sri))
                 || (cn <= 1 && rn > 1 && (dsci > eci || deci < sci))
                 || (rn <= 1 && cn <= 1)) {
                 const step = (nci - j) !== 0 ? (nci - j) : (nri - i);
-                const result = /-?\d+$/.exec(textStr);
+                const result = /^-?\d+$/.exec(textStr) || /\d+$/.exec(textStr);
                 if (result !== null) {
                   const index = Number(result[0]) + step;
                   ncell.text = `${textStr.substring(0, result.index)}${index}`;
@@ -172,8 +260,8 @@ class Rows {
     const snapshot = [];
     srcCellRange.each((ri, ci) => {
       const cell = this.getCell(ri, ci);
-      if (cell !== null) {
-        snapshot.push([ri - srcCellRange.sri, ci - srcCellRange.sci, cell]);
+      if (cell !== null && cell.editable !== false) {
+        snapshot.push([ri - srcCellRange.sri, ci - srcCellRange.sci, helper.cloneDeep(cell)]);
       }
     });
     this.deleteCells(srcCellRange, 'all');
@@ -206,7 +294,7 @@ class Rows {
       let nri = parseInt(ri, 10);
       this.eachCells(ri, (ci, cell) => {
         if (cell && cell.text && cell.text[0] === '=') {
-          cell.text = cell.text.replace(FORMULA_REF_RE, word => expr2expr(word, 0, n, (_x, y) => y >= sri));
+          cell.text = shiftFormulaRefs(cell.text, 0, n, (_x, y) => y >= sri, true);
         }
       });
       if (nri >= sri) {
@@ -226,7 +314,14 @@ class Rows {
       if (nri < sri || nri > eri) {
         this.eachCells(ri, (ci, cell) => {
           if (cell && cell.text && cell.text[0] === '=') {
-            cell.text = cell.text.replace(FORMULA_REF_RE, word => expr2expr(word, 0, -n, (_x, y) => y > eri));
+            cell.text = shiftFormulaRefs(
+              cell.text,
+              0,
+              -n,
+              (_x, y) => y > eri,
+              true,
+              { axis: 'row', start: sri, end: eri },
+            );
           }
         });
       }
@@ -246,7 +341,7 @@ class Rows {
       this.eachCells(ri, (ci, cell) => {
         let nci = parseInt(ci, 10);
         if (cell && cell.text && cell.text[0] === '=') {
-          cell.text = cell.text.replace(FORMULA_REF_RE, word => expr2expr(word, n, 0, x => x >= sci));
+          cell.text = shiftFormulaRefs(cell.text, n, 0, x => x >= sci, true);
         }
         if (nci >= sci) {
           nci += n;
@@ -265,7 +360,14 @@ class Rows {
         const nci = parseInt(ci, 10);
         if (nci < sci || nci > eci) {
           if (cell && cell.text && cell.text[0] === '=') {
-            cell.text = cell.text.replace(FORMULA_REF_RE, word => expr2expr(word, -n, 0, x => x > eci));
+            cell.text = shiftFormulaRefs(
+              cell.text,
+              -n,
+              0,
+              x => x > eci,
+              true,
+              { axis: 'col', start: sci, end: eci },
+            );
           }
         }
         if (nci < sci) {
@@ -317,8 +419,12 @@ class Rows {
       if (row && row.cells) {
         Object.keys(row.cells).forEach((ciKey) => {
           const ci = parseInt(ciKey, 10);
-          if (!Number.isNaN(ci) && ci > maxCi) {
-            maxCi = ci;
+          if (!Number.isNaN(ci)) {
+            const cell = row.cells[ciKey];
+            const spanRi = ri + (cell && Array.isArray(cell.merge) ? (cell.merge[0] || 0) : 0);
+            const spanCi = ci + (cell && Array.isArray(cell.merge) ? (cell.merge[1] || 0) : 0);
+            if (spanRi > maxRi) maxRi = spanRi;
+            if (spanCi > maxCi) maxCi = spanCi;
           }
         });
       }
@@ -347,9 +453,20 @@ class Rows {
     const copy = {};
     Object.keys(d).forEach((k) => {
       if (k === 'len') {
-        this.len = d.len;
+        const parsedLen = Number(d.len);
+        if (Number.isInteger(parsedLen) && parsedLen >= 0) {
+          this.len = parsedLen;
+        }
       } else if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
-        copy[k] = d[k];
+        const rowObj = d[k];
+        if (rowObj && typeof rowObj === 'object') {
+          copy[k] = {
+            ...rowObj,
+            ...(rowObj.cells && typeof rowObj.cells === 'object' ? { cells: { ...rowObj.cells } } : {}),
+          };
+        } else {
+          copy[k] = rowObj;
+        }
       }
     });
     this._ = copy;

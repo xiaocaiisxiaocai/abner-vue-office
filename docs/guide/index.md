@@ -33,6 +33,19 @@ import Vue from 'vue'
 import VueCompositionAPI from '@vue/composition-api'
 Vue.use(VueCompositionAPI)
 ```
+如果使用 `pnpm` 或启用了 `--ignore-scripts` 导致自动版本切换未执行，可手动切换或直接引入对应版本入口：
+```shell
+# 手动切换为 Vue 2（如需切换回 Vue 3 可传参数 3）
+npx abner-vue-office-docx-switch 2
+npx abner-vue-office-excel-switch 2
+npx abner-vue-office-pdf-switch 2
+npx abner-vue-office-pptx-switch 2
+```
+```javascript
+// 或在 Vue 2 中直接引入 lib/v2（Vue 3 对应 lib/v3）
+import AbnerVueOfficeDocx from '@abner-vue-office/docx/lib/v2'
+import '@abner-vue-office/docx/lib/v2/index.css'
+```
 
 
 ## 使用网络地址预览

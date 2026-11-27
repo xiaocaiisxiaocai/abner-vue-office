@@ -104,6 +104,13 @@ init: (container: HTMLElement, options?: Options, requestOptions?: RequestOption
 
 预览支持的配置参数，三个预览库支持的配置不同。
 
+- requestOptions
+
+可选，远程文件请求配置（当 `preview(src)` 传入 URL 字符串时生效）：
+- `@abner-vue-office/js-docx`：透传给 `window.fetch`（支持 `method`、`headers`、`withCredentials`、`credentials` 等）
+- `@abner-vue-office/js-excel`：透传给 `XMLHttpRequest`（支持 `method`、`headers`、`withCredentials`、`credentials`、`timeout`、`body` 等）
+- `@abner-vue-office/js-pdf`：提取 `headers`（映射为 `httpHeaders`）及 `withCredentials` / `credentials: 'include'` 并传给 `pdfjsLib.getDocument`
+
 docx预览支持的配置，详细说明见库docx-preview：
 ```ts
 export interface Options {

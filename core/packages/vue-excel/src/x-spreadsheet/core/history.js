@@ -26,16 +26,38 @@ export default class History {
   undo(currentd, cb) {
     const { undoItems, redoItems } = this;
     if (this.canUndo()) {
-      redoItems.push(JSON.stringify(currentd));
-      cb(JSON.parse(undoItems.pop()));
+      const currentSnapshot = JSON.stringify(currentd);
+      const raw = undoItems[undoItems.length - 1];
+      const prev = JSON.parse(raw);
+      undoItems.pop();
+      redoItems.push(currentSnapshot);
+      try {
+        cb(prev);
+      } catch (e) {
+        redoItems.pop();
+        undoItems.push(raw);
+        throw e;
+      }
     }
   }
 
   redo(currentd, cb) {
     const { undoItems, redoItems } = this;
     if (this.canRedo()) {
-      undoItems.push(JSON.stringify(currentd));
-      cb(JSON.parse(redoItems.pop()));
+      const currentSnapshot = JSON.stringify(currentd);
+      const raw = redoItems[redoItems.length - 1];
+      const next = JSON.parse(raw);
+      redoItems.pop();
+      undoItems.push(currentSnapshot);
+      const shifted = undoItems.length > this.maxLength ? undoItems.shift() : undefined;
+      try {
+        cb(next);
+      } catch (e) {
+        if (shifted !== undefined) undoItems.unshift(shifted);
+        undoItems.pop();
+        redoItems.push(raw);
+        throw e;
+      }
     }
   }
 }

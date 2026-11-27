@@ -22,7 +22,7 @@ export default class ModalValidation extends Modal {
     );
     const rf = new FormField(
       new FormInput('120px', 'E3 or E3:F12'),
-      { required: true, pattern: /^([A-Z]{1,2}[1-9]\d*)(:[A-Z]{1,2}[1-9]\d*)?$/ },
+      { required: true, pattern: /^([A-Z]{1,3}[1-9]\d*)(:[A-Z]{1,3}[1-9]\d*)?$/ },
     );
     const cf = new FormField(
       new FormSelect('list',

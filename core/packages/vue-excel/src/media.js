@@ -13,6 +13,7 @@ export function renderImage(ctx, medias, sheet, offset, options = {}, shouldDraw
     if (!ctx || !sheet || !sheet._media || !sheet._media.length) {
         return;
     }
+    const drawTasks = [];
     sheet._media.forEach(media => {
         if (!media) {
             return;
@@ -20,8 +21,31 @@ export function renderImage(ctx, medias, sheet, offset, options = {}, shouldDraw
         const { imageId, range, type } = media;
         if (type === 'image' && medias && medias[imageId]) {
             const position = calcPosition(sheet, range, offset, options);
-            drawImage(ctx, imageId, medias[imageId], position, shouldDraw);
+            drawTasks.push(
+                getImage(ctx, imageId, medias[imageId])
+                    .then(image => ({ image, position }))
+                    .catch(e => {
+                        console.error(e);
+                        return null;
+                    })
+            );
         }
+    });
+    if (drawTasks.length === 0) {
+        return;
+    }
+    return Promise.all(drawTasks).then(items => {
+        if (typeof shouldDraw === 'function' && !shouldDraw()) {
+            return;
+        }
+        items.forEach(item => {
+            if (item && item.image) {
+                if (typeof shouldDraw === 'function' && !shouldDraw()) {
+                    return;
+                }
+                drawImageBitmap(ctx, item.image, item.position);
+            }
+        });
     });
 }
 
@@ -32,19 +56,19 @@ const defaultRowHeight = 24;
 
 function getColWidth(sheet, index, widthOffset = 0) {
     const col = sheet?._columns?.[index];
-    if (col?._hidden) {
-        return 0.1;
+    if (col?._hidden || col?.width === 0) {
+        return 0;
     }
-    const baseWidth = col?.width ? col.width * 6 : defaultColWidth;
+    const baseWidth = typeof col?.width === 'number' ? col.width * 6 : defaultColWidth;
     return Math.max(1, baseWidth + (widthOffset || 0));
 }
 
 function getRowHeight(sheet, index, heightOffset = 0) {
     const row = sheet?._rows?.[index];
-    if (row?._hidden) {
-        return 0.1;
+    if (row?._hidden || row?.height === 0) {
+        return 0;
     }
-    const baseHeight = row?.height || defaultRowHeight;
+    const baseHeight = typeof row?.height === 'number' ? row.height : defaultRowHeight;
     return Math.max(1, baseHeight + (heightOffset || 0));
 }
 
@@ -113,11 +137,20 @@ export function calcPosition(sheet, range, offset, options) {
         height = ext.height / 1.333333;
     }
 
+    const frozenView = Array.isArray(sheet && sheet.views)
+        ? sheet.views.find(v => v && v.state === 'frozen')
+        : null;
+    const freezeCol = frozenView ? (frozenView.xSplit || 0) : 0;
+    const freezeRow = frozenView ? (frozenView.ySplit || 0) : 0;
+    const scrollX = nativeCol < freezeCol ? 0 : (offset?.scroll?.x || 0);
+    const scrollY = nativeRow < freezeRow ? 0 : (offset?.scroll?.y || 0);
+
     return {
-        x: (x - (offset?.scroll?.x || 0)) * dpr,
-        y: (y - (offset?.scroll?.y || 0)) * dpr,
+        x: (x - scrollX) * dpr,
+        y: (y - scrollY) * dpr,
         width: width * dpr,
-        height: height * dpr
+        height: height * dpr,
+        dpr
     };
 }
 
@@ -127,50 +160,43 @@ export function clearCache(ctx) {
     }
 }
 
-function drawImage(ctx, index, data, position, shouldDraw) {
-    if (!ctx || !data) {
+function drawImageBitmap(ctx, image, position) {
+    if (!ctx || !image) {
         return;
     }
-    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-    getImage(ctx, index, data).then(image => {
-        if (typeof shouldDraw === 'function' && !shouldDraw()) {
-            return;
-        }
-        let sx = 0;
-        let sy = 0;
-        let sWidth = image.width;
-        let sHeight = image.height;
-        let dx = position.x;
-        let dy = position.y;
-        let dWidth = position.width;
-        let dHeight = position.height;
-        if (!sWidth || !sHeight || dWidth <= 0 || dHeight <= 0) {
-            return;
-        }
-        const scaleX = dWidth / sWidth;
-        const scaleY = dHeight / sHeight;
+    const dpr = position.dpr || (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    let sx = 0;
+    let sy = 0;
+    let sWidth = image.width;
+    let sHeight = image.height;
+    let dx = position.x;
+    let dy = position.y;
+    let dWidth = position.width;
+    let dHeight = position.height;
+    if (!sWidth || !sHeight || dWidth <= 0 || dHeight <= 0) {
+        return;
+    }
+    const scaleX = dWidth / sWidth;
+    const scaleY = dHeight / sHeight;
 
-        if (dx < clipWidth * dpr) {
-            const diff = clipWidth * dpr - dx;
-            dx = clipWidth * dpr;
-            dWidth -= diff;
-            sWidth -= diff / scaleX;
-            sx += diff / scaleX;
-        }
-        if (dy < clipHeight * dpr) {
-            const diff = clipHeight * dpr - dy;
-            dy = clipHeight * dpr;
-            dHeight -= diff;
-            sHeight -= diff / scaleY;
-            sy += diff / scaleY;
-        }
-        if (dWidth <= 0 || dHeight <= 0 || sWidth <= 0 || sHeight <= 0) {
-            return;
-        }
-        ctx.drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
-    }).catch(e => {
-        console.error(e);
-    });
+    if (dx < clipWidth * dpr) {
+        const diff = clipWidth * dpr - dx;
+        dx = clipWidth * dpr;
+        dWidth -= diff;
+        sWidth -= diff / scaleX;
+        sx += diff / scaleX;
+    }
+    if (dy < clipHeight * dpr) {
+        const diff = clipHeight * dpr - dy;
+        dy = clipHeight * dpr;
+        dHeight -= diff;
+        sHeight -= diff / scaleY;
+        sy += diff / scaleY;
+    }
+    if (dWidth <= 0 || dHeight <= 0 || sWidth <= 0 || sHeight <= 0) {
+        return;
+    }
+    ctx.drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
 }
 
 function getImage(ctx, index, data) {

@@ -2,9 +2,12 @@ import { tf } from '../locale/locale';
 
 const formatStringRender = v => v;
 
-const isNumericText = v => (
-  v !== '' && v !== null && v !== undefined && /^-?\d+(\.\d+)?$/.test(String(v).trim())
-);
+const isNumericText = (v) => {
+  if (v === '' || v === null || v === undefined || typeof v === 'boolean') return false;
+  const s = String(v).trim();
+  if (s === '') return false;
+  return Number.isFinite(Number(s));
+};
 
 const addThousands = (intPart) => {
   const neg = intPart.startsWith('-');
@@ -12,15 +15,27 @@ const addThousands = (intPart) => {
   return `${neg ? '-' : ''}${absInt.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1,')}`;
 };
 
+const normalizeNegZero = (formatted) => (
+  typeof formatted === 'string' && /^-[0]+(?:\.[0]+)?$/.test(formatted)
+    ? formatted.slice(1)
+    : formatted
+);
+
 const formatNumberRender = (v) => {
+  if (v == null) return '';
   if (isNumericText(v)) {
     const str = String(v).trim();
     const num = Number(str);
-    if (Math.abs(num) >= 1e15 || !Number.isFinite(num)) {
-      const [intPart, decPart = ''] = str.split('.');
-      return `${addThousands(intPart)}.${decPart.slice(0, 2).padEnd(2, '0')}`;
+    if (Math.abs(num) >= 1e15) {
+      if (!/[eE]/.test(str)) {
+        const [intPart, decPart = ''] = str.split('.');
+        return normalizeNegZero(`${addThousands(intPart)}.${decPart.slice(0, 2).padEnd(2, '0')}`);
+      }
+      const fixed = num.toLocaleString('en-US', { useGrouping: false, minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const [intPart, decPart = '00'] = fixed.split('.');
+      return normalizeNegZero(`${addThousands(intPart)}.${decPart.padEnd(2, '0')}`);
     }
-    const v1 = num.toFixed(2);
+    const v1 = normalizeNegZero(num.toFixed(2));
     const [first, ...parts] = v1.split('.');
     return [addThousands(first), ...parts].join('.');
   }

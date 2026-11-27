@@ -8,6 +8,53 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const CORE_DIR = path.resolve(__dirname, '../..');
 const require = createRequire(import.meta.url);
 
+export function createDeferred() {
+    let resolve;
+    let reject;
+    const promise = new Promise((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+    return { promise, resolve, reject };
+}
+
+export function createCanvasContextMock() {
+    return {
+        scale: () => {},
+        rotate: () => {},
+        translate: () => {},
+        transform: () => {},
+        save: () => {},
+        restore: () => {},
+        beginPath: () => {},
+        closePath: () => {},
+        rect: () => {},
+        clip: () => {},
+        fill: () => {},
+        clearRect: () => {},
+        fillRect: () => {},
+        strokeRect: () => {},
+        fillText: () => {},
+        strokeText: () => {},
+        moveTo: () => {},
+        lineTo: () => {},
+        stroke: () => {},
+        drawImage: () => {},
+        setLineDash: () => {},
+        measureText: s => ({ width: String(s ?? '').length * 8 })
+    };
+}
+
+function setSubtreeConnected(node, connected) {
+    if (!node || typeof node !== 'object') return;
+    if ('isConnected' in node) {
+        node.isConnected = connected;
+    }
+    if (Array.isArray(node.childNodes)) {
+        node.childNodes.forEach(c => setSubtreeConnected(c, connected));
+    }
+}
+
 export function createDomMocks() {
     class MockElement {
         constructor(tagName) {
@@ -46,7 +93,7 @@ export function createDomMocks() {
             this.src = '';
             this.download = '';
             this.href = '';
-            this.isConnected = true;
+            this.isConnected = false;
             this.classList = {
                 add: (...tokens) => {
                     const set = new Set(this._className.split(/\s+/).filter(Boolean));
@@ -83,13 +130,12 @@ export function createDomMocks() {
 
         set innerHTML(val) {
             this._innerHTML = String(val);
-            if (!val) {
-                this.children.forEach(c => {
-                    c.parentNode = null;
-                });
-                this.children = [];
-                this.childNodes = [];
-            }
+            this.children.forEach(c => {
+                c.parentNode = null;
+                setSubtreeConnected(c, false);
+            });
+            this.children = [];
+            this.childNodes = [];
         }
 
         get textContent() {
@@ -101,6 +147,7 @@ export function createDomMocks() {
             this._innerHTML = '';
             this.children.forEach(c => {
                 c.parentNode = null;
+                setSubtreeConnected(c, false);
             });
             this.children = [];
             this.childNodes = [];
@@ -115,6 +162,19 @@ export function createDomMocks() {
             copy.className = this.className;
             copy.width = this.width;
             copy.height = this.height;
+            copy.value = this.value;
+            copy.src = this.src;
+            copy.download = this.download;
+            copy.href = this.href;
+            copy._textContent = this._textContent;
+            copy._innerHTML = this._innerHTML;
+            copy.attributes = new Map(this.attributes);
+            Object.keys(this.style).forEach((k) => {
+                if (typeof this.style[k] !== 'function') {
+                    copy.style[k] = this.style[k];
+                }
+            });
+            copy.getContext = this.getContext;
             if (deep) {
                 this.children.forEach(c => copy.appendChild(c.cloneNode(true)));
             }
@@ -130,6 +190,9 @@ export function createDomMocks() {
                 this.childNodes.push(child);
                 if (child.tagName) {
                     this.children.push(child);
+                }
+                if (this.isConnected) {
+                    setSubtreeConnected(child, true);
                 }
             }
             return child;
@@ -153,6 +216,9 @@ export function createDomMocks() {
                     this.children.splice(cIdx, 0, newNode);
                 }
             }
+            if (this.isConnected) {
+                setSubtreeConnected(newNode, true);
+            }
             return newNode;
         }
 
@@ -167,6 +233,7 @@ export function createDomMocks() {
             }
             if (child) {
                 child.parentNode = null;
+                setSubtreeConnected(child, false);
             }
             return child;
         }
@@ -234,16 +301,17 @@ export function createDomMocks() {
         }
 
         getContext() {
-            return {
-                clearRect: () => {},
-                drawImage: () => {}
-            };
+            return createCanvasContextMock();
         }
 
         querySelector(sel) {
+            if (!sel || typeof sel !== 'string') return null;
+            const idSel = sel.startsWith('#') ? sel.slice(1) : null;
             const cls = sel.startsWith('.') ? sel.slice(1) : null;
             for (const c of this.children) {
-                if ((cls && c.className.split(/\s+/).includes(cls)) || c.tagName === sel.toUpperCase()) {
+                if ((idSel && c.getAttribute('id') === idSel)
+                    || (cls && c.className.split(/\s+/).includes(cls))
+                    || (!idSel && !cls && c.tagName === sel.toUpperCase())) {
                     return c;
                 }
                 const found = c.querySelector(sel);
@@ -255,10 +323,14 @@ export function createDomMocks() {
         }
 
         querySelectorAll(sel) {
+            if (!sel || typeof sel !== 'string') return [];
+            const idSel = sel.startsWith('#') ? sel.slice(1) : null;
             const cls = sel.startsWith('.') ? sel.slice(1) : null;
             const res = [];
             for (const c of this.children) {
-                if ((cls && c.className.split(/\s+/).includes(cls)) || c.tagName === sel.toUpperCase()) {
+                if ((idSel && c.getAttribute('id') === idSel)
+                    || (cls && c.className.split(/\s+/).includes(cls))
+                    || (!idSel && !cls && c.tagName === sel.toUpperCase())) {
                     res.push(c);
                 }
                 res.push(...c.querySelectorAll(sel));
@@ -274,7 +346,7 @@ export function createDomMocks() {
         }
 
         click() {
-            this.dispatchEvent({ type: 'click', target: this });
+            this.dispatchEvent({ type: 'click', button: 0, target: this });
             if (this.onClick) {
                 this.onClick();
             }
@@ -297,22 +369,46 @@ export function createDomMocks() {
     const body = new MockElement('body');
     const head = new MockElement('head');
     const documentElement = new MockElement('html');
+    documentElement.isConnected = true;
     documentElement.appendChild(head);
     documentElement.appendChild(body);
 
+    const docListeners = new Map();
     const mockDocument = {
         body,
         head,
         documentElement,
         activeElement: null,
+        listeners: docListeners,
+        addEventListener(type, fn) {
+            if (!docListeners.has(type)) {
+                docListeners.set(type, new Set());
+            }
+            docListeners.get(type).add(fn);
+        },
+        removeEventListener(type, fn) {
+            const set = docListeners.get(type);
+            if (set) {
+                set.delete(fn);
+            }
+        },
+        dispatchEvent(evt) {
+            const set = docListeners.get(evt && evt.type);
+            if (set) {
+                Array.from(set).forEach(fn => fn(evt));
+            }
+        },
         createElement(tag) {
             return new MockElement(tag);
         },
         createTextNode(text) {
             return { nodeType: 3, textContent: String(text), parentNode: null };
         },
-        querySelector() {
-            return null;
+        querySelector(sel) {
+            return documentElement.querySelector(sel);
+        },
+        querySelectorAll(sel) {
+            return documentElement.querySelectorAll(sel);
         }
     };
 
@@ -387,10 +483,10 @@ export function loadExcelModule() {
     const excelSrc = fs.readFileSync(path.join(CORE_DIR, 'packages/vue-excel/src/excel.js'), 'utf8')
         .replace('import * as Excel from \'exceljs/dist/exceljs\';', 'const Excel = require(\'exceljs\');')
         .replace(/import\s+tinycolor\s+from\s+'tinycolor2';/, 'const tinycolor = require(\'tinycolor2\');')
-        .replace(/import\s+cloneDeep\s+from\s+'lodash\/cloneDeep';/, 'const cloneDeep = require(\'lodash/cloneDeep\');')
         .replace(/import\s+get\s+from\s+'lodash\/get';/, 'const get = require(\'lodash/get\');')
         .replace(/import\s+\{\s*getDarkColor,\s*getLightColor\s*\}\s+from\s+'\.\/color';/, 'const { getDarkColor, getLightColor } = colorMod;')
         .replace(/import\s+dayjs\s+from\s+'dayjs';/, 'const dayjs = require(\'dayjs\');')
+        .replace(/import\s+utc\s+from\s+'dayjs\/plugin\/utc';/, 'const utc = require(\'dayjs/plugin/utc\');')
         .replace(/import\s+\{\s*read,\s*write\s*\}\s+from\s+'xlsx';/, 'const { read, write } = require(\'xlsx\');')
         .replace(/export\s+function\s+/g, 'function ');
 
@@ -406,7 +502,7 @@ export function loadExcelModule() {
     return factory(id => require(id), colorMod);
 }
 
-export function mountSfcScript(relPath, extraDeps = {}, initialProps = {}, refOverrides = {}) {
+export function mountSfcScript(relPath, extraDeps = {}, initialProps = {}, refOverrides = {}, mountOpts = {}) {
     const raw = fs.readFileSync(path.join(CORE_DIR, relPath), 'utf8');
     const scriptMatch = raw.match(/<script>([\s\S]*?)<\/script>/);
     if (!scriptMatch) {
@@ -423,18 +519,7 @@ export function mountSfcScript(relPath, extraDeps = {}, initialProps = {}, refOv
     const unmountHooks = [];
     const watchers = [];
     const emitted = [];
-
-    for (const [k, v] of Object.entries(props)) {
-        reactiveState[k] = v;
-        Object.defineProperty(props, k, {
-            enumerable: true,
-            configurable: true,
-            get: () => reactiveState[k],
-            set: (next) => {
-                reactiveState[k] = next;
-            }
-        });
-    }
+    let active = true;
 
     const resolveWatchSource = (source) => {
         if (typeof source === 'function') return source();
@@ -443,9 +528,39 @@ export function mountSfcScript(relPath, extraDeps = {}, initialProps = {}, refOv
         return source;
     };
 
+    const runWatchers = () => {
+        if (!active) return;
+        for (const w of watchers) {
+            const next = resolveWatchSource(w.source);
+            const changed = Array.isArray(next)
+                ? next.some((v, idx) => !Array.isArray(w.prev) || v !== w.prev[idx])
+                : next !== w.prev;
+            if (changed) {
+                const old = w.prev;
+                w.prev = next;
+                w.cb(next, old);
+            }
+        }
+    };
+
+    const makeRef = (init) => {
+        let _val = init;
+        return {
+            get value() {
+                return _val;
+            },
+            set value(next) {
+                if (next !== _val) {
+                    _val = next;
+                    runWatchers();
+                }
+            }
+        };
+    };
+
     const vueDemiMock = {
         defineComponent: def => def,
-        ref: (init) => ({ value: init }),
+        ref: makeRef,
         onMounted: fn => mountedHooks.push(fn),
         onBeforeUnmount: fn => unmountHooks.push(fn),
         watch: (source, cb, opts = {}) => {
@@ -456,7 +571,7 @@ export function mountSfcScript(relPath, extraDeps = {}, initialProps = {}, refOv
             }
         },
         nextTick: fn => Promise.resolve().then(() => (typeof fn === 'function' ? fn() : undefined)),
-        isVue2: false
+        isVue2: Boolean(mountOpts.isVue2)
     };
 
     const depNames = Object.keys(extraDeps);
@@ -475,6 +590,26 @@ export function mountSfcScript(relPath, extraDeps = {}, initialProps = {}, refOv
         vueDemiMock.isVue2,
         ...depVals
     );
+
+    if (component && component.props) {
+        for (const [k, def] of Object.entries(component.props)) {
+            if (!(k in props) && def && 'default' in def) {
+                props[k] = typeof def.default === 'function' ? def.default() : def.default;
+            }
+        }
+    }
+
+    for (const [k, v] of Object.entries(props)) {
+        reactiveState[k] = v;
+        Object.defineProperty(props, k, {
+            enumerable: true,
+            configurable: true,
+            get: () => reactiveState[k],
+            set: (next) => {
+                reactiveState[k] = next;
+            }
+        });
+    }
 
     const setupResult = component.setup(props, {
         emit: (name, ...args) => emitted.push({ name, args })
@@ -495,21 +630,12 @@ export function mountSfcScript(relPath, extraDeps = {}, initialProps = {}, refOv
             mountedHooks.forEach(fn => fn());
         },
         unmount() {
+            active = false;
             unmountHooks.forEach(fn => fn());
         },
         setProp(key, value) {
             reactiveState[key] = value;
-            for (const w of watchers) {
-                const next = resolveWatchSource(w.source);
-                const changed = Array.isArray(next)
-                    ? next.some((v, idx) => !Array.isArray(w.prev) || v !== w.prev[idx])
-                    : next !== w.prev;
-                if (changed) {
-                    const old = w.prev;
-                    w.prev = next;
-                    w.cb(next, old);
-                }
-            }
+            runWatchers();
         }
     };
 }
@@ -542,6 +668,7 @@ export function mountScriptSetup(relPath, extraDeps = {}, initialProps = {}, ret
     const mountedHooks = [];
     const unmountHooks = [];
     const watchers = [];
+    let active = true;
     const resolveSource = (source) => {
         if (typeof source === 'function') return source();
         if (Array.isArray(source)) return source.map(s => (typeof s === 'function' ? s() : s.value));
@@ -549,6 +676,7 @@ export function mountScriptSetup(relPath, extraDeps = {}, initialProps = {}, ret
         return source;
     };
     const triggerWatchers = () => {
+        if (!active) return;
         for (const w of watchers) {
             const next = resolveSource(w.source);
             const changed = Array.isArray(next)
@@ -605,6 +733,7 @@ export function mountScriptSetup(relPath, extraDeps = {}, initialProps = {}, ret
             mountedHooks.forEach(fn => fn());
         },
         unmount() {
+            active = false;
             unmountHooks.forEach(fn => fn());
         },
         setProp(key, value) {

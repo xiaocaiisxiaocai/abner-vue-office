@@ -230,10 +230,14 @@ export default defineComponent({
             return pdfLibLoadPromise;
         }
 
-        function clearCanvas() {
+        function clearCanvas(resetStyle = false) {
             cancelRenderTasks();
             if (wrapperRef.value) {
                 wrapperRef.value.innerHTML = '';
+                if (resetStyle) {
+                    wrapperRef.value.style.height = '';
+                    wrapperRef.value.style.minWidth = '';
+                }
             }
         }
 
@@ -241,6 +245,7 @@ export default defineComponent({
             if (isUnmounted || currentId !== renderId || !pdfDocument || !wrapperRef.value || !containerRef.value) {
                 return Promise.resolve();
             }
+            onScrollPdf.cancel();
             return getPageSize(pdfDocument).then(res => {
                 if (!res || isUnmounted || currentId !== renderId || !pdfDocument || !wrapperRef.value || !containerRef.value) {
                     return;
@@ -273,9 +278,10 @@ export default defineComponent({
         async function init() {
             const currentId = ++renderId;
             isLoading = true;
+            onScrollPdf.cancel();
             if (!props.src) {
                 isLoading = false;
-                clearCanvas();
+                clearCanvas(true);
                 cleanupPdfResources();
                 emit('error', new Error('src不能为空'));
                 return;
@@ -325,7 +331,7 @@ export default defineComponent({
                 await layoutAndRender(currentId, true);
             } catch (e) {
                 if (!isUnmounted && currentId === renderId) {
-                    clearCanvas();
+                    clearCanvas(true);
                     cleanupPdfResources();
                     emit('error', e);
                 }
@@ -549,9 +555,11 @@ export default defineComponent({
                 return;
             }
             if (!props.src) {
+                isLoading = false;
                 ++renderId;
                 ++libRequestId;
-                clearCanvas();
+                onScrollPdf.cancel();
+                clearCanvas(true);
                 cleanupPdfResources();
                 emit('error', new Error('src不能为空'));
                 return;

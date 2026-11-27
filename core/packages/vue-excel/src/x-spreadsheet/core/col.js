@@ -18,9 +18,12 @@ class Cols {
     const copy = {};
     Object.keys(d).forEach((k) => {
       if (k === 'len') {
-        this.len = d.len;
+        const parsedLen = Number(d.len);
+        if (Number.isInteger(parsedLen) && parsedLen >= 0) {
+          this.len = parsedLen;
+        }
       } else if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
-        copy[k] = d[k];
+        copy[k] = d[k] && typeof d[k] === 'object' ? { ...d[k] } : d[k];
       }
     });
     this._ = copy;

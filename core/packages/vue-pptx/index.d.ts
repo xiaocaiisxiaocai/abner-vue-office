@@ -2,13 +2,14 @@ export type OfficeSource = string | ArrayBuffer | ArrayBufferView | Blob | Respo
 
 export interface RequestOptions {
     method?: string;
-    headers?: Record<string, string>;
+    headers?: HeadersInit;
     withCredentials?: boolean;
     credentials?: RequestCredentials;
     [key: string]: any;
 }
 
 export interface PptxOptions {
+    renderer?: string;
     width?: number;
     height?: number;
     [key: string]: any;
@@ -34,6 +35,7 @@ export interface AbnerVueOfficePptxInstance {
 }
 
 export interface AbnerVueOfficePptxComponent {
+    readonly name: 'AbnerVueOfficePptx';
     new (): AbnerVueOfficePptxInstance;
     install(app: any): void;
 }
