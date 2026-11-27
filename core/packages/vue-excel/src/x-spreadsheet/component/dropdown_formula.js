@@ -7,7 +7,7 @@ import { cssPrefix } from '../config';
 export default class DropdownFormula extends Dropdown {
   constructor() {
     const nformulas = baseFormulas.map(it => h('div', `${cssPrefix}-item`)
-      .on('click', () => {
+      .on('click.stop', () => {
         this.hide();
         this.change(it);
       })

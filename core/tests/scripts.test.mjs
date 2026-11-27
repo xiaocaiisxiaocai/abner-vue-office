@@ -235,20 +235,28 @@ test('script/run-lib.js forwards args, restores vue + vue-demi on failure/missin
         fs.copyFileSync(path.join(CORE_DIR, 'script/bak-vue.js'), path.join(scriptDir, 'bak-vue.js'));
         fs.copyFileSync(path.join(CORE_DIR, 'script/run-lib.js'), path.join(scriptDir, 'run-lib.js'));
 
-        // No extra args -> ['run', 'build']
+        // No extra args -> ['run', 'build', '--concurrency=1']
         execFileSync(process.execPath, [path.join(scriptDir, 'run-lib.js')], { cwd: tmpDir, stdio: 'pipe' });
         const metaDefault = JSON.parse(fs.readFileSync(path.join(tmpDir, 'lerna-args.json'), 'utf8'));
-        assert.deepEqual(metaDefault.args, ['run', 'build']);
+        assert.deepEqual(metaDefault.args, ['run', 'build', '--concurrency=1']);
         assert.equal(metaDefault.vueExistsDuringBuild, false);
         assert.equal(fs.readFileSync(path.join(tmpDir, 'vue-demi-restored.txt'), 'utf8'), '3 vue');
 
-        // With scope args
+        // With scope args (auto-adds --concurrency=1 unless caller passed --concurrency)
         execFileSync(process.execPath, [path.join(scriptDir, 'run-lib.js'), '--scope', '@abner-vue-office/docx'], {
             cwd: tmpDir,
             stdio: 'pipe'
         });
         const metaOk = JSON.parse(fs.readFileSync(path.join(tmpDir, 'lerna-args.json'), 'utf8'));
-        assert.deepEqual(metaOk.args, ['run', 'build', '--scope', '@abner-vue-office/docx']);
+        assert.deepEqual(metaOk.args, ['run', 'build', '--scope', '@abner-vue-office/docx', '--concurrency=1']);
+
+        // Explicit --concurrency is respected without duplication
+        execFileSync(process.execPath, [path.join(scriptDir, 'run-lib.js'), '--concurrency=2'], {
+            cwd: tmpDir,
+            stdio: 'pipe'
+        });
+        const metaExplicitConc = JSON.parse(fs.readFileSync(path.join(tmpDir, 'lerna-args.json'), 'utf8'));
+        assert.deepEqual(metaExplicitConc.args, ['run', 'build', '--concurrency=2']);
 
         // Failure exit code forwarded + vue restored
         const failRes = spawnSync(process.execPath, [path.join(scriptDir, 'run-lib.js'), '--fail'], {

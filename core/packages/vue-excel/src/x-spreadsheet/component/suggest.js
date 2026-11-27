@@ -46,6 +46,9 @@ function inputEnter(evt) {
 }
 
 function inputKeydownHandler(evt) {
+  if (evt.isComposing || evt.keyCode === 229 || evt.key === 'Process') {
+    return;
+  }
   const { keyCode } = evt;
   if (evt.ctrlKey) {
     evt.stopPropagation();
@@ -113,7 +116,7 @@ export default class Suggest {
 
   search(word) {
     this.itemIndex = -1;
-    let { items } = this;
+    let items = Array.isArray(this.items) ? this.items : [];
     if (!/^\s*$/.test(word)) {
       const upperWord = String(word).toUpperCase();
       items = items.filter((it) => {

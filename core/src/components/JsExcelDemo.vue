@@ -12,6 +12,9 @@ const dom = ref(null);
 let myExcelPreview = null;
 
 onMounted(() => {
+    if (!dom.value) {
+        return;
+    }
     myExcelPreview = jsExcel.init(dom.value, {
         transformData: function (workBook) {
             return workBook;

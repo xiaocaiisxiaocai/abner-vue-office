@@ -6,6 +6,9 @@ import { download as downloadFile, getUrlAsync, revokeUrl, loadScript } from '..
 import omit from 'lodash/omit';
 import debounce from 'lodash/debounce';
 
+const BUNDLED_PDFJS_VERSION = '4.7.0';
+const MAX_CANVAS_PIXELS = 16777216;
+
 let pdfJsLibBlobUrl = null;
 let pdfJsWorkerBlobUrl = null;
 let pdfLibLoadPromise = null;
@@ -22,6 +25,41 @@ function getPdfJsWorkerUrl() {
         pdfJsWorkerBlobUrl = URL.createObjectURL(new Blob([workerStr], { type: 'text/javascript' }));
     }
     return pdfJsWorkerBlobUrl;
+}
+
+function assignWorkerSrcIfCompatible(lib) {
+    if (
+        lib &&
+        lib.GlobalWorkerOptions &&
+        !lib.GlobalWorkerOptions.workerSrc &&
+        (!lib.version || lib.version === BUNDLED_PDFJS_VERSION)
+    ) {
+        lib.GlobalWorkerOptions.workerSrc = getPdfJsWorkerUrl();
+    }
+}
+
+function safeDestroy(target) {
+    if (!target || typeof target.destroy !== 'function') {
+        return;
+    }
+    try {
+        const result = target.destroy();
+        if (result && typeof result.catch === 'function') {
+            result.catch(() => {});
+        }
+    } catch (e) {
+        // ignore
+    }
+}
+
+function clampOutputScale(viewportWidth, viewportHeight, baseScale) {
+    const w = Math.max(viewportWidth, 1);
+    const h = Math.max(viewportHeight, 1);
+    const area = w * h * baseScale * baseScale;
+    if (area > MAX_CANVAS_PIXELS) {
+        return Math.max(0.1, Math.sqrt(MAX_CANVAS_PIXELS / (w * h)));
+    }
+    return baseScale;
 }
 
 export default defineComponent({
@@ -68,8 +106,10 @@ export default defineComponent({
         let currentObjectUrl = null;
         let isUnmounted = false;
         let isLoading = false;
+        let loadId = 0;
         let renderId = 0;
         let libRequestId = 0;
+        let currentMinWidth = 0;
         const activeRenderTasks = new Set();
         const canvasRenderTasks = new WeakMap();
         const cancelledRenderTasks = new WeakSet();
@@ -129,21 +169,14 @@ export default defineComponent({
 
         function cleanupPdfResources() {
             cancelRenderTasks();
-            if (loadingTask) {
-                try {
-                    loadingTask.destroy();
-                } catch (e) {
-                    // ignore
-                }
-                loadingTask = null;
-            }
-            if (pdfDocument) {
-                try {
-                    pdfDocument.destroy();
-                } catch (e) {
-                    // ignore
-                }
-                pdfDocument = null;
+            const task = loadingTask;
+            const doc = pdfDocument;
+            loadingTask = null;
+            pdfDocument = null;
+            if (doc) {
+                safeDestroy(doc);
+            } else if (task) {
+                safeDestroy(task);
             }
             if (currentObjectUrl) {
                 revokeUrl(currentObjectUrl);
@@ -154,6 +187,7 @@ export default defineComponent({
         onBeforeUnmount(() => {
             isUnmounted = true;
             isLoading = false;
+            ++loadId;
             ++renderId;
             ++libRequestId;
             onScrollPdf.cancel();
@@ -166,12 +200,16 @@ export default defineComponent({
 
         function scheduleInit() {
             const currentLibReqId = ++libRequestId;
+            const currentLoadId = ++loadId;
+            ++renderId;
             isLoading = true;
+            onScrollPdf.cancel();
+            cleanupPdfResources();
             return checkPdfLib().then(() => {
                 if (isUnmounted || currentLibReqId !== libRequestId) {
                     return;
                 }
-                return init();
+                return init(currentLoadId);
             }).catch(e => {
                 if (!isUnmounted && currentLibReqId === libRequestId) {
                     isLoading = false;
@@ -185,7 +223,7 @@ export default defineComponent({
                 return;
             }
             userScale.value = scale;
-            if (pdfDocument) {
+            if (pdfDocument && !isLoading) {
                 const currentId = ++renderId;
                 nextTick(() => {
                     layoutAndRender(currentId).catch(e => {
@@ -200,10 +238,11 @@ export default defineComponent({
         }
 
         function checkPdfLib() {
+            if (typeof window === 'undefined') {
+                return Promise.reject(new Error('window is not defined'));
+            }
             if (window.pdfjsLib) {
-                if (window.pdfjsLib.GlobalWorkerOptions && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
-                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = getPdfJsWorkerUrl();
-                }
+                assignWorkerSrcIfCompatible(window.pdfjsLib);
                 return Promise.resolve();
             }
             if (!pdfLibLoadPromise) {
@@ -213,9 +252,7 @@ export default defineComponent({
                         revokeUrl(libUrl);
                         pdfJsLibBlobUrl = null;
                         if (window.pdfjsLib) {
-                            if (window.pdfjsLib.GlobalWorkerOptions && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
-                                window.pdfjsLib.GlobalWorkerOptions.workerSrc = getPdfJsWorkerUrl();
-                            }
+                            assignWorkerSrcIfCompatible(window.pdfjsLib);
                         } else {
                             throw new Error('window.pdfjsLib未找到');
                         }
@@ -223,8 +260,10 @@ export default defineComponent({
                     .catch(err => {
                         revokeUrl(libUrl);
                         pdfJsLibBlobUrl = null;
-                        pdfLibLoadPromise = null;
                         return Promise.reject(err);
+                    })
+                    .finally(() => {
+                        pdfLibLoadPromise = null;
                     });
             }
             return pdfLibLoadPromise;
@@ -237,7 +276,19 @@ export default defineComponent({
                 if (resetStyle) {
                     wrapperRef.value.style.height = '';
                     wrapperRef.value.style.minWidth = '';
+                    currentMinWidth = 0;
                 }
+            }
+        }
+
+        function updateMinWidth(requiredWidth) {
+            if (!wrapperRef.value || !(requiredWidth > 0)) {
+                return;
+            }
+            const nextMinWidth = Math.ceil(requiredWidth + 20);
+            if (nextMinWidth > currentMinWidth) {
+                currentMinWidth = nextMinWidth;
+                wrapperRef.value.style.minWidth = `${currentMinWidth}px`;
             }
         }
 
@@ -261,7 +312,8 @@ export default defineComponent({
                 visibleItems = Math.ceil(containerHeight / Math.max(pageHeight + gap, 1)) + 4; //多渲染4个
                 const height = Math.max((pageHeight + gap) * totalItems - gap, 0);
                 wrapperRef.value.style.height = height + 'px';
-                wrapperRef.value.style.minWidth = pageWidth > 0 ? `${pageWidth + 20}px` : '';
+                currentMinWidth = pageWidth > 0 ? Math.ceil(pageWidth + 20) : 0;
+                wrapperRef.value.style.minWidth = currentMinWidth > 0 ? `${currentMinWidth}px` : '';
 
                 clearCanvas();
                 const scrollTop = containerRef.value.scrollTop || 0;
@@ -275,27 +327,33 @@ export default defineComponent({
             });
         }
 
-        async function init() {
+        async function init(currentLoadId = ++loadId) {
             const currentId = ++renderId;
             isLoading = true;
             onScrollPdf.cancel();
             if (!props.src) {
-                isLoading = false;
+                if (currentLoadId === loadId) {
+                    isLoading = false;
+                }
                 clearCanvas(true);
                 cleanupPdfResources();
                 emit('error', new Error('src不能为空'));
                 return;
             }
+            let rendered = false;
             try {
                 const url = await getUrlAsync(props.src, { type: 'application/pdf' });
-                if (isUnmounted || currentId !== renderId) {
+                if (isUnmounted || currentId !== renderId || currentLoadId !== loadId) {
                     if (url !== props.src) {
                         revokeUrl(url);
                     }
                     return;
                 }
+                if (typeof url !== 'string' || !url) {
+                    throw new Error('不支持的 src 格式');
+                }
                 cleanupPdfResources();
-                if (url !== props.src && typeof url === 'string' && url.startsWith('blob:')) {
+                if (url !== props.src && url.startsWith('blob:')) {
                     currentObjectUrl = url;
                 }
 
@@ -304,41 +362,52 @@ export default defineComponent({
                 const httpHeaders = reqOpts.headers || opts.httpHeaders;
                 const withCredentials = reqOpts.withCredentials !== undefined
                     ? Boolean(reqOpts.withCredentials)
-                    : (reqOpts.credentials === 'include'
-                        ? true
+                    : (reqOpts.credentials !== undefined
+                        ? reqOpts.credentials === 'include'
                         : Boolean(opts.withCredentials));
                 const staticBase = typeof props.staticFileUrl === 'string' && props.staticFileUrl
                     ? props.staticFileUrl
                     : 'https://unpkg.com/pdfjs-dist@3.1.81/';
-                loadingTask = window.pdfjsLib.getDocument({
+                const task = window.pdfjsLib.getDocument({
                     url,
                     ...(httpHeaders ? { httpHeaders } : {}),
                     withCredentials,
                     cMapUrl: `${staticBase.endsWith('/') ? staticBase : staticBase + '/'}cmaps/`,
                     cMapPacked: true,
                     enableXfa: true,
-                    ...omit(opts, ['url', 'width', 'gap', 'defaultScale', 'httpHeaders', 'withCredentials'])
+                    ...omit(opts, ['url', 'data', 'width', 'gap', 'defaultScale', 'httpHeaders', 'withCredentials'])
                 });
-                const pdf = await loadingTask.promise;
-                if (isUnmounted || currentId !== renderId) {
-                    pdf && pdf.destroy();
+                loadingTask = task;
+                const pdf = await task.promise;
+                if (loadingTask === task) {
+                    loadingTask = null;
+                }
+                if (isUnmounted || currentId !== renderId || currentLoadId !== loadId) {
+                    safeDestroy(pdf);
                     return;
                 }
                 pdfDocument = pdf;
                 if (containerRef.value) {
                     containerRef.value.scrollTop = 0;
                 }
-                await layoutAndRender(currentId, true);
+                if (currentLoadId === loadId) {
+                    isLoading = false;
+                }
+                rendered = Boolean(await layoutAndRender(currentId, true));
             } catch (e) {
-                if (!isUnmounted && currentId === renderId) {
+                if (!isUnmounted && currentId === renderId && currentLoadId === loadId) {
                     clearCanvas(true);
                     cleanupPdfResources();
                     emit('error', e);
                 }
+                return;
             } finally {
-                if (currentId === renderId) {
+                if (currentLoadId === loadId) {
                     isLoading = false;
                 }
+            }
+            if (rendered && !isUnmounted && currentId === renderId && currentLoadId === loadId) {
+                emit('rendered');
             }
         }
 
@@ -357,12 +426,13 @@ export default defineComponent({
                 getViewportScale = Math.max(0.1, targetWidth / baseViewportWidth);
 
                 const viewport = pdfPage.getViewport({ scale: getViewportScale });
-                const outputScale = window.devicePixelRatio > 2 ? 1.5 : 2;
-                const cWidth = Math.floor(viewport.width * outputScale);
-                const cHeight = Math.floor(viewport.height * outputScale);
+                const baseOutputScale = window.devicePixelRatio > 2 ? 1.5 : 2;
+                const outputScale = clampOutputScale(viewport.width, viewport.height, baseOutputScale);
+                const cWidth = Math.max(1, Math.floor(viewport.width * outputScale));
+                const cHeight = Math.max(1, Math.floor(viewport.height * outputScale));
 
-                const domWidth = Math.floor(viewport.width);
-                const domHeight = Math.floor(viewport.height);
+                const domWidth = Math.max(1, Math.floor(viewport.width));
+                const domHeight = Math.max(1, Math.floor(viewport.height));
 
                 return {
                     width: domWidth,
@@ -381,13 +451,13 @@ export default defineComponent({
             const paddingTop = parseInt(getComputedStyle(wrapperRef.value).paddingTop, 10) || 0;
             const gap = getGap();
             const startIndex = Math.min(
-                Math.max(Math.floor(Math.max((scrollTop - paddingTop), 0) / Math.max(pageHeight + gap, 1)) - 1, 1),
+                Math.max(Math.floor(Math.max((scrollTop - paddingTop), 0) / Math.max(pageHeight + gap, 1)), 1),
                 totalItems
             );
             const endIndex = Math.min(startIndex + visibleItems - 1, totalItems); // 计算结束索引
 
             renderList(startIndex, endIndex, false, renderId); // 渲染列表项
-        }, 60);
+        }, 60, { maxWait: 120 });
 
         function createCanvas(index) {
             const paddingTop = parseInt(getComputedStyle(wrapperRef.value).paddingTop, 10) || 0;
@@ -470,9 +540,13 @@ export default defineComponent({
             }
             return Promise.all(tasks).then(() => {
                 if (emitRendered && !isUnmounted && currentId === renderId) {
+                    if (rethrow) {
+                        return true;
+                    }
                     emit('rendered');
                 }
-            }).catch(e => {
+                return false;
+            }, e => {
                 if (rethrow) {
                     return Promise.reject(e);
                 }
@@ -488,23 +562,33 @@ export default defineComponent({
             }
             return pdfDocument.getPage(num).then((pdfPage) => {
                 if (!pdfDocument || isUnmounted || currentId !== renderId || canvas.parentNode !== wrapperRef.value) {
+                    if (pdfPage && typeof pdfPage.cleanup === 'function') {
+                        pdfPage.cleanup();
+                    }
                     return;
                 }
                 const viewport = pdfPage.getViewport({ scale: getViewportScale });
-                let outputScale = window.devicePixelRatio > 2 ? 1.5 : 2;
-                const scaledWidth = Math.floor(viewport.width * outputScale);
-                const scaledHeight = Math.floor(viewport.height * outputScale);
+                const baseOutputScale = window.devicePixelRatio > 2 ? 1.5 : 2;
+                let outputScale = clampOutputScale(viewport.width, viewport.height, baseOutputScale);
+                const scaledWidth = Math.max(1, Math.floor(viewport.width * outputScale));
+                const scaledHeight = Math.max(1, Math.floor(viewport.height * outputScale));
                 if (scaledHeight !== canvasHeight || scaledWidth !== canvasWidth) {
                     if (scaledHeight > 0 && viewport.height > 0 && pageHeight > 0) {
                         const scale = canvasHeight / scaledHeight;
-                        outputScale = outputScale * scale;
-                        canvas.width = Math.floor(scaledWidth * scale);
-                        canvas.style.width = Math.floor(pageHeight * (viewport.width / viewport.height)) + 'px';
+                        outputScale = clampOutputScale(viewport.width, viewport.height, outputScale * scale);
+                        canvas.width = Math.max(1, Math.floor(viewport.width * outputScale));
+                        canvas.height = Math.max(1, Math.floor(viewport.height * outputScale));
+                        const pageDomWidth = Math.max(1, Math.floor(pageHeight * (viewport.width / viewport.height)));
+                        canvas.style.width = `${pageDomWidth}px`;
+                        updateMinWidth(pageDomWidth);
                     }
                 }
 
                 const ctx = canvas.getContext('2d');
                 if (!ctx) {
+                    if (typeof pdfPage.cleanup === 'function') {
+                        pdfPage.cleanup();
+                    }
                     return;
                 }
                 const transform = outputScale !== 1
@@ -528,12 +612,24 @@ export default defineComponent({
                     if (canvasRenderTasks.get(canvas) === renderTask) {
                         canvasRenderTasks.delete(canvas);
                     }
+                    if (typeof pdfPage.cleanup === 'function') {
+                        try {
+                            pdfPage.cleanup();
+                        } catch (e) {
+                            // ignore
+                        }
+                    }
                 });
+            }, err => {
+                if (isUnmounted || currentId !== renderId || !canvas || canvas.parentNode !== wrapperRef.value) {
+                    return;
+                }
+                return Promise.reject(err);
             });
         }
 
         function rerender() {
-            if (isUnmounted || !pdfDocument) {
+            if (isUnmounted || !pdfDocument || isLoading) {
                 return Promise.resolve();
             }
             const currentId = ++renderId;
@@ -556,6 +652,7 @@ export default defineComponent({
             }
             if (!props.src) {
                 isLoading = false;
+                ++loadId;
                 ++renderId;
                 ++libRequestId;
                 onScrollPdf.cancel();
@@ -567,30 +664,27 @@ export default defineComponent({
             scheduleInit();
         });
 
-        watch(
-            () => [props.defaultScale, props.options && props.options.defaultScale],
-            () => {
-                const resolved = resolveDefaultScale();
-                if (resolved !== userScale.value) {
-                    setScale(resolved);
-                }
+        watch(resolveDefaultScale, (resolved) => {
+            if (resolved !== userScale.value) {
+                setScale(resolved);
             }
-        );
+        });
 
         function save(fileName) {
-            if (!pdfDocument || typeof pdfDocument.getData !== 'function') {
+            const doc = pdfDocument;
+            if (!doc || typeof doc.getData !== 'function') {
                 return;
             }
-            pdfDocument.getData().then(fileData => {
-                if (isUnmounted || typeof Blob === 'undefined') {
+            doc.getData().then(fileData => {
+                if (isUnmounted || doc !== pdfDocument || typeof Blob === 'undefined') {
                     return;
                 }
-                downloadFile(
+                return downloadFile(
                     fileName || `abner-vue-office-pdf-${new Date().getTime()}.pdf`,
                     new Blob([fileData], { type: 'application/pdf' })
                 );
             }).catch(e => {
-                if (!isUnmounted) {
+                if (!isUnmounted && doc === pdfDocument) {
                     emit('error', e);
                 }
             });
@@ -611,7 +705,7 @@ export default defineComponent({
 </script>
 
 <template>
-    <div class="abner-vue-office-pdf" ref="containerRef" style="text-align: center;overflow: auto;position: relative;" @scroll="onScrollPdf">
+    <div class="abner-vue-office-pdf" ref="containerRef" style="text-align: center;overflow: auto;position: relative;height: 100%;" @scroll="onScrollPdf">
         <div ref="wrapperRef"
              class="abner-vue-office-pdf-wrapper"
              style="background: gray; padding: 30px 0;position: relative;box-sizing: content-box"
@@ -620,5 +714,3 @@ export default defineComponent({
         <slot></slot>
     </div>
 </template>
-<style lang="less">
-</style>

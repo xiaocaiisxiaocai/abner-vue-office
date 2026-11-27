@@ -90,7 +90,7 @@ test('real fixture test.xlsx integrates through excel.js, media.js, and x-spread
         });
         const { Merges } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/merge.js', { CellRange });
         const helperMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/helper.js');
-        const { Rows } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/row.js', { helper: helperMod, expr2expr: alphabetMod.expr2expr, expr2xy: alphabetMod.expr2xy, stringAt: alphabetMod.stringAt });
+        const { Rows, shiftFormulaRefs } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/row.js', { helper: helperMod, expr2expr: alphabetMod.expr2expr, expr2xy: alphabetMod.expr2xy, stringAt: alphabetMod.stringAt });
         const { Cols } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/col.js', { helper: helperMod });
         const History = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/history.js');
         const Clipboard = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/clipboard.js');
@@ -106,7 +106,7 @@ test('real fixture test.xlsx integrates through excel.js, media.js, and x-spread
         const { formulas, formulam } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/formula.js', { tf, numberCalc: helperMod.numberCalc });
         const cellMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/cell.js', { expr2xy: alphabetMod.expr2xy, xy2expr: alphabetMod.xy2expr, numberCalc: helperMod.numberCalc });
         const DataProxy = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/data_proxy.js', {
-            Selector: CoreSelector, Scroll, History, Clipboard, AutoFilter, Merges, helper: helperMod, Rows, Cols, Validations, CellRange, expr2xy: alphabetMod.expr2xy, xy2expr: alphabetMod.xy2expr, t
+            Selector: CoreSelector, Scroll, History, Clipboard, AutoFilter, Merges, helper: helperMod, Rows, shiftFormulaRefs, Cols, Validations, CellRange, expr2xy: alphabetMod.expr2xy, xy2expr: alphabetMod.xy2expr, t
         });
         const eventMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/event.js');
         const { Element, h } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/element.js');
@@ -158,7 +158,7 @@ test('real fixture test.xlsx integrates through excel.js, media.js, and x-spread
             Item, h, cssPrefix: 'x-spreadsheet', bind: eventMod.bind, unbind: eventMod.unbind, hideTooltip: tooltipMod.hideTooltip
         });
         const Suggest = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/suggest.js', { h, bindClickoutside: eventMod.bindClickoutside, unbindClickoutside: eventMod.unbindClickoutside, cssPrefix: 'x-spreadsheet' });
-        const Calendar = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/calendar.js', { h, Icon, t });
+        const Calendar = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/calendar.js', { h, Icon, t, cssPrefix: 'x-spreadsheet' });
         const Datepicker = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/datepicker.js', { Calendar, h, cssPrefix: 'x-spreadsheet' });
         const Editor = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/editor.js', { h, Suggest, Datepicker, cssPrefix: 'x-spreadsheet' });
         const FormInput = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/form_input.js', { h, cssPrefix: 'x-spreadsheet' });

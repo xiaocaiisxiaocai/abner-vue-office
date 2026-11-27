@@ -22,7 +22,10 @@ export default class DropdownFormat extends Dropdown {
       }
       return item;
     });
-    super('Normal', '220px', true, 'bottom-left', ...nformats);
+    const defaultTitle = baseFormats.length > 0 && typeof baseFormats[0].title === 'function'
+      ? baseFormats[0].title()
+      : 'Normal';
+    super(defaultTitle, '220px', true, 'bottom-left', ...nformats);
   }
 
   setTitle(key) {

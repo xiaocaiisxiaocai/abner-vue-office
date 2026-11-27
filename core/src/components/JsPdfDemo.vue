@@ -11,7 +11,11 @@ const dom = ref(null);
 let myPdfPreview = null;
 
 onMounted(() => {
+    if (!dom.value) {
+        return;
+    }
     myPdfPreview = jsPdf.init(dom.value, {
+        staticFileUrl: getStaticFileUrl('static/'),
         onError: (e) => {
             console.log('发生错误', e);
         },

@@ -3,6 +3,7 @@ import { defineComponent, ref, onMounted, onBeforeUnmount, watch } from 'vue-dem
 import Spreadsheet from './x-spreadsheet/index';
 import { getData, readExcelData, transferExcelToSpreadSheet } from './excel';
 import { renderImage, clearCache } from './media';
+import { readOnlyInput } from './hack';
 import debounce from 'lodash/debounce';
 import { download as downloadFile } from '../../../utils/url';
 
@@ -10,6 +11,18 @@ const defaultOptions = {
     xls: false,
     minColLength: 20
 };
+
+function mergeExcelOptions(base, override) {
+    const merged = { ...base };
+    if (override && typeof override === 'object') {
+        Object.keys(override).forEach(k => {
+            if (override[k] !== undefined) {
+                merged[k] = override[k];
+            }
+        });
+    }
+    return merged;
+}
 
 export default defineComponent({
     name: 'AbnerVueOfficeExcel',
@@ -56,11 +69,19 @@ export default defineComponent({
         let offset = null;
         let fileData = null;
         let isUnmounted = false;
+        let isInternalLoad = false;
         let renderId = 0;
         let tableRenderVersion = 0;
         let activeAbortController = null;
         let renderImageDebounce = null;
         let swapTimer = null;
+        let renderedOptions = { ...defaultOptions };
+        let observer = null;
+        let observerCallback = null;
+        let resizeObserver = null;
+        let resizeReloadDebounce = null;
+        let lastObservedWidth = 0;
+        let lastObservedHeight = 0;
 
         function abortActiveRequest() {
             if (activeAbortController) {
@@ -80,6 +101,18 @@ export default defineComponent({
             }
         }
 
+        function loadDataInternal(data) {
+            if (!xs) {
+                return;
+            }
+            isInternalLoad = true;
+            try {
+                xs.loadData(data);
+            } finally {
+                isInternalLoad = false;
+            }
+        }
+
         function resetEmptyState() {
             clearSwapTimer();
             mediasSource = [];
@@ -88,7 +121,7 @@ export default defineComponent({
             };
             renderImageDebounce && renderImageDebounce.cancel();
             clearCache(ctx);
-            xs && xs.loadData({});
+            loadDataInternal({});
         }
 
         function hasValidWorksheets(wb) {
@@ -105,10 +138,10 @@ export default defineComponent({
             if (isUnmounted || currentId !== renderId || !xs) {
                 return;
             }
-            const opts = props.options || {};
+            const opts = mergeExcelOptions(defaultOptions, props.options);
             readExcelData(buffer, opts.xls).then(workbook => {
                 if (isUnmounted || currentId !== renderId || !xs) {
-                    return;
+                    return false;
                 }
                 if (!hasValidWorksheets(workbook)) {
                     throw new Error('未获取到数据，可能文件格式不正确或文件已损坏');
@@ -122,7 +155,7 @@ export default defineComponent({
                         throw new Error('未获取到数据，可能文件格式不正确或文件已损坏');
                     }
                 }
-                let { workbookData, medias, workbookSource } = transferExcelToSpreadSheet(workbook, { ...defaultOptions, ...opts });
+                let { workbookData, medias, workbookSource } = transferExcelToSpreadSheet(workbook, opts);
                 if (opts.transformData && typeof opts.transformData === 'function') {
                     const nextData = opts.transformData(workbookData);
                     if (nextData !== undefined) {
@@ -131,16 +164,21 @@ export default defineComponent({
                 }
                 clearSwapTimer();
                 fileData = buffer;
+                renderedOptions = { ...opts };
                 mediasSource = medias;
                 workbookDataSource = workbookSource;
                 offset = null;
                 sheetIndex = 0;
                 clearCache(ctx);
                 renderImageDebounce && renderImageDebounce.cancel();
-                xs.loadData(workbookData);
-                emit('rendered');
-                emit('switchSheet', 0);
-            }).catch(e => {
+                loadDataInternal(workbookData);
+                return true;
+            }).then((didRender) => {
+                if (didRender && !isUnmounted && currentId === renderId) {
+                    emit('rendered');
+                    emit('switchSheet', 0);
+                }
+            }, e => {
                 if (isUnmounted || currentId !== renderId) {
                     return;
                 }
@@ -238,6 +276,9 @@ export default defineComponent({
                 renderImageDebounce && renderImageDebounce.cancel();
                 swapFunc.call(xs.bottombar, index);
                 offset = xs.sheet.data.getSelectedRect();
+                if (isInternalLoad) {
+                    return;
+                }
                 clearSwapTimer();
                 swapTimer = setTimeout(() => {
                     swapTimer = null;
@@ -260,7 +301,7 @@ export default defineComponent({
                     mediasSource,
                     workbookDataSource._worksheets[targetSheetIndex],
                     offset,
-                    props.options || {},
+                    renderedOptions,
                     () => !isUnmounted && targetRenderId === renderId && targetSheetIndex === sheetIndex && targetTableVersion === tableRenderVersion
                 );
             }, 200, {
@@ -280,6 +321,42 @@ export default defineComponent({
             };
             const canvas = rootRef.value.querySelector('canvas');
             ctx = canvas ? canvas.getContext('2d') : null;
+
+            if (typeof MutationObserver !== 'undefined') {
+                observerCallback = debounce(() => {
+                    if (!isUnmounted && rootRef.value) {
+                        readOnlyInput(rootRef.value);
+                    }
+                }, 200);
+                observer = new MutationObserver(observerCallback);
+                observer.observe(rootRef.value, { childList: true, subtree: true });
+            }
+            readOnlyInput(rootRef.value);
+
+            if (typeof ResizeObserver !== 'undefined' && wrapperRef.value) {
+                lastObservedWidth = wrapperRef.value.clientWidth || 0;
+                lastObservedHeight = wrapperRef.value.clientHeight || 0;
+                resizeReloadDebounce = debounce(() => {
+                    if (isUnmounted || !xs || !xs.sheet || typeof xs.sheet.reload !== 'function') {
+                        return;
+                    }
+                    xs.sheet.reload();
+                }, 100);
+                resizeObserver = new ResizeObserver(() => {
+                    if (isUnmounted || !wrapperRef.value) {
+                        return;
+                    }
+                    const nextW = wrapperRef.value.clientWidth || 0;
+                    const nextH = wrapperRef.value.clientHeight || 0;
+                    if (nextW > 0 && nextH > 0 && (nextW !== lastObservedWidth || nextH !== lastObservedHeight)) {
+                        lastObservedWidth = nextW;
+                        lastObservedHeight = nextH;
+                        resizeReloadDebounce && resizeReloadDebounce();
+                    }
+                });
+                resizeObserver.observe(wrapperRef.value);
+            }
+
             if (props.src) {
                 loadExcelFromSrc();
             }
@@ -292,6 +369,18 @@ export default defineComponent({
             clearSwapTimer();
             renderImageDebounce && renderImageDebounce.cancel();
             renderImageDebounce = null;
+            observerCallback && observerCallback.cancel();
+            observerCallback = null;
+            if (observer) {
+                observer.disconnect();
+                observer = null;
+            }
+            resizeReloadDebounce && resizeReloadDebounce.cancel();
+            resizeReloadDebounce = null;
+            if (resizeObserver) {
+                resizeObserver.disconnect();
+                resizeObserver = null;
+            }
             clearCache(ctx);
             if (xs && typeof xs.destroy === 'function') {
                 xs.destroy();
@@ -313,9 +402,21 @@ export default defineComponent({
             loadExcelFromSrc();
         });
 
+        watch(() => props.options && props.options.showContextmenu, (showContextmenu) => {
+            if (xs && xs.sheet && xs.sheet.contextMenu) {
+                xs.sheet.contextMenu.isHide = !showContextmenu;
+            }
+        });
+
         function save(fileName) {
             const ext = props.options && props.options.xls ? 'xls' : 'xlsx';
-            downloadFile(fileName || `abner-vue-office-excel-${new Date().getTime()}.${ext}`, fileData);
+            Promise.resolve(
+                downloadFile(fileName || `abner-vue-office-excel-${new Date().getTime()}.${ext}`, fileData)
+            ).catch(e => {
+                if (!isUnmounted) {
+                    emit('error', e);
+                }
+            });
         }
 
         return {
@@ -332,6 +433,3 @@ export default defineComponent({
         <div class="abner-vue-office-excel-main" ref="rootRef"></div>
     </div>
 </template>
-<style lang="less">
-
-</style>

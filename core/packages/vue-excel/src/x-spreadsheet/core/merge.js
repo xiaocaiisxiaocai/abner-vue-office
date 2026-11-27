@@ -158,7 +158,12 @@ class Merges {
   }
 
   setData(merges) {
-    this._ = Array.isArray(merges) ? merges.map(merge => CellRange.valueOf(merge)) : [];
+    this._ = Array.isArray(merges)
+      ? merges
+        .filter(merge => CellRange.isValidRef(merge))
+        .map(merge => CellRange.valueOf(merge))
+        .filter(cr => cr.multiple())
+      : [];
     return this;
   }
 

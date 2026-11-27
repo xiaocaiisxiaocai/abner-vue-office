@@ -31,23 +31,28 @@ export default class Validator {
       return NaN;
     }
     if (type === 'date') {
-      if (v instanceof Date) return v.getTime();
+      if (v instanceof Date) return Number.isFinite(v.getTime()) ? v.getTime() : NaN;
       const s = String(v).trim();
       if (!s) return NaN;
-      const isoDateOnly = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-      if (isoDateOnly) {
-        return new Date(Number(isoDateOnly[1]), Number(isoDateOnly[2]) - 1, Number(isoDateOnly[3])).getTime();
+      const dateOnly = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+      if (dateOnly) {
+        const y = Number(dateOnly[1]);
+        const m = Number(dateOnly[2]);
+        const day = Number(dateOnly[3]);
+        const d = new Date(y, m - 1, day);
+        if (d.getFullYear() !== y || d.getMonth() !== m - 1 || d.getDate() !== day) {
+          return NaN;
+        }
+        return d.getTime();
       }
-      const slashDateOnly = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
-      if (slashDateOnly) {
-        return new Date(Number(slashDateOnly[1]), Number(slashDateOnly[2]) - 1, Number(slashDateOnly[3])).getTime();
-      }
-      return new Date(s).getTime();
+      const parsed = new Date(s).getTime();
+      return Number.isFinite(parsed) ? parsed : NaN;
     }
     if (type === 'number') {
       const s = String(v).trim();
       if (!s) return NaN;
-      return Number(s);
+      const n = Number(s);
+      return Number.isFinite(n) ? n : NaN;
     }
     return v;
   }
@@ -90,7 +95,7 @@ export default class Validator {
       return returnMessage(this.values().includes(str), 'notIn');
     }
     if (type === 'number' || type === 'date') {
-      const v1 = this.parseValue(str);
+      const v1 = this.parseValue(v instanceof Date ? v : str);
       if (Number.isNaN(v1)) {
         return returnMessage(false, 'notMatch');
       }
@@ -98,7 +103,7 @@ export default class Validator {
         return [true];
       }
       if (operator === 'be') {
-        if (!Array.isArray(value) || value.length < 2) return [false, ''];
+        if (!Array.isArray(value) || value.length < 2) return returnMessage(false, 'notMatch');
         const [min, max] = value;
         const pMin = this.parseValue(min);
         const pMax = this.parseValue(max);
@@ -111,7 +116,7 @@ export default class Validator {
         );
       }
       if (operator === 'nbe') {
-        if (!Array.isArray(value) || value.length < 2) return [false, ''];
+        if (!Array.isArray(value) || value.length < 2) return returnMessage(false, 'notMatch');
         const [min, max] = value;
         const pMin = this.parseValue(min);
         const pMax = this.parseValue(max);

@@ -109,20 +109,31 @@ const THEME_TAG_SLOTS = {
 
 function extractWorkbookThemeColors(workbook) {
     const palette = themeColor.slice();
-    const themeXml = workbook && workbook._themes && typeof workbook._themes.theme1 === 'string'
-        ? workbook._themes.theme1
-        : '';
+    let themeXml = '';
+    if (workbook && workbook._themes && typeof workbook._themes === 'object') {
+        if (typeof workbook._themes.theme1 === 'string') {
+            themeXml = workbook._themes.theme1;
+        } else {
+            const keys = Object.keys(workbook._themes);
+            for (let i = 0; i < keys.length; i++) {
+                if (typeof workbook._themes[keys[i]] === 'string') {
+                    themeXml = workbook._themes[keys[i]];
+                    break;
+                }
+            }
+        }
+    }
     if (!themeXml) {
         return palette;
     }
-    const clrSchemeMatch = themeXml.match(/<a:clrScheme\b[^>]*>([\s\S]*?)<\/a:clrScheme>/i);
+    const clrSchemeMatch = themeXml.match(/<(?:[a-zA-Z0-9_-]+:)?clrScheme\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?clrScheme>/i);
     if (!clrSchemeMatch) {
         return palette;
     }
     const schemeBody = clrSchemeMatch[1];
     Object.keys(THEME_TAG_SLOTS).forEach(tag => {
         const slot = THEME_TAG_SLOTS[tag];
-        const tagMatch = schemeBody.match(new RegExp(`<a:${tag}\\b[^>]*>([\\s\\S]*?)<\\/a:${tag}>`, 'i'));
+        const tagMatch = schemeBody.match(new RegExp(`<(?:[a-zA-Z0-9_-]+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_-]+:)?${tag}>`, 'i'));
         if (!tagMatch) {
             return;
         }
@@ -168,6 +179,10 @@ function requestExcel(src, options = {}) {
             reject(new Error('Request aborted'));
             return;
         }
+        if (typeof XMLHttpRequest === 'undefined') {
+            reject(new Error('XMLHttpRequest is not available in this environment'));
+            return;
+        }
         const xhr = new XMLHttpRequest();
         const method = (typeof opts.method === 'string' && opts.method.trim()) || 'GET';
         const isBodyless = /^(get|head)$/i.test(method);
@@ -178,74 +193,83 @@ function requestExcel(src, options = {}) {
                 return;
             }
             settled = true;
+            xhr.onload = null;
+            xhr.onerror = null;
+            xhr.onabort = null;
+            xhr.ontimeout = null;
             if (opts.signal && onSignalAbort && typeof opts.signal.removeEventListener === 'function') {
                 opts.signal.removeEventListener('abort', onSignalAbort);
             }
         }
-        xhr.open(method, src, true);
-        xhr.responseType = 'arraybuffer';
-        xhr.onload = function () {
-            cleanup();
-            if (xhr.status >= 200 && xhr.status < 300) {
-                resolve(xhr.response);
-            } else {
-                const err = new Error(`HTTP error! status: ${xhr.status}`);
+        try {
+            xhr.open(method, src, true);
+            xhr.responseType = 'arraybuffer';
+            xhr.onload = function () {
+                cleanup();
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    resolve(xhr.response);
+                } else {
+                    const err = new Error(`HTTP error! status: ${xhr.status}`);
+                    err.status = xhr.status;
+                    reject(err);
+                }
+            };
+            xhr.onerror = function() {
+                cleanup();
+                const err = new Error(`Network error! status: ${xhr.status}`);
                 err.status = xhr.status;
                 reject(err);
-            }
-        };
-        xhr.onerror = function() {
-            cleanup();
-            const err = new Error(`Network error! status: ${xhr.status}`);
-            err.status = xhr.status;
-            reject(err);
-        };
-        xhr.onabort = function() {
-            cleanup();
-            reject(new Error('Request aborted'));
-        };
-        xhr.ontimeout = function() {
-            cleanup();
-            reject(new Error('Request timeout'));
-        };
-        if (typeof opts.timeout === 'number' && Number.isFinite(opts.timeout) && opts.timeout >= 0) {
-            xhr.timeout = opts.timeout;
-        }
-        xhr.withCredentials = Boolean(opts.withCredentials || opts.credentials === 'include');
-        if (opts.headers) {
-            if (Array.isArray(opts.headers)) {
-                opts.headers.forEach(function (pair) {
-                    if (Array.isArray(pair) && pair.length >= 2 && pair[0] != null && pair[1] != null) {
-                        xhr.setRequestHeader(String(pair[0]), String(pair[1]));
-                    }
-                });
-            } else if (typeof opts.headers.forEach === 'function') {
-                opts.headers.forEach(function (val, key) {
-                    if (key != null && val != null) {
-                        xhr.setRequestHeader(String(key), String(val));
-                    }
-                });
-            } else {
-                Object.keys(opts.headers).forEach(function(key) {
-                    const val = opts.headers[key];
-                    if (val != null) {
-                        xhr.setRequestHeader(key, String(val));
-                    }
-                });
-            }
-        }
-        if (opts.signal && typeof opts.signal.addEventListener === 'function') {
-            onSignalAbort = function () {
+            };
+            xhr.onabort = function() {
                 cleanup();
-                if (typeof xhr.abort === 'function') {
-                    xhr.abort();
-                }
                 reject(new Error('Request aborted'));
             };
-            opts.signal.addEventListener('abort', onSignalAbort, { once: true });
-        }
+            xhr.ontimeout = function() {
+                cleanup();
+                reject(new Error('Request timeout'));
+            };
+            if (typeof opts.timeout === 'number' && Number.isFinite(opts.timeout) && opts.timeout >= 0) {
+                xhr.timeout = opts.timeout;
+            }
+            xhr.withCredentials = Boolean(opts.withCredentials || opts.credentials === 'include');
+            if (opts.headers) {
+                if (Array.isArray(opts.headers)) {
+                    opts.headers.forEach(function (pair) {
+                        if (Array.isArray(pair) && pair.length >= 2 && pair[0] != null && pair[1] != null) {
+                            xhr.setRequestHeader(String(pair[0]), String(pair[1]));
+                        }
+                    });
+                } else if (typeof opts.headers.forEach === 'function') {
+                    opts.headers.forEach(function (val, key) {
+                        if (key != null && val != null) {
+                            xhr.setRequestHeader(String(key), String(val));
+                        }
+                    });
+                } else {
+                    Object.keys(opts.headers).forEach(function(key) {
+                        const val = opts.headers[key];
+                        if (val != null) {
+                            xhr.setRequestHeader(key, String(val));
+                        }
+                    });
+                }
+            }
+            if (opts.signal && typeof opts.signal.addEventListener === 'function') {
+                onSignalAbort = function () {
+                    cleanup();
+                    if (typeof xhr.abort === 'function') {
+                        xhr.abort();
+                    }
+                    reject(new Error('Request aborted'));
+                };
+                opts.signal.addEventListener('abort', onSignalAbort, { once: true });
+            }
 
-        xhr.send(isBodyless ? null : opts.body);
+            xhr.send(isBodyless ? null : opts.body);
+        } catch (err) {
+            cleanup();
+            reject(err);
+        }
     });
 }
 
@@ -268,7 +292,7 @@ export function readExcelData(buffer, xls){
 function transferColumns(excelSheet, spreadSheet, options, effectiveMaxColLen = 0){
     const rawColumns = excelSheet.columns || [];
     const minColLen = typeof options.minColLength === 'number' && Number.isFinite(options.minColLength) && options.minColLength >= 0
-        ? options.minColLength
+        ? Math.floor(options.minColLength)
         : 0;
     const targetLen = Math.max(effectiveMaxColLen, minColLen);
     const limit = Math.min(rawColumns.length, targetLen);
@@ -296,17 +320,208 @@ function transferColumns(excelSheet, spreadSheet, options, effectiveMaxColLen = 
     spreadSheet.cols.len = Math.max(Object.keys(spreadSheet.cols).length, targetLen);
 }
 
-function formatExcelDate(val, fmt) {
+const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30, 0, 0, 0);
+const EXCEL_1904_EPOCH_MS = Date.UTC(1904, 0, 1, 0, 0, 0);
+const CN_WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const NAMED_SECTION_COLORS = {
+    black: '#000000',
+    white: '#FFFFFF',
+    red: '#FF0000',
+    green: '#008000',
+    blue: '#0000FF',
+    yellow: '#FFFF00',
+    magenta: '#FF00FF',
+    cyan: '#00FFFF'
+};
+
+function parseExcelDayjs(val, date1904 = false) {
     if (val == null) {
-        return '';
+        return null;
     }
-    const parsed = val instanceof Date
-        ? dayjs.utc(val)
-        : dayjs(val);
-    if (!parsed.isValid()) {
+    if (val instanceof Date) {
+        return dayjs.utc(val);
+    }
+    if (typeof val === 'number' && Number.isFinite(val)) {
+        const epochMs = date1904 ? EXCEL_1904_EPOCH_MS : EXCEL_EPOCH_MS;
+        return dayjs.utc(epochMs + Math.round(val * 86400000));
+    }
+    return dayjs.utc(val);
+}
+
+function formatExcelDate(val, fmt, date1904 = false) {
+    const parsed = parseExcelDayjs(val, date1904);
+    if (!parsed || !parsed.isValid()) {
         return '';
     }
     return parsed.format(fmt);
+}
+
+function stripQuotedAndEscaped(str) {
+    let out = '';
+    let inQuotes = false;
+    for (let i = 0; i < str.length; i++) {
+        const ch = str[i];
+        if (!inQuotes && ch === '\\') {
+            i += 1;
+            continue;
+        }
+        if (ch === '"') {
+            inQuotes = !inQuotes;
+            continue;
+        }
+        if (!inQuotes) {
+            out += ch;
+        }
+    }
+    return out;
+}
+
+function stripBracketsQuotedAndEscaped(str) {
+    let out = '';
+    let inQuotes = false;
+    let inBrackets = false;
+    for (let i = 0; i < str.length; i++) {
+        const ch = str[i];
+        if (!inQuotes && !inBrackets && (ch === '\\' || ch === '_' || ch === '*')) {
+            i += 1;
+            continue;
+        }
+        if (!inBrackets && ch === '"') {
+            inQuotes = !inQuotes;
+            continue;
+        }
+        if (!inQuotes && ch === '[') {
+            inBrackets = true;
+            continue;
+        }
+        if (!inQuotes && inBrackets && ch === ']') {
+            inBrackets = false;
+            continue;
+        }
+        if (!inQuotes && !inBrackets) {
+            out += ch;
+        }
+    }
+    return out;
+}
+
+function extractSectionConditionAndColor(section) {
+    let condition = null;
+    let color = null;
+    let inQuotes = false;
+    for (let i = 0; i < section.length; i++) {
+        const ch = section[i];
+        if (!inQuotes && ch === '\\') {
+            i += 1;
+            continue;
+        }
+        if (ch === '"') {
+            inQuotes = !inQuotes;
+            continue;
+        }
+        if (!inQuotes && ch === '[') {
+            const closeIdx = section.indexOf(']', i + 1);
+            if (closeIdx === -1) {
+                break;
+            }
+            const content = section.slice(i + 1, closeIdx).trim();
+            const lower = content.toLowerCase();
+            if (NAMED_SECTION_COLORS[lower]) {
+                color = NAMED_SECTION_COLORS[lower];
+            } else {
+                const condMatch = content.match(/^(<=|>=|<>|<|>|=)\s*([+-]?\d+(?:\.\d+)?)$/);
+                if (condMatch) {
+                    condition = { op: condMatch[1], threshold: Number(condMatch[2]) };
+                }
+            }
+            i = closeIdx;
+        }
+    }
+    return { condition, color };
+}
+
+function evaluateSectionCondition(value, cond) {
+    if (!cond) {
+        return false;
+    }
+    switch (cond.op) {
+        case '<': return value < cond.threshold;
+        case '<=': return value <= cond.threshold;
+        case '>': return value > cond.threshold;
+        case '>=': return value >= cond.threshold;
+        case '=': return value === cond.threshold;
+        case '<>': return value !== cond.threshold;
+        default: return false;
+    }
+}
+
+function selectNumFmtSection(value, sections) {
+    const metas = sections.map(s => extractSectionConditionAndColor(s));
+    const hasCondition = metas.some(m => m.condition !== null);
+    if (hasCondition) {
+        for (let i = 0; i < sections.length; i++) {
+            const cond = metas[i].condition;
+            if (cond) {
+                if (evaluateSectionCondition(value, cond)) {
+                    const useAbs = cond.op === '<' && cond.threshold <= 0 && value < 0;
+                    return {
+                        section: sections[i],
+                        color: metas[i].color,
+                        useAbsForNegSection: useAbs,
+                        isConditional: true,
+                        isExplicitNeg: false,
+                        isExplicitZero: false
+                    };
+                }
+            } else if (i < 3) {
+                return {
+                    section: sections[i],
+                    color: metas[i].color,
+                    useAbsForNegSection: false,
+                    isConditional: true,
+                    isExplicitNeg: false,
+                    isExplicitZero: false
+                };
+            }
+        }
+        return {
+            section: sections[0] || '',
+            color: metas[0] ? metas[0].color : null,
+            useAbsForNegSection: false,
+            isConditional: true,
+            isExplicitNeg: false,
+            isExplicitZero: false
+        };
+    }
+
+    if (value < 0 && sections.length > 1) {
+        return {
+            section: sections[1],
+            color: metas[1].color,
+            useAbsForNegSection: true,
+            isConditional: false,
+            isExplicitNeg: true,
+            isExplicitZero: false
+        };
+    }
+    if (value === 0 && sections.length > 2) {
+        return {
+            section: sections[2],
+            color: metas[2].color,
+            useAbsForNegSection: false,
+            isConditional: false,
+            isExplicitNeg: false,
+            isExplicitZero: true
+        };
+    }
+    return {
+        section: sections[0] || '',
+        color: metas[0] ? metas[0].color : null,
+        useAbsForNegSection: false,
+        isConditional: false,
+        isExplicitNeg: false,
+        isExplicitZero: false
+    };
 }
 
 function splitNumFmtSections(fmt) {
@@ -363,6 +578,10 @@ function findDigitPlaceholderBounds(section) {
             continue;
         }
         if (!inQuotes) {
+            if (ch === '_' || ch === '*') {
+                i += 1;
+                continue;
+            }
             if (ch === '[') {
                 inBrackets = true;
                 continue;
@@ -373,18 +592,40 @@ function findDigitPlaceholderBounds(section) {
             }
             if (!inBrackets && (ch === '0' || ch === '#' || ch === '?')) {
                 if (first === -1) {
-                    first = i;
+                    first = (i > 0 && section[i - 1] === '.') ? i - 1 : i;
                 }
                 last = i;
+            }
+        }
+    }
+    if (last !== -1) {
+        const afterLast = section.slice(last + 1);
+        const fixedDenomMatch = afterLast.match(/^\s*\/\s*[1-9]\d*/);
+        if (fixedDenomMatch) {
+            last += fixedDenomMatch[0].length;
+        } else if (first !== -1) {
+            const coreSoFar = stripBracketsQuotedAndEscaped(section.slice(first, last + 1));
+            const tailDigits = afterLast.match(/^\d+/);
+            if (tailDigits && /\/\s*\d+$/.test(coreSoFar)) {
+                last += tailDigits[0].length;
             }
         }
     }
     return { first, last };
 }
 
-function extractEdgeLiterals(segment, { allowPercent = true, allowCurrencyFallback = false } = {}) {
+function extractEdgeLiterals(segment, {
+    allowPercent = true,
+    allowCurrencyFallback = true,
+    preserveParens = false,
+    preservePlus = false,
+    preserveMinus = false,
+    preserveTrailingSpace = false
+} = {}) {
     let out = '';
     let hasExplicitLiteral = false;
+    let hasUnquotedMinus = false;
+    let hasUnquotedPercent = false;
     let pendingSpace = '';
     for (let i = 0; i < segment.length; i++) {
         const ch = segment[i];
@@ -428,19 +669,44 @@ function extractEdgeLiterals(segment, { allowPercent = true, allowCurrencyFallba
             }
             continue;
         }
+        if (ch === '-') {
+            hasUnquotedMinus = true;
+            if (preserveMinus) {
+                out += pendingSpace + '-';
+                pendingSpace = '';
+                hasExplicitLiteral = true;
+            }
+            continue;
+        }
+        if (preservePlus && ch === '+') {
+            out += pendingSpace + '+';
+            pendingSpace = '';
+            hasExplicitLiteral = true;
+            continue;
+        }
+        if (preserveParens && (ch === '(' || ch === ')')) {
+            out += pendingSpace + ch;
+            pendingSpace = '';
+            hasExplicitLiteral = true;
+            continue;
+        }
         if (allowPercent && ch === '%') {
+            hasUnquotedPercent = true;
             out += pendingSpace + '%';
             pendingSpace = '';
             hasExplicitLiteral = true;
             continue;
         }
         if (allowCurrencyFallback && (ch === '$' || ch === '¥' || ch === '￥' || ch === '€' || ch === '£')) {
-            out += ch;
+            out += pendingSpace + ch;
             pendingSpace = '';
             hasExplicitLiteral = true;
         }
     }
-    return { text: out, hasExplicitLiteral };
+    if (preserveTrailingSpace && out && pendingSpace) {
+        out += pendingSpace;
+    }
+    return { text: out, hasExplicitLiteral, hasUnquotedMinus, hasUnquotedPercent };
 }
 
 function countTrailingScalingCommas(section, lastDigitIdx) {
@@ -458,8 +724,24 @@ function countTrailingScalingCommas(section, lastDigitIdx) {
     return count;
 }
 
+function roundHalfAwayFromZero(numVal, decimals) {
+    if (!Number.isFinite(numVal) || numVal === 0) {
+        return 0;
+    }
+    const sign = numVal < 0 ? -1 : 1;
+    const abs = Math.abs(numVal);
+    const clean = Number(abs.toPrecision(15));
+    const shifted = Number(`${clean}e${decimals}`);
+    if (!Number.isFinite(shifted)) {
+        return numVal;
+    }
+    const rounded = Math.floor(shifted + 0.5);
+    return sign * Number(`${rounded}e${-decimals}`);
+}
+
 function formatFixedDecimals(numVal, maxDec, minDec) {
-    let result = numVal.toFixed(maxDec);
+    const rounded = roundHalfAwayFromZero(numVal, maxDec);
+    let result = rounded.toFixed(maxDec);
     if (maxDec > minDec && result.includes('.')) {
         const [intPart, fracPart] = result.split('.');
         let trimmedFrac = fracPart;
@@ -474,10 +756,10 @@ function formatFixedDecimals(numVal, maxDec, minDec) {
     return result;
 }
 
-function applyIntegerPaddingAndGrouping(result, patternWithoutSci) {
-    const intPattern = patternWithoutSci.split('.')[0];
+function applyIntegerPaddingAndGrouping(result, coreNumPattern) {
+    const intPattern = coreNumPattern.split('.')[0];
     const intZeroCount = (intPattern.match(/0/g) || []).length;
-    if (!patternWithoutSci.includes(',') && intZeroCount > 1 && !result.includes('e') && !result.includes('E')) {
+    if (intZeroCount > 1 && !result.includes('e') && !result.includes('E')) {
         const parts = result.split('.');
         const neg = parts[0].startsWith('-');
         const absDigits = neg ? parts[0].slice(1) : parts[0];
@@ -486,7 +768,7 @@ function applyIntegerPaddingAndGrouping(result, patternWithoutSci) {
             result = parts.join('.');
         }
     }
-    if (/[#0?],[#0?]/.test(patternWithoutSci) && !result.includes('e') && !result.includes('E')) {
+    if (/[#0?],[#0?]/.test(intPattern) && !result.includes('e') && !result.includes('E')) {
         const parts = result.split('.');
         const digits = parts[0].split('').reverse();
         const formatted = [];
@@ -502,42 +784,127 @@ function applyIntegerPaddingAndGrouping(result, patternWithoutSci) {
     return result;
 }
 
-function formatNumberValue(value, cellNumFmt) {
+function formatFractionValue(numVal, fracMatch) {
+    const hasIntPart = Boolean(fracMatch[1]);
+    const denomSpec = fracMatch[3];
+    const neg = numVal < 0;
+    const absVal = Math.abs(numVal);
+    let whole = hasIntPart ? Math.floor(absVal) : 0;
+    const frac = hasIntPart ? (absVal - whole) : absVal;
+
+    let bestNum = 0;
+    let bestDen = 1;
+    if (/^[1-9]\d*$/.test(denomSpec)) {
+        bestDen = Number(denomSpec);
+        bestNum = Math.round(frac * bestDen);
+    } else {
+        const maxDen = Math.min(Math.pow(10, Math.min(denomSpec.length, 4)) - 1, 9999);
+        let bestErr = Math.abs(frac);
+        for (let d = 1; d <= maxDen; d++) {
+            const n = Math.round(frac * d);
+            const err = Math.abs(frac - n / d);
+            if (err + 1e-12 < bestErr) {
+                bestErr = err;
+                bestNum = n;
+                bestDen = d;
+                if (err < 1e-10) {
+                    break;
+                }
+            }
+        }
+    }
+
+    if (hasIntPart && bestNum >= bestDen) {
+        whole += Math.floor(bestNum / bestDen);
+        bestNum = bestNum % bestDen;
+    }
+
+    const sign = neg && (whole !== 0 || bestNum !== 0) ? '-' : '';
+    if (hasIntPart) {
+        if (bestNum === 0) {
+            return `${sign}${whole}`;
+        }
+        return whole > 0 ? `${sign}${whole} ${bestNum}/${bestDen}` : `${sign}${bestNum}/${bestDen}`;
+    }
+    return `${sign}${bestNum}/${bestDen}`;
+}
+
+function formatMaskedInteger(numVal, coreSection) {
+    const neg = numVal < 0;
+    const digits = String(Math.round(Math.abs(numVal)));
+    const placeholders = [];
+    const tokens = [];
+    let inQuotes = false;
+    for (let i = 0; i < coreSection.length; i++) {
+        const ch = coreSection[i];
+        if (!inQuotes && ch === '\\' && i + 1 < coreSection.length) {
+            tokens.push({ type: 'lit', val: coreSection[i + 1] });
+            i += 1;
+            continue;
+        }
+        if (ch === '"') {
+            inQuotes = !inQuotes;
+            continue;
+        }
+        if (inQuotes) {
+            tokens.push({ type: 'lit', val: ch });
+            continue;
+        }
+        if (ch === '0' || ch === '#' || ch === '?') {
+            placeholders.push(tokens.length);
+            tokens.push({ type: 'digit', kind: ch });
+        } else {
+            tokens.push({ type: 'lit', val: ch });
+        }
+    }
+    if (placeholders.length === 0) {
+        return null;
+    }
+    const padded = digits.padStart(placeholders.length, '0');
+    const overflow = padded.length > placeholders.length ? padded.slice(0, padded.length - placeholders.length) : '';
+    const tail = padded.slice(padded.length - placeholders.length);
+    let digitIdx = 0;
+    let out = overflow;
+    for (let i = 0; i < tokens.length; i++) {
+        const t = tokens[i];
+        if (t.type === 'digit') {
+            out += tail[digitIdx++];
+        } else {
+            out += t.val;
+        }
+    }
+    return (neg && out !== '0'.repeat(out.length) ? '-' : '') + out;
+}
+
+function formatNumberWithMeta(value, cellNumFmt) {
     try {
         if (typeof value !== 'number') {
-            return value != null ? String(value) : '';
+            return { text: value != null ? String(value) : '', color: null };
         }
         if (!Number.isFinite(value)) {
-            return String(value);
+            return { text: String(value), color: null };
         }
         if (cellNumFmt && typeof cellNumFmt === 'string') {
             const sections = splitNumFmtSections(cellNumFmt);
-            let section = sections[0] || '';
-            let useAbsForNegSection = false;
-            const hasExplicitNegSection = value < 0 && sections.length > 1;
-            const hasExplicitZeroSection = value === 0 && sections.length > 2;
-            if (hasExplicitNegSection) {
-                section = sections[1];
-                useAbsForNegSection = true;
-            } else if (hasExplicitZeroSection) {
-                section = sections[2];
-            }
+            const selected = selectNumFmtSection(value, sections);
+            const { section, color, useAbsForNegSection, isExplicitNeg, isExplicitZero } = selected;
+            const patternOnly = stripBracketsQuotedAndEscaped(section);
 
-            const cleanSection = section.replace(/\[\$([^-\]]+)[^\]]*\]/g, '[$1]').replace(/\[(?![^\]]*\$)[^\]]*\]/g, '');
-            const patternOnly = cleanSection.replace(/\[[^\]]*\]/g, '').replace(/"[^"]*"/g, '').replace(/[_*\\]./g, '');
-
-            if ((hasExplicitNegSection || hasExplicitZeroSection || value === 0) && !/[0#]/.test(patternOnly)) {
+            if ((isExplicitNeg || isExplicitZero || value === 0 || selected.isConditional) && !/[0#]/.test(patternOnly)) {
                 const trimPattern = patternOnly.trim();
                 if (!/^(General|@)$/i.test(trimPattern)) {
-                    const quotedLiteral = cleanSection.match(/"([^"]+)"/);
-                    if (quotedLiteral) {
-                        return quotedLiteral[1];
-                    }
-                    if (patternOnly.includes('-')) {
-                        return '-';
+                    const edgeText = extractEdgeLiterals(section, {
+                        allowPercent: true,
+                        allowCurrencyFallback: true,
+                        preserveParens: true,
+                        preservePlus: true,
+                        preserveMinus: true
+                    }).text;
+                    if (edgeText) {
+                        return { text: edgeText, color };
                     }
                     if (!patternOnly.includes('?')) {
-                        return '';
+                        return { text: '', color };
                     }
                 }
             }
@@ -551,16 +918,34 @@ function formatNumberValue(value, cellNumFmt) {
                 }
 
                 const leadingSeg = section.slice(0, firstDigitIdx);
+                const coreRawSection = section.slice(firstDigitIdx, lastDigitIdx + 1);
                 const trailingSeg = section.slice(lastDigitIdx + 1 + scalingCommas);
-                const prefixInfo = extractEdgeLiterals(leadingSeg, { allowPercent: false, allowCurrencyFallback: true });
-                const suffixInfo = extractEdgeLiterals(trailingSeg, { allowPercent: true, allowCurrencyFallback: false });
+                const corePattern = stripBracketsQuotedAndEscaped(coreRawSection);
+
+                const isParenNeg = useAbsForNegSection && /\(/.test(stripBracketsQuotedAndEscaped(leadingSeg)) && /\)/.test(stripBracketsQuotedAndEscaped(trailingSeg));
+                const prefixInfo = extractEdgeLiterals(leadingSeg, {
+                    allowPercent: true,
+                    allowCurrencyFallback: true,
+                    preserveParens: isParenNeg,
+                    preservePlus: true,
+                    preserveMinus: false,
+                    preserveTrailingSpace: true
+                });
+                const suffixInfo = extractEdgeLiterals(trailingSeg, {
+                    allowPercent: true,
+                    allowCurrencyFallback: true,
+                    preserveParens: isParenNeg,
+                    preservePlus: false,
+                    preserveMinus: false
+                });
                 const prefix = prefixInfo.text;
                 let suffix = suffixInfo.text;
 
-                const isParenNeg = useAbsForNegSection && /\(.*[0#?].*\)/.test(patternOnly);
-                const hasExplicitMinus = useAbsForNegSection && /-/.test(patternOnly);
-                const isPercent = patternOnly.includes('%');
-                const sciMatch = patternOnly.match(/([0#?]+(?:\.([0#?]+))?)[eE]([+-])([0#?]+)/);
+                const hasLeadingMinus = useAbsForNegSection && prefixInfo.hasUnquotedMinus;
+                const hasTrailingMinus = useAbsForNegSection && !prefixInfo.hasUnquotedMinus && suffixInfo.hasUnquotedMinus;
+                const isPercent = prefixInfo.hasUnquotedPercent || suffixInfo.hasUnquotedPercent || corePattern.includes('%');
+                const sciMatch = corePattern.match(/^([0#?]+(?:\.([0#?]+))?)[eE]([+-])([0#?]+)$/);
+                const fracMatch = !sciMatch && corePattern.match(/^(?:([0#?]+)\s+)?([0#?]+)\s*\/\s*([0#?]+|\d+)$/);
 
                 let result;
                 if (sciMatch) {
@@ -576,210 +961,347 @@ function formatNumberValue(value, cellNumFmt) {
                     } else {
                         const neg = numVal < 0;
                         const absVal = Math.abs(numVal);
-                        let exp = Math.floor(Math.log10(absVal));
-                        let mant = absVal / Math.pow(10, exp);
-                        if (Number(mant.toFixed(maxDec)) >= 10) {
-                            mant /= 10;
-                            exp += 1;
-                        }
-                        const mantStr = formatFixedDecimals(mant, maxDec, minDec);
+                        const expParts = absVal.toExponential(maxDec).split(/[eE]/);
+                        const mantNum = Number(expParts[0]);
+                        const exp = parseInt(expParts[1], 10);
+                        const mantStr = formatFixedDecimals(mantNum, maxDec, minDec);
                         const expSign = exp < 0 ? '-' : (expSignCfg === '+' ? '+' : '');
                         const expDigits = String(Math.abs(exp)).padStart(expMinDigits, '0');
                         result = `${neg ? '-' : ''}${mantStr}E${expSign}${expDigits}`;
                     }
+                } else if (fracMatch) {
+                    result = formatFractionValue(numVal, fracMatch);
+                } else if (
+                    !isPercent &&
+                    !corePattern.includes('.') &&
+                    !corePattern.includes(',') &&
+                    /[^0#?]/.test(corePattern)
+                ) {
+                    const masked = formatMaskedInteger(numVal, coreRawSection);
+                    result = masked !== null ? masked : String(numVal);
                 } else {
                     if (isPercent) {
                         numVal = numVal * 100;
-                        if (!suffix.includes('%')) {
+                        if (!prefixInfo.hasUnquotedPercent && !suffix.includes('%')) {
                             suffix = `%${suffix}`;
                         }
                     }
-                    const coreNumPattern = patternOnly.replace(/,+$/, '');
-                    const decMatch = coreNumPattern.match(/\.([0#?]+)/);
+                    const decMatch = corePattern.match(/\.([0#?]+)/);
                     const maxDec = decMatch ? decMatch[1].length : 0;
                     const minDec = decMatch ? (decMatch[1].match(/0/g) || []).length : 0;
                     result = formatFixedDecimals(numVal, maxDec, minDec);
-                    result = applyIntegerPaddingAndGrouping(result, coreNumPattern);
+                    result = applyIntegerPaddingAndGrouping(result, corePattern);
                 }
 
-                if (isParenNeg) {
-                    return `(${prefix}${result}${suffix})`;
-                }
+                const isZeroResult = /^0+(\.0+)?(E[+-]0+)?$/.test(result);
                 if (result.startsWith('-')) {
-                    return `-${prefix}${result.slice(1)}${suffix}`;
+                    return { text: `-${prefix}${result.slice(1)}${suffix}`, color };
                 }
-                if (value < 0 && hasExplicitMinus && !/^0+(\.0+)?(E[+-]0+)?$/.test(result)) {
-                    return `-${prefix}${result}${suffix}`;
+                if (value < 0 && hasLeadingMinus && !isZeroResult) {
+                    return { text: `-${prefix}${result}${suffix}`, color };
                 }
-                return `${prefix}${result}${suffix}`;
+                if (value < 0 && hasTrailingMinus && !isZeroResult) {
+                    return { text: `${prefix}${result}${suffix}-`, color };
+                }
+                return { text: `${prefix}${result}${suffix}`, color };
             }
         }
-        return String(value);
+        return { text: String(value), color: null };
     } catch (e) {
-        return value != null ? String(value) : '';
+        return { text: value != null ? String(value) : '', color: null };
     }
 }
 
-const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30, 0, 0, 0);
-const CN_WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+export function formatNumberValue(value, cellNumFmt) {
+    return formatNumberWithMeta(value, cellNumFmt).text;
+}
 
-function formatElapsedDuration(val, rawFmt) {
+function hasElapsedDurationToken(numFmt) {
+    if (typeof numFmt !== 'string' || !numFmt) {
+        return false;
+    }
+    const section0 = splitNumFmtSections(numFmt)[0] || '';
+    const unquoted = stripQuotedAndEscaped(section0);
+    return /\[(?:h+|m+|s+)\]/i.test(unquoted);
+}
+
+function formatElapsedDuration(val, rawFmt, date1904 = false) {
+    if (val == null || val === '') {
+        return '';
+    }
+    const epochMs = date1904 ? EXCEL_1904_EPOCH_MS : EXCEL_EPOCH_MS;
     const ms = val instanceof Date
-        ? val.getTime() - EXCEL_EPOCH_MS
+        ? val.getTime() - epochMs
         : Number(val) * 86400000;
     if (!Number.isFinite(ms)) {
         return '';
     }
     const sign = ms < 0 ? '-' : '';
     const totalSec = Math.round(Math.abs(ms) / 1000);
-    if (/\[h+\]/i.test(rawFmt)) {
+    const section0 = splitNumFmtSections(String(rawFmt || ''))[0] || '';
+    const unquoted = stripQuotedAndEscaped(section0);
+    const restTokens = stripBracketsQuotedAndEscaped(section0);
+
+    const hMatch = unquoted.match(/\[(h+)\]/i);
+    if (hMatch) {
         const hours = Math.floor(totalSec / 3600);
         const mins = Math.floor((totalSec % 3600) / 60);
         const secs = totalSec % 60;
-        const padH = rawFmt.match(/\[(h+)\]/i)[1].length > 1 ? String(hours).padStart(2, '0') : String(hours);
-        if (/s/i.test(rawFmt.replace(/"[^"]*"/g, ''))) {
+        const padH = hMatch[1].length > 1 ? String(hours).padStart(hMatch[1].length, '0') : String(hours);
+        const hasM = /m/i.test(restTokens);
+        const hasS = /s/i.test(restTokens);
+        if (hasS) {
             return `${sign}${padH}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
         }
-        return `${sign}${padH}:${String(mins).padStart(2, '0')}`;
+        if (hasM) {
+            return `${sign}${padH}:${String(mins).padStart(2, '0')}`;
+        }
+        return `${sign}${padH}`;
     }
-    if (/\[m+\]/i.test(rawFmt)) {
+    const mMatch = unquoted.match(/\[(m+)\]/i);
+    if (mMatch) {
         const mins = Math.floor(totalSec / 60);
         const secs = totalSec % 60;
-        const padM = rawFmt.match(/\[(m+)\]/i)[1].length > 1 ? String(mins).padStart(2, '0') : String(mins);
-        if (/s/i.test(rawFmt.replace(/"[^"]*"/g, ''))) {
+        const padM = mMatch[1].length > 1 ? String(mins).padStart(mMatch[1].length, '0') : String(mins);
+        if (/s/i.test(restTokens)) {
             return `${sign}${padM}:${String(secs).padStart(2, '0')}`;
         }
         return `${sign}${padM}`;
     }
-    const secWidth = rawFmt.match(/\[(s+)\]/i)[1].length;
+    const sMatch = unquoted.match(/\[(s+)\]/i);
+    const secWidth = sMatch ? sMatch[1].length : 1;
     const padS = secWidth > 1 ? String(totalSec).padStart(secWidth, '0') : String(totalSec);
     return `${sign}${padS}`;
 }
 
-function formatExcelDateByNumFmt(val, numFmt) {
-    if (typeof numFmt === 'string' && /\[(?:h+|m+|s+)\]/i.test(numFmt)) {
-        return formatElapsedDuration(val, numFmt);
+function formatExcelDateByNumFmt(val, numFmt, date1904 = false) {
+    if (hasElapsedDurationToken(numFmt)) {
+        return formatElapsedDuration(val, numFmt, date1904);
     }
-    switch (numFmt) {
+    const rawStr = typeof numFmt === 'string' ? numFmt : '';
+    const section0 = rawStr ? splitNumFmtSections(rawStr)[0] : '';
+    switch (rawStr) {
         case 'yyyy-mm-dd;@':
-            return formatExcelDate(val, 'YYYY-MM-DD');
+            return formatExcelDate(val, 'YYYY-MM-DD', date1904);
         case 'mm-dd-yy':
-            return formatExcelDate(val, 'YYYY/MM/DD');
+            return formatExcelDate(val, 'YYYY/MM/DD', date1904);
         case '[$-F800]dddd, mmmm dd, yyyy': {
-            if (val == null) return '';
-            const parsed = val instanceof Date ? dayjs.utc(val) : dayjs(val);
-            if (!parsed.isValid()) return '';
+            const parsed = parseExcelDayjs(val, date1904);
+            if (!parsed || !parsed.isValid()) return '';
             return `${parsed.format('YYYY年M月D日')} ${CN_WEEKDAYS[parsed.day()]}`;
         }
         case 'm"月"d"日";@':
-            return formatExcelDate(val, 'M月D日');
+            return formatExcelDate(val, 'M月D日', date1904);
         case 'yyyy/m/d h:mm;@':
+            return formatExcelDate(val, 'YYYY/M/D HH:mm', date1904);
         case 'm/d/yy "h":mm':
-            return formatExcelDate(val, 'YYYY/M/DD HH:mm');
+            return formatExcelDate(val, 'YYYY/M/D HH:mm', date1904);
         case 'h:mm;@':
-            return formatExcelDate(val, 'HH:mm');
+            return formatExcelDate(val, 'HH:mm', date1904);
         default: {
-            const cleanNoBracket = typeof numFmt === 'string' ? numFmt.replace(/\[[^\]]*\]/g, '') : '';
-            const tokensOnly = cleanNoBracket.replace(/"[^"]*"/g, '').replace(/\\./g, '');
-            const hasAmPm = /\b(?:am\/pm|a\/p)\b/i.test(tokensOnly);
+            const cleanNoBracket = section0.replace(/\[[^\]]*\]/g, '');
+            const tokensOnly = stripBracketsQuotedAndEscaped(section0);
+            const hasAmPm = /(?:am\/pm|a\/p)/i.test(tokensOnly);
             if (tokensOnly && /h{1,2}:m{1,2}:s{1,2}/i.test(tokensOnly)) {
                 const timeFmt = hasAmPm ? 'h:mm:ss A' : 'HH:mm:ss';
-                return formatExcelDate(val, /y|d/i.test(tokensOnly) ? `YYYY-MM-DD ${timeFmt}` : timeFmt);
+                return formatExcelDate(val, /y|d/i.test(tokensOnly) ? `YYYY-MM-DD ${timeFmt}` : timeFmt, date1904);
             }
             if (tokensOnly && /h{1,2}:m{1,2}/i.test(tokensOnly)) {
                 const timeFmt = hasAmPm ? 'h:mm A' : 'HH:mm';
-                return formatExcelDate(val, /y|d/i.test(tokensOnly) ? `YYYY-MM-DD ${timeFmt}` : timeFmt);
+                return formatExcelDate(val, /y|d/i.test(tokensOnly) ? `YYYY-MM-DD ${timeFmt}` : timeFmt, date1904);
+            }
+            if (tokensOnly && !/h/i.test(tokensOnly) && /m{1,2}:s{1,2}/i.test(tokensOnly)) {
+                return formatExcelDate(val, 'mm:ss', date1904);
+            }
+            if (tokensOnly && /y+/i.test(tokensOnly) && /m+/i.test(tokensOnly) && /d+/i.test(tokensOnly)) {
+                if (cleanNoBracket.includes('年') && cleanNoBracket.includes('月') && cleanNoBracket.includes('日')) {
+                    const mFmt = /mm/i.test(tokensOnly) ? 'MM' : 'M';
+                    const dFmt = /dd/i.test(tokensOnly) ? 'DD' : 'D';
+                    return formatExcelDate(val, `YYYY年${mFmt}月${dFmt}日`, date1904);
+                }
+                if (cleanNoBracket.includes('/')) {
+                    const mFmt = /mm/i.test(tokensOnly) ? 'MM' : 'M';
+                    const dFmt = /dd/i.test(tokensOnly) ? 'DD' : 'D';
+                    return formatExcelDate(val, `YYYY/${mFmt}/${dFmt}`, date1904);
+                }
+            }
+            if (tokensOnly && !/y/i.test(tokensOnly) && /m+/i.test(tokensOnly) && /d+/i.test(tokensOnly)) {
+                if (cleanNoBracket.includes('月') && cleanNoBracket.includes('日')) {
+                    const mFmt = /mm/i.test(tokensOnly) ? 'MM' : 'M';
+                    const dFmt = /dd/i.test(tokensOnly) ? 'DD' : 'D';
+                    return formatExcelDate(val, `${mFmt}月${dFmt}日`, date1904);
+                }
             }
             if (tokensOnly && /y+/i.test(tokensOnly) && /m+/i.test(tokensOnly) && !/d/i.test(tokensOnly)) {
                 if (cleanNoBracket.includes('年')) {
-                    return formatExcelDate(val, 'YYYY年M月');
+                    return formatExcelDate(val, 'YYYY年M月', date1904);
                 }
-                return formatExcelDate(val, cleanNoBracket.includes('/') ? 'YYYY/MM' : 'YYYY-MM');
+                return formatExcelDate(val, cleanNoBracket.includes('/') ? 'YYYY/MM' : 'YYYY-MM', date1904);
             }
-            return formatExcelDate(val, 'YYYY-MM-DD');
+            return formatExcelDate(val, 'YYYY-MM-DD', date1904);
         }
     }
 }
 
-function getCellText(cell){
+function formatTextByNumFmt(str, cellNumFmt) {
+    if (!cellNumFmt || typeof cellNumFmt !== 'string') {
+        return str;
+    }
+    const sections = splitNumFmtSections(cellNumFmt);
+    let textSection = null;
+    if (sections.length >= 4) {
+        textSection = sections[3];
+    } else if (sections.length === 1 && stripBracketsQuotedAndEscaped(sections[0]).includes('@')) {
+        textSection = sections[0];
+    }
+    if (!textSection || !stripBracketsQuotedAndEscaped(textSection).includes('@')) {
+        return str;
+    }
+    let out = '';
+    let inQuotes = false;
+    for (let i = 0; i < textSection.length; i++) {
+        const ch = textSection[i];
+        if (!inQuotes && ch === '\\' && i + 1 < textSection.length) {
+            out += textSection[i + 1];
+            i += 1;
+            continue;
+        }
+        if (ch === '"') {
+            inQuotes = !inQuotes;
+            continue;
+        }
+        if (inQuotes) {
+            out += ch;
+            continue;
+        }
+        if (ch === '[') {
+            const closeIdx = textSection.indexOf(']', i + 1);
+            i = closeIdx === -1 ? textSection.length : closeIdx;
+            continue;
+        }
+        if (ch === '_' || ch === '*') {
+            i += 1;
+            continue;
+        }
+        if (ch === '@') {
+            out += str;
+            continue;
+        }
+        out += ch;
+    }
+    return out;
+}
+
+function extractRichText(richTextArr) {
+    return richTextArr.map(item => (item && item.text != null ? String(item.text) : '')).join('');
+}
+
+function getCellTextWithMeta(cell, date1904 = false) {
     const { numFmt, value, type } = cell;
     const cellNumFmt = (cell.style && cell.style.numFmt) || numFmt;
     switch (type){
         case 2: //数字
-            return formatNumberValue(value, cellNumFmt);
+            if (hasElapsedDurationToken(cellNumFmt)) {
+                return { text: formatElapsedDuration(value, cellNumFmt, date1904), color: null };
+            }
+            return formatNumberWithMeta(value, cellNumFmt);
 
         case 3: //字符串
-            return value != null ? String(value) : '';
+            return { text: value != null ? formatTextByNumFmt(String(value), cellNumFmt) : '', color: null };
         case 4: //日期
-            return formatExcelDateByNumFmt(value, cellNumFmt);
+            return { text: formatExcelDateByNumFmt(value, cellNumFmt, date1904), color: null };
 
         case 5: //超链接
             if (!value) {
-                return '';
+                return { text: '', color: null };
             }
             if (value.text !== undefined && value.text !== null && value.text !== '') {
                 if (value.text instanceof Date) {
-                    return formatExcelDateByNumFmt(value.text, cellNumFmt);
+                    return { text: formatExcelDateByNumFmt(value.text, cellNumFmt, date1904), color: null };
+                }
+                if (typeof value.text === 'number') {
+                    return formatNumberWithMeta(value.text, cellNumFmt);
+                }
+                if (typeof value.text === 'boolean') {
+                    return { text: String(value.text).toUpperCase(), color: null };
                 }
                 if (typeof value.text === 'object') {
                     if (Array.isArray(value.text.richText)) {
-                        return value.text.richText.map(item => item.text || '').join('');
+                        return { text: extractRichText(value.text.richText), color: null };
                     }
                     if (value.text.error) {
-                        return value.text.error;
+                        return { text: value.text.error, color: null };
                     }
+                    if (value.text.result !== undefined) {
+                        return getCellTextWithMeta({ type: 6, value: value.text, style: cell.style, numFmt }, date1904);
+                    }
+                    return { text: value.hyperlink || '', color: null };
                 }
-                return String(value.text);
+                return { text: formatTextByNumFmt(String(value.text), cellNumFmt), color: null };
             }
-            return value.hyperlink || '';
+            return { text: value.hyperlink || '', color: null };
         case 6: //公式
             if (!value) {
-                return '';
+                return { text: '', color: null };
             }
             if (get(value, 'result.error')) {
-                return get(value, 'result.error');
+                return { text: get(value, 'result.error'), color: null };
             }
             if (value.result instanceof Date) {
-                return formatExcelDateByNumFmt(value.result, cellNumFmt);
+                return { text: formatExcelDateByNumFmt(value.result, cellNumFmt, date1904), color: null };
             }
             if (typeof value.result === 'number') {
-                return formatNumberValue(value.result, cellNumFmt);
+                if (hasElapsedDurationToken(cellNumFmt)) {
+                    return { text: formatElapsedDuration(value.result, cellNumFmt, date1904), color: null };
+                }
+                return formatNumberWithMeta(value.result, cellNumFmt);
             }
             if (typeof value.result === 'boolean') {
-                return String(value.result).toUpperCase();
+                return { text: String(value.result).toUpperCase(), color: null };
             }
             if (value.result && typeof value.result === 'object' && Array.isArray(value.result.richText)) {
-                return value.result.richText.map(item => item.text || '').join('');
+                return { text: extractRichText(value.result.richText), color: null };
             }
             if (value.result === undefined || value.result === null) {
-                return '';
+                return { text: '', color: null };
             }
-            return String(value.result);
+            return { text: formatTextByNumFmt(String(value.result), cellNumFmt), color: null };
         case 8: //富文本
             if (typeof cell.text === 'string' && cell.text.length > 0) {
-                return cell.text;
+                return { text: cell.text, color: null };
             }
             if (value && Array.isArray(value.richText)) {
-                return value.richText.map(item => item.text || '').join('');
+                return { text: extractRichText(value.richText), color: null };
             }
-            return cell.text || '';
+            return { text: cell.text || '', color: null };
         case 9: //Boolean
         {
             const boolVal = value !== undefined && value !== null ? value : cell.text;
-            return boolVal !== undefined && boolVal !== null ? String(boolVal).toUpperCase() : '';
+            return { text: boolVal !== undefined && boolVal !== null ? String(boolVal).toUpperCase() : '', color: null };
         }
         case 10: //Error
-            return (value && value.error) || (cell.text && cell.text.error) || (typeof cell.text === 'string' ? cell.text : '');
+            return { text: (value && value.error) || (cell.text && cell.text.error) || (typeof cell.text === 'string' ? cell.text : ''), color: null };
         default:
             if (value == null) {
-                return '';
+                return { text: '', color: null };
+            }
+            if (value instanceof Date) {
+                return { text: formatExcelDateByNumFmt(value, cellNumFmt, date1904), color: null };
             }
             if (typeof value === 'object') {
-                return value.error || value.text || '';
+                if (Array.isArray(value.richText)) {
+                    return { text: extractRichText(value.richText), color: null };
+                }
+                return { text: value.error || value.text || '', color: null };
             }
-            return String(value);
+            return { text: String(value), color: null };
     }
 }
+
+export function getCellText(cell, date1904 = false){
+    return getCellTextWithMeta(cell, date1904).text;
+}
+
 function transferArgbColor(originColor){
     if(!originColor || typeof originColor !== 'string'){
         return '#000000';
@@ -803,6 +1325,10 @@ function transferArgbColor(originColor){
         color.g = parseInt(argb[3], 16);
         color.b = parseInt(argb[4], 16);
         color.a = alpha;
+        if (alpha < 1) {
+            const roundedAlpha = Math.round(alpha * 1000) / 1000;
+            return `rgba(${color.r}, ${color.g}, ${color.b}, ${roundedAlpha})`;
+        }
         return tinycolor(`rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`).toHexString();
     } catch (e) {
         console.warn(e);
@@ -810,7 +1336,7 @@ function transferArgbColor(originColor){
     }
 }
 function transferThemeColor(themeIndex, tint, palette = themeColor){
-    if(typeof themeIndex !== 'number' || themeIndex < 0 || themeIndex >= palette.length){
+    if(typeof themeIndex !== 'number' || !Number.isInteger(themeIndex) || themeIndex < 0 || themeIndex >= palette.length){
         return '#C7C9CC';
     }
     if(typeof tint === 'undefined'){
@@ -830,11 +1356,14 @@ function resolveColorObject(colorObj, fallback, palette = themeColor) {
         const parsed = transferArgbColor(colorObj.argb);
         return parsed || null;
     }
-    if (Object.prototype.hasOwnProperty.call(colorObj, 'theme')) {
+    if (typeof colorObj.theme === 'number') {
         return transferThemeColor(colorObj.theme, colorObj.tint, palette);
     }
     if (typeof colorObj.indexed === 'number') {
         return indexedColor[colorObj.indexed] || fallback || '#C7C9CC';
+    }
+    if (colorObj.auto || Object.keys(colorObj).length === 0) {
+        return null;
     }
     return fallback !== undefined ? fallback : '#C7C9CC';
 }
@@ -865,6 +1394,10 @@ function normalizeVerticalAlign(v) {
     return 'middle';
 }
 
+function isValidBorderEdge(edge) {
+    return Boolean(edge && typeof edge === 'object' && edge.style !== 'none' && (edge.style || edge.color));
+}
+
 function getStyle(cell, palette = themeColor){
     const rawStyle = (cell && cell.style) || {};
     const outStyle = {};
@@ -873,10 +1406,18 @@ function getStyle(cell, palette = themeColor){
         if (rawStyle.fill.type === 'gradient' && Array.isArray(rawStyle.fill.stops) && rawStyle.fill.stops[0] && rawStyle.fill.stops[0].color) {
             backGroundColor = resolveColorObject(rawStyle.fill.stops[0].color, '#C7C9CC', palette);
         } else if (!(rawStyle.fill.type === 'pattern' && rawStyle.fill.pattern === 'none')) {
-            if (rawStyle.fill.fgColor) {
-                backGroundColor = resolveColorObject(rawStyle.fill.fgColor, '#C7C9CC', palette);
-            } else if (rawStyle.fill.bgColor && rawStyle.fill.pattern) {
-                backGroundColor = resolveColorObject(rawStyle.fill.bgColor, '#C7C9CC', palette);
+            const pattern = rawStyle.fill.pattern;
+            const isSolid = !pattern || pattern === 'solid';
+            if (isSolid) {
+                if (rawStyle.fill.fgColor) {
+                    backGroundColor = resolveColorObject(rawStyle.fill.fgColor, '#C7C9CC', palette);
+                }
+            } else {
+                if (rawStyle.fill.bgColor) {
+                    backGroundColor = resolveColorObject(rawStyle.fill.bgColor, '#C7C9CC', palette);
+                } else if (rawStyle.fill.fgColor && rawStyle.fill.fgColor.indexed !== 64) {
+                    backGroundColor = resolveColorObject(rawStyle.fill.fgColor, '#C7C9CC', palette);
+                }
             }
         }
     }
@@ -937,18 +1478,27 @@ function getStyle(cell, palette = themeColor){
                 return;
             }
             const originBorder = rawStyle.border[position];
-            if (!originBorder || typeof originBorder !== 'object' || (!originBorder.style && !originBorder.color)) {
+            if (!isValidBorderEdge(originBorder)) {
                 return;
             }
             let bordColor = '#000000';
             if (typeof originBorder.color === 'string') {
-                bordColor = originBorder.color;
+                const parsed = transferArgbColor(originBorder.color);
+                if (parsed === null && /^#?00[a-f\d]{6}$/i.test(originBorder.color.trim())) {
+                    return;
+                }
+                bordColor = parsed || originBorder.color;
             } else if (originBorder.color) {
+                if (typeof originBorder.color.argb === 'string' && /^#?00[a-f\d]{6}$/i.test(originBorder.color.argb.trim())) {
+                    return;
+                }
                 bordColor = resolveColorObject(originBorder.color, '#000000', palette) || '#000000';
             }
             styleBorder[position] = [originBorder.style || 'thin', bordColor];
         });
-        outStyle.border = styleBorder;
+        if (Object.keys(styleBorder).length > 0) {
+            outStyle.border = styleBorder;
+        }
     }
 
     return outStyle;
@@ -965,18 +1515,43 @@ function buildMergeOuterBorder(sheet, mergeInfo, masterCell) {
     const trCell = getSheetCellAt(sheet, topRi, rightCi);
     const blCell = getSheetCellAt(sheet, bottomRi, leftCi);
     const brCell = getSheetCellAt(sheet, bottomRi, rightCi);
-    const mergedBorder = { ...baseBorder };
+    const mergedBorder = {};
+    if (isValidBorderEdge(baseBorder.top)) {
+        mergedBorder.top = baseBorder.top;
+    }
+    if (isValidBorderEdge(baseBorder.left)) {
+        mergedBorder.left = baseBorder.left;
+    }
     const trRight = trCell && trCell.style && trCell.style.border && trCell.style.border.right;
     const brRight = brCell && brCell.style && brCell.style.border && brCell.style.border.right;
-    if (trRight || brRight) {
-        mergedBorder.right = trRight || brRight;
+    if (isValidBorderEdge(trRight)) {
+        mergedBorder.right = trRight;
+    } else if (isValidBorderEdge(brRight)) {
+        mergedBorder.right = brRight;
+    } else if (rightCi === leftCi && isValidBorderEdge(baseBorder.right)) {
+        mergedBorder.right = baseBorder.right;
     }
     const blBottom = blCell && blCell.style && blCell.style.border && blCell.style.border.bottom;
     const brBottom = brCell && brCell.style && brCell.style.border && brCell.style.border.bottom;
-    if (blBottom || brBottom) {
-        mergedBorder.bottom = blBottom || brBottom;
+    if (isValidBorderEdge(blBottom)) {
+        mergedBorder.bottom = blBottom;
+    } else if (isValidBorderEdge(brBottom)) {
+        mergedBorder.bottom = brBottom;
+    } else if (bottomRi === topRi && isValidBorderEdge(baseBorder.bottom)) {
+        mergedBorder.bottom = baseBorder.bottom;
     }
     return Object.keys(mergedBorder).length > 0 ? mergedBorder : null;
+}
+
+function colIndexToLetters(ci) {
+    let n = ci + 1;
+    let letters = '';
+    while (n > 0) {
+        const rem = (n - 1) % 26;
+        letters = String.fromCharCode(65 + rem) + letters;
+        n = Math.floor((n - 1) / 26);
+    }
+    return letters;
 }
 
 function serializePlainMedia(mediaList) {
@@ -1010,12 +1585,36 @@ function isRowHidden(row) {
     return Boolean(row && (row._hidden || row.height === 0));
 }
 
+function isColHidden(sheet, ci) {
+    const cols = (sheet && (sheet.columns || sheet._columns)) || [];
+    const col = cols[ci];
+    return Boolean(col && (col._hidden || col.width === 0));
+}
+
+function iterateWorkbookSheets(workbook, cb) {
+    if (!workbook) {
+        return;
+    }
+    if (typeof workbook.eachSheet === 'function') {
+        workbook.eachSheet(cb);
+        return;
+    }
+    const list = Array.isArray(workbook.worksheets)
+        ? workbook.worksheets
+        : (Array.isArray(workbook._worksheets) ? workbook._worksheets.filter(Boolean) : []);
+    list.forEach(cb);
+}
+
 export function transferExcelToSpreadSheet(workbook, options = {}){
     const opts = options || {};
     const themePalette = extractWorkbookThemeColors(workbook);
+    const date1904 = Boolean(workbook && workbook.properties && workbook.properties.date1904);
     let workbookData = [];
     let sheets = [];
-    workbook.eachSheet((sheet) => {
+    iterateWorkbookSheets(workbook, (sheet) => {
+        if (!sheet) {
+            return;
+        }
         sheets.push(sheet);
         // 构造x-data-spreadsheet 的 sheet 数据源结构
         let sheetData = { name: sheet.name, styles: [], rows: {}, cols: {}, merges: [], media: [] };
@@ -1040,47 +1639,55 @@ export function transferExcelToSpreadSheet(workbook, options = {}){
             while (firstVisibleRi <= bottomRi && isRowHidden(sheet._rows && sheet._rows[firstVisibleRi])) {
                 firstVisibleRi += 1;
             }
-            if (firstVisibleRi <= bottomRi) {
-                if (firstVisibleRi === topRi && mergeItem.shortRange) {
-                    sheetData.merges.push(mergeItem.shortRange);
-                } else {
-                    const ySpan = bottomRi - firstVisibleRi;
-                    const xSpan = rightCi - leftCi;
-                    if (ySpan > 0 || xSpan > 0) {
-                        sheetData.merges.push(`${mergeItem.tl}:${mergeItem.br}`);
+            let firstVisibleCi = leftCi;
+            while (firstVisibleCi <= rightCi && isColHidden(sheet, firstVisibleCi)) {
+                firstVisibleCi += 1;
+            }
+            if (firstVisibleRi <= bottomRi && firstVisibleCi <= rightCi) {
+                const ySpan = bottomRi - firstVisibleRi;
+                const xSpan = rightCi - firstVisibleCi;
+                const remapped = firstVisibleRi !== topRi || firstVisibleCi !== leftCi;
+                if (ySpan > 0 || xSpan > 0) {
+                    if (!remapped && mergeItem.shortRange) {
+                        sheetData.merges.push(mergeItem.shortRange);
+                    } else {
+                        const tlRef = `${colIndexToLetters(firstVisibleCi)}${firstVisibleRi + 1}`;
+                        const brRef = `${colIndexToLetters(rightCi)}${bottomRi + 1}`;
+                        sheetData.merges.push(`${tlRef}:${brRef}`);
                     }
                 }
                 const origMaster = getSheetCellAt(sheet, topRi, leftCi);
-                mergeMasterMap.set(`${firstVisibleRi}:${leftCi}`, {
+                mergeMasterMap.set(`${firstVisibleRi}:${firstVisibleCi}`, {
                     topRi,
                     leftCi,
                     bottomRi,
                     rightCi,
-                    YRange: bottomRi - firstVisibleRi,
-                    XRange: rightCi - leftCi,
+                    YRange: ySpan,
+                    XRange: xSpan,
                     origMaster,
-                    remapped: firstVisibleRi !== topRi
+                    remapped
                 });
             }
             effectiveMaxColLen = Math.max(effectiveMaxColLen, mergeItem.model.right || 0);
             effectiveMaxRowLen = Math.max(effectiveMaxRowLen, mergeItem.model.bottom || 0);
         }
 
-        const applyCellStyle = (targetCellObj, cell, mergeInfo) => {
-            let cellForStyle = cell;
+        const applyCellStyle = (targetCellObj, cell, mergeInfo, fmtColor = null) => {
+            let cellForStyle = cell || {};
             if (mergeInfo) {
-                const outerBorder = buildMergeOuterBorder(sheet, mergeInfo, cell);
-                if (outerBorder) {
-                    cellForStyle = {
-                        ...cell,
-                        style: {
-                            ...(cell.style || {}),
-                            border: outerBorder
-                        }
-                    };
-                }
+                const outerBorder = buildMergeOuterBorder(sheet, mergeInfo, cellForStyle);
+                cellForStyle = {
+                    ...cellForStyle,
+                    style: {
+                        ...(cellForStyle.style || {}),
+                        border: outerBorder || undefined
+                    }
+                };
             }
             const cellStyle = getStyle(cellForStyle, themePalette);
+            if (fmtColor) {
+                cellStyle.color = fmtColor;
+            }
             const styleKey = JSON.stringify(cellStyle);
             let styleIndex = styleMap.get(styleKey);
             if (styleIndex === undefined) {
@@ -1111,28 +1718,25 @@ export function transferExcelToSpreadSheet(workbook, options = {}){
                 if (!cell) {
                     return;
                 }
-                const mergeInfo = mergeMasterMap.get(`${spreadSheetRowIndex}:${spreadSheetColIndex}`);
-                sheetData.rows[spreadSheetRowIndex].cells[spreadSheetColIndex] = {};
                 effectiveMaxColLen = Math.max(effectiveMaxColLen, spreadSheetColIndex + 1);
-
+                const mergeInfo = mergeMasterMap.get(`${spreadSheetRowIndex}:${spreadSheetColIndex}`);
                 if (cell.isMerged && cell.master && cell.master.address !== cell._address && !mergeInfo) {
                     return;
                 }
                 const sourceCell = (mergeInfo && mergeInfo.remapped && mergeInfo.origMaster) ? mergeInfo.origMaster : cell;
-                const cellOut = sheetData.rows[spreadSheetRowIndex].cells[spreadSheetColIndex];
+                const cellOut = {};
+                sheetData.rows[spreadSheetRowIndex].cells[spreadSheetColIndex] = cellOut;
                 if(mergeInfo && (mergeInfo.YRange > 0 || mergeInfo.XRange > 0)){
                     cellOut.merge = [mergeInfo.YRange, mergeInfo.XRange];
                 }
-                cellOut.text = getCellText(sourceCell);
-                applyCellStyle(cellOut, sourceCell, mergeInfo);
+                const { text, color: fmtColor } = getCellTextWithMeta(sourceCell, date1904);
+                cellOut.text = text;
+                applyCellStyle(cellOut, sourceCell, mergeInfo, fmtColor);
             });
         });
 
-        // Apply remapped merge masters if visible row didn't have a cell object yet
+        // Backfill merge masters if the target visible cell did not have a cell object yet
         mergeMasterMap.forEach((mergeInfo, key) => {
-            if (!mergeInfo.remapped || !mergeInfo.origMaster) {
-                return;
-            }
             const [riStr, ciStr] = key.split(':');
             const ri = Number(riStr);
             const ci = Number(ciStr);
@@ -1147,8 +1751,14 @@ export function transferExcelToSpreadSheet(workbook, options = {}){
                 if (mergeInfo.YRange > 0 || mergeInfo.XRange > 0) {
                     cellOut.merge = [mergeInfo.YRange, mergeInfo.XRange];
                 }
-                cellOut.text = getCellText(mergeInfo.origMaster);
-                applyCellStyle(cellOut, mergeInfo.origMaster, mergeInfo);
+                if (mergeInfo.origMaster) {
+                    const { text, color: fmtColor } = getCellTextWithMeta(mergeInfo.origMaster, date1904);
+                    cellOut.text = text;
+                    applyCellStyle(cellOut, mergeInfo.origMaster, mergeInfo, fmtColor);
+                } else {
+                    cellOut.text = '';
+                    applyCellStyle(cellOut, {}, mergeInfo, null);
+                }
             }
         });
 
@@ -1182,7 +1792,7 @@ export function transferExcelToSpreadSheet(workbook, options = {}){
         let tempRowsKeys = Object.keys(sheetData.rows);
         const maxRowLen = tempRowsKeys.length ? +tempRowsKeys[tempRowsKeys.length - 1] + 1 : 0;
         const minRowLen = typeof opts.minRowLength === 'number' && Number.isFinite(opts.minRowLength) && opts.minRowLength >= 0
-            ? opts.minRowLength
+            ? Math.floor(opts.minRowLength)
             : 100;
 
         sheetData.rows.len = Math.max(maxRowLen, effectiveMaxRowLen, minRowLen);
@@ -1202,11 +1812,11 @@ export function transferExcelToSpreadSheet(workbook, options = {}){
     const workbookSource = {
         ...workbook,
         _worksheets: sheets,
-        media: workbook.media || []
+        media: (workbook && workbook.media) || []
     };
     return {
         workbookData,
         workbookSource,
-        medias: workbook.media || []
+        medias: (workbook && workbook.media) || []
     };
 }

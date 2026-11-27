@@ -1,4 +1,5 @@
 .x-spreadsheet {
+  position: relative;
   font-size: 13px;
   line-height: normal;
   user-select: none;
@@ -281,6 +282,7 @@
   position: fixed;
   top: 0;
   left: 0;
+  white-space: nowrap;
 }
 .x-spreadsheet-item {
   user-select: none;
@@ -399,6 +401,21 @@
   display: flex;
   position: relative;
   border-top: 1px solid #e0e2e4;
+}
+.x-spreadsheet-bottombar .x-spreadsheet-bottombar-controls {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 40px;
+  padding: 0 6px;
+  border-right: 1px solid #e8eaed;
+}
+.x-spreadsheet-bottombar .x-spreadsheet-bottombar-controls .x-spreadsheet-icon {
+  margin: 0 4px;
+  cursor: pointer;
+}
+.x-spreadsheet-bottombar .x-spreadsheet-bottombar-controls .x-spreadsheet-dropdown {
+  display: inline-block;
 }
 .x-spreadsheet-bottombar .x-spreadsheet-menu > li {
   line-height: 40px;
@@ -675,7 +692,7 @@
 }
 .x-spreadsheet-dimmer {
   display: none;
-  position: absolute;
+  position: fixed;
   top: 0 !important;
   left: 0 !important;
   width: 100%;
@@ -756,8 +773,111 @@
 .x-spreadsheet-toast-content {
   padding: 0.75em 1em;
 }
+.x-spreadsheet-modal-header .x-spreadsheet-icon,
+.x-spreadsheet-toast-header .x-spreadsheet-icon {
+  position: absolute;
+  right: 0.8em;
+  top: 0.65em;
+  border-radius: 18px;
+  cursor: pointer;
+}
+.x-spreadsheet-modal-header .x-spreadsheet-icon:hover,
+.x-spreadsheet-toast-header .x-spreadsheet-icon:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.08);
+}
+.x-spreadsheet-toolbar {
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 30px;
+  text-align: left;
+  background: #f5f6f7;
+  display: flex;
+  border-bottom: 1px solid #e0e2e4;
+}
+.x-spreadsheet-toolbar .x-spreadsheet-toolbar-btns {
+  display: inline-flex;
+}
+.x-spreadsheet-toolbar .x-spreadsheet-toolbar-more {
+  padding: 0 6px 6px;
+  text-align: left;
+}
+.x-spreadsheet-toolbar .x-spreadsheet-toolbar-more .x-spreadsheet-toolbar-divider {
+  margin-top: 0;
+}
+.x-spreadsheet-toolbar .x-spreadsheet-toolbar-btn {
+  flex: 0 0 auto;
+  display: inline-block;
+  border: 1px solid transparent;
+  height: 26px;
+  line-height: 26px;
+  min-width: 26px;
+  margin: 6px 1px 0;
+  padding: 0;
+  text-align: center;
+  border-radius: 2px;
+}
+.x-spreadsheet-toolbar .x-spreadsheet-toolbar-btn.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+.x-spreadsheet-toolbar .x-spreadsheet-toolbar-btn:hover,
+.x-spreadsheet-toolbar .x-spreadsheet-toolbar-btn.active {
+  background: rgba(0, 0, 0, 0.08);
+}
+.x-spreadsheet-toolbar-divider {
+  display: inline-block;
+  border-right: 1px solid #e0e2e4;
+  width: 0;
+  vertical-align: middle;
+  height: 18px;
+  margin: 12px 3px 0;
+}
+.x-spreadsheet-icon {
+  width: 18px;
+  height: 18px;
+  margin: 1px 1px 2px 1px;
+  text-align: center;
+  vertical-align: middle;
+  user-select: none;
+  overflow: hidden;
+  position: relative;
+  display: inline-block;
+  line-height: 18px;
+}
+.x-spreadsheet-icon .x-spreadsheet-icon-img {
+  position: relative;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  opacity: 0.65;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 14px 14px;
+}
+.x-spreadsheet-icon .x-spreadsheet-icon-img.close {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath stroke='%23333' stroke-width='1.8' stroke-linecap='round' d='M4 4l8 8M12 4l-8 8'/%3E%3C/svg%3E");
+}
+.x-spreadsheet-icon .x-spreadsheet-icon-img.add {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath stroke='%23333' stroke-width='1.8' stroke-linecap='round' d='M8 3v10M3 8h10'/%3E%3C/svg%3E");
+}
+.x-spreadsheet-icon .x-spreadsheet-icon-img.ellipsis {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='3.5' cy='8' r='1.3' fill='%23333'/%3E%3Ccircle cx='8' cy='8' r='1.3' fill='%23333'/%3E%3Ccircle cx='12.5' cy='8' r='1.3' fill='%23333'/%3E%3C/svg%3E");
+}
+.x-spreadsheet-icon .x-spreadsheet-icon-img.chevron-left {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23333' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' d='M10 3.5L5.5 8 10 12.5'/%3E%3C/svg%3E");
+}
+.x-spreadsheet-icon .x-spreadsheet-icon-img.chevron-right {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23333' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' d='M6 3.5L10.5 8 6 12.5'/%3E%3C/svg%3E");
+}
+.x-spreadsheet-icon .x-spreadsheet-icon-img.arrow-down {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23333' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");
+}
+.x-spreadsheet-icon .x-spreadsheet-icon-img.arrow-right {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23333' d='M6 4l4 4-4 4z'/%3E%3C/svg%3E");
+}
 
-.abner-vue-office-excel .x-spreadsheet-bottombar .x-spreadsheet-menu > li:first-child {
+.abner-vue-office-excel .x-spreadsheet-bottombar .x-spreadsheet-bottombar-controls {
   display: none;
 }
 

@@ -1,6 +1,7 @@
 import { h } from './element';
 import Icon from './icon';
 import { t } from '../locale/locale';
+import { cssPrefix } from '../config';
 
 function toValidDate(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -53,7 +54,7 @@ export default class Calendar {
     this.bodyEl = h('tbody', '');
     this.buildAll();
     const weeks = Array.isArray(t('calendar.weeks')) ? t('calendar.weeks') : fallbackWeeks;
-    this.el = h('div', 'x-spreadsheet-calendar')
+    this.el = h('div', `${cssPrefix}-calendar`)
       .children(
         h('div', 'calendar-header').children(
           this.headerLeftEl,
@@ -118,6 +119,7 @@ export default class Calendar {
         return h('td', '').child(
           h('div', cls)
             .on('click.stop', () => {
+              if (it1.disabled) return;
               this.selectChange(it1.d);
             })
             .child(it1.d.getDate().toString()),

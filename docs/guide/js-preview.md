@@ -83,7 +83,9 @@ if (container) {
             console.log('渲染完成');
         }
     });
-    myPdfPreviewer.preview('https://your-domain.com/test.pdf');
+    myPdfPreviewer.preview('https://your-domain.com/test.pdf').catch(err => {
+        console.log('预览失败', err);
+    });
 }
 ```
 
@@ -159,7 +161,7 @@ export interface Options {
     minRowLength?: number; // excel最少渲染多少行，默认100；设为0则按实际行数渲染
     widthOffset?: number; // 单元格列宽偏移量（像素）
     heightOffset?: number; // 单元格行高偏移量（像素）
-    showContextmenu?: boolean; // 是否显示右键菜单，仅在 init() 初始化时生效，默认false
+    showContextmenu?: boolean; // 是否显示右键菜单，默认false（支持通过 setOptions 动态切换）
     beforeTransformData?: (workbookData: any) => any; // 底层exceljs转换前钩子
     transformData?: (workbookData: any) => any; // 数据转换后钩子
     switchSheet?: (sheetIndex: number) => void; // 切换sheet回调
@@ -176,7 +178,6 @@ export interface Options {
     staticFileUrl?: string;
     gap?: number; // 多个canvas之间的距离（像素），默认10
     width?: number;
-    data?: ArrayBuffer | Uint8Array;
     httpHeaders?: Record<string, string>;
     withCredentials?: boolean;
     password?: string;
@@ -194,27 +195,27 @@ export interface Options {
 ```
 
 ### preview方法
-调用preview方法进行文件的预览。
+调用preview方法进行文件的预览（`@abner-vue-office/js-pdf` 发生错误时除了触发 `onError` 回调，同时也会 reject 返回的 Promise，请务必附带 `.catch()`）。
 
 preview方法接收参数支持：`string | ArrayBuffer | ArrayBufferView | Blob | Response`（文件 URL 地址、`ArrayBuffer`、`Uint8Array` 等 TypedArray、`Blob`、`Response`）。
 
 ```ts
-preview: (src: string | ArrayBuffer | ArrayBufferView | Blob | Response) => Promise<any>
+preview: (src: string | ArrayBuffer | ArrayBufferView | Blob | Response) => Promise<void>
 ```
 
 url格式适合有文件静态地址的情况，ArrayBuffer格式适合文件上传前的预览。
 
 ### setOptions方法
 
-更新预览配置（浅合并，调用后可配合 `rerender` 或下一次 `preview` 生效；注：`@abner-vue-office/js-excel` 的 `showContextmenu` 仅在 `init()` 初始化时读取）。
+更新预览配置（浅合并，调用后可配合 `rerender` 或下一次 `preview` 生效）。
 
 ```ts
-setOptions: (options: Options) => void;
+setOptions: (options?: Options) => void;
 ```
 
 ### setRequestOptions方法
 
-更新远程文件请求的 `requestOptions`（如 `headers`、`withCredentials` 等）。
+替换（覆盖）远程文件请求的 `requestOptions`（如 `headers`、`withCredentials`、`signal` 等）。
 
 ```ts
 setRequestOptions: (requestOptions?: RequestOptions) => void;

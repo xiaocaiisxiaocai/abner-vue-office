@@ -160,6 +160,8 @@ export default {
             return res.arrayBuffer()
         }).then(buf => {
             this.docx = buf
+        }).catch(err => {
+            console.error(err)
         })
     },
     methods: {
@@ -313,10 +315,12 @@ import abnerJsDocx from '@abner-vue-office/js-docx'
 import '@abner-vue-office/js-docx/lib/index.css'
 
 const previewer = abnerJsDocx.init(document.getElementById('docx'))
-previewer.preview('https://your-domain.com/test.docx')
+previewer.preview('https://your-domain.com/test.docx').catch(err => {
+    console.error(err)
+})
 ```
 
-`js-excel`（需引入 `@abner-vue-office/js-excel/lib/index.css`）和 `js-pdf`（无需额外 CSS）均提供相同的 `init(container, options, requestOptions)`、`preview(src)`、`setOptions(options)`、`setRequestOptions(requestOptions)`、`save(fileName)`、`destroy()` 方法。完整 API 参见项目仓库 [docs/guide/js-preview.md](https://github.com/xiaocaiisxiaocai/abner-vue-office/blob/main/docs/guide/js-preview.md)。
+`js-excel`（需引入 `@abner-vue-office/js-excel/lib/index.css`）和 `js-pdf`（无需额外 CSS）均提供相同的 `init(container, options, requestOptions)`、`preview(src)`、`setOptions(options)`、`setRequestOptions(requestOptions)`、`save(fileName)`、`destroy()` 方法（`js-pdf` 额外提供 `rerender()` 方法）。完整 API 参见项目仓库 [docs/guide/js-preview.md](https://github.com/xiaocaiisxiaocai/abner-vue-office/blob/main/docs/guide/js-preview.md)。
 
 ## 项目依赖的第三方库
 

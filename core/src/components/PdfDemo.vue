@@ -14,6 +14,7 @@ function onError(e) {
 }
 
 const defaultSrc = getStaticFileUrl('static/test-files/test.pdf');
+const staticFileUrl = getStaticFileUrl('static/');
 const pdfRef = ref();
 const requestOptions = {
     headers: {
@@ -32,6 +33,7 @@ const requestOptions = {
       <AbnerVueOfficePdf
           ref="pdfRef"
           :src="slotProps.src"
+          :static-file-url="staticFileUrl"
           style="flex: 1;height: 0"
           :request-options="requestOptions"
           @rendered="onRendered"

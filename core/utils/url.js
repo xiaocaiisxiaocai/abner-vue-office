@@ -42,16 +42,26 @@ export function normalizeFetchOptions(options) {
     }
     delete fetchOptions.withCredentials;
     delete fetchOptions.responseType;
-    if (!fetchOptions.method || (typeof fetchOptions.method === 'string' && /^(get|head)$/i.test(fetchOptions.method.trim()))) {
+    if (typeof fetchOptions.method === 'string') {
+        fetchOptions.method = fetchOptions.method.trim();
+    }
+    if (!fetchOptions.method || (typeof fetchOptions.method === 'string' && /^(get|head)$/i.test(fetchOptions.method))) {
         delete fetchOptions.body;
     }
     return fetchOptions;
 }
 
+function formatScriptSrcForError(src) {
+    if (typeof src !== 'string') {
+        return String(src);
+    }
+    return src.length > 200 ? `${src.slice(0, 200)}...` : src;
+}
+
 export function loadScript(src) {
     return new Promise((resolve, reject) => {
         if (!src || typeof src !== 'string' || typeof document === 'undefined') {
-            reject(new Error(`Failed to load script: ${src}`));
+            reject(new Error(`Failed to load script: ${formatScriptSrcForError(src)}`));
             return;
         }
         const script = document.createElement('script');
@@ -59,6 +69,9 @@ export function loadScript(src) {
         script.onload = function () {
             script.onload = null;
             script.onerror = null;
+            if ((src.startsWith('data:') || src.startsWith('blob:')) && script.parentNode) {
+                script.parentNode.removeChild(script);
+            }
             resolve();
         };
         script.onerror = function () {
@@ -67,11 +80,11 @@ export function loadScript(src) {
             if (script.parentNode) {
                 script.parentNode.removeChild(script);
             }
-            reject(new Error(`Failed to load script: ${src}`));
+            reject(new Error(`Failed to load script: ${formatScriptSrcForError(src)}`));
         };
         const target = document.body || document.head || document.documentElement;
         if (!target) {
-            reject(new Error(`Failed to load script: ${src}`));
+            reject(new Error(`Failed to load script: ${formatScriptSrcForError(src)}`));
             return;
         }
         target.appendChild(script);

@@ -4,17 +4,71 @@ import { download as downloadFile, getUrlAsync, revokeUrl, loadScript } from '..
 import omit from 'lodash/omit';
 import debounce from 'lodash/debounce';
 
+const BUNDLED_PDFJS_VERSION = '4.7.76';
+const MAX_CANVAS_PIXELS = 16777216;
+
 let pdfLibLoadPromise = null;
-let pdfJsLibUrl = null;
 let pdfJsWorkerUrl = null;
 
+function base64ToBlobUrl(b64) {
+    if (
+        typeof atob === 'function' &&
+        typeof Uint8Array !== 'undefined' &&
+        typeof Blob !== 'undefined' &&
+        typeof URL !== 'undefined' &&
+        typeof URL.createObjectURL === 'function'
+    ) {
+        try {
+            const binary = atob(b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return URL.createObjectURL(new Blob([bytes], { type: 'text/javascript' }));
+        } catch (e) {
+            // fall through to data URI fallback
+        }
+    }
+    return `data:text/javascript;base64,${b64}`;
+}
+
 function ensureWorkerSrc() {
-    if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    if (
+        typeof window !== 'undefined' &&
+        window.pdfjsLib &&
+        window.pdfjsLib.GlobalWorkerOptions &&
+        !window.pdfjsLib.GlobalWorkerOptions.workerSrc &&
+        (!window.pdfjsLib.version || window.pdfjsLib.version === BUNDLED_PDFJS_VERSION)
+    ) {
         if (!pdfJsWorkerUrl) {
-            pdfJsWorkerUrl = `data:text/javascript;base64,${workerStr}`;
+            pdfJsWorkerUrl = base64ToBlobUrl(workerStr);
         }
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = pdfJsWorkerUrl;
     }
+}
+
+function safeDestroy(target) {
+    if (!target || typeof target.destroy !== 'function') {
+        return;
+    }
+    try {
+        const result = target.destroy();
+        if (result && typeof result.catch === 'function') {
+            result.catch(() => {});
+        }
+    } catch (e) {
+        // ignore
+    }
+}
+
+function clampOutputScale(viewportWidth, viewportHeight, baseScale) {
+    const w = Math.max(viewportWidth, 1);
+    const h = Math.max(viewportHeight, 1);
+    const area = w * h * baseScale * baseScale;
+    if (area > MAX_CANVAS_PIXELS) {
+        return Math.max(0.1, Math.sqrt(MAX_CANVAS_PIXELS / (w * h)));
+    }
+    return baseScale;
 }
 
 class AbnerJsPdfPreview {
@@ -28,6 +82,7 @@ class AbnerJsPdfPreview {
     currentObjectUrl = null;
     renderId = 0;
     isDestroyed = false;
+    currentMinWidth = 0;
     activeRenderTasks = new Set();
     canvasRenderTasks = new WeakMap();
     cancelledRenderTasks = new WeakSet();
@@ -53,13 +108,13 @@ class AbnerJsPdfPreview {
         const paddingTop = parseInt(getComputedStyle(this.wrapperMain).paddingTop, 10) || 0;
         const gap = this.getGap();
         const startIndex = Math.min(
-            Math.max(Math.floor(Math.max((scrollTop - paddingTop), 0) / Math.max(this.pageHeight + gap, 1)) - 1, 1),
+            Math.max(Math.floor(Math.max((scrollTop - paddingTop), 0) / Math.max(this.pageHeight + gap, 1)), 1),
             this.totalItems
         );
         const endIndex = Math.min(startIndex + this.visibleItems - 1, this.totalItems); // 计算结束索引
 
         this.renderList(startIndex, endIndex, false, this.renderId, false); // 渲染列表项
-    }, 60);
+    }, 60, { maxWait: 120 });
 
     constructor(container, options = {}, requestOptions = {}) {
         if (!container) {
@@ -94,15 +149,16 @@ class AbnerJsPdfPreview {
     }
 
     checkPdfLib() {
+        if (typeof window === 'undefined') {
+            return Promise.reject(new Error('window is not defined'));
+        }
         if (window.pdfjsLib) {
             ensureWorkerSrc();
             return Promise.resolve();
         }
         if (!pdfLibLoadPromise) {
-            if (!pdfJsLibUrl) {
-                pdfJsLibUrl = `data:text/javascript;base64,${pdfLibJsStr}`;
-            }
-            pdfLibLoadPromise = loadScript(pdfJsLibUrl)
+            const libUrl = base64ToBlobUrl(pdfLibJsStr);
+            pdfLibLoadPromise = loadScript(libUrl)
                 .then(() => {
                     if (window.pdfjsLib) {
                         ensureWorkerSrc();
@@ -110,9 +166,9 @@ class AbnerJsPdfPreview {
                         throw new Error('window.pdfjsLib未找到');
                     }
                 })
-                .catch(err => {
+                .finally(() => {
+                    revokeUrl(libUrl);
                     pdfLibLoadPromise = null;
-                    return Promise.reject(err);
                 });
         }
         return pdfLibLoadPromise;
@@ -134,25 +190,29 @@ class AbnerJsPdfPreview {
 
     cleanupPdfResources() {
         this.cancelRenderTasks();
-        if (this.loadingTask) {
-            try {
-                this.loadingTask.destroy();
-            } catch (e) {
-                // ignore
-            }
-            this.loadingTask = null;
-        }
-        if (this.pdfDocument) {
-            try {
-                this.pdfDocument.destroy();
-            } catch (e) {
-                // ignore
-            }
-            this.pdfDocument = null;
+        const task = this.loadingTask;
+        const doc = this.pdfDocument;
+        this.loadingTask = null;
+        this.pdfDocument = null;
+        if (doc) {
+            safeDestroy(doc);
+        } else if (task) {
+            safeDestroy(task);
         }
         if (this.currentObjectUrl) {
             revokeUrl(this.currentObjectUrl);
             this.currentObjectUrl = null;
+        }
+    }
+
+    updateMinWidth(requiredWidth) {
+        if (!this.wrapperMain || !(requiredWidth > 0)) {
+            return;
+        }
+        const nextMinWidth = Math.ceil(requiredWidth + 20);
+        if (nextMinWidth > this.currentMinWidth) {
+            this.currentMinWidth = nextMinWidth;
+            this.wrapperMain.style.minWidth = `${this.currentMinWidth}px`;
         }
     }
 
@@ -164,30 +224,40 @@ class AbnerJsPdfPreview {
             }
             return null;
         }
+        if (typeof url !== 'string' || !url) {
+            throw new Error('不支持的 src 格式');
+        }
         this.cleanupPdfResources();
-        if (url !== src && typeof url === 'string' && url.startsWith('blob:')) {
+        if (url !== src && url.startsWith('blob:')) {
             this.currentObjectUrl = url;
         }
         const reqOpts = this.requestOptions || {};
         const httpHeaders = reqOpts.headers || this.options.httpHeaders;
         const withCredentials = reqOpts.withCredentials !== undefined
             ? Boolean(reqOpts.withCredentials)
-            : (reqOpts.credentials === 'include'
-                ? true
+            : (reqOpts.credentials !== undefined
+                ? reqOpts.credentials === 'include'
                 : Boolean(this.options.withCredentials));
         const staticBase = typeof this.options.staticFileUrl === 'string' && this.options.staticFileUrl
             ? this.options.staticFileUrl
             : 'https://unpkg.com/pdfjs-dist@3.1.81/';
-        this.loadingTask = window.pdfjsLib.getDocument({
+        const task = window.pdfjsLib.getDocument({
             url,
             ...(httpHeaders ? { httpHeaders } : {}),
             withCredentials,
             cMapUrl: `${staticBase.endsWith('/') ? staticBase : staticBase + '/'}cmaps/`,
             cMapPacked: true,
             enableXfa: true,
-            ...omit(this.options, ['url', 'width', 'staticFileUrl', 'gap', 'httpHeaders', 'withCredentials', 'onError', 'onRendered'])
+            ...omit(this.options, ['url', 'data', 'width', 'staticFileUrl', 'gap', 'httpHeaders', 'withCredentials', 'onError', 'onRendered'])
         });
-        return this.loadingTask.promise;
+        this.loadingTask = task;
+        try {
+            return await task.promise;
+        } finally {
+            if (this.loadingTask === task) {
+                this.loadingTask = null;
+            }
+        }
     }
 
     renderSinglePage(num, canvas, currentId = this.renderId) {
@@ -196,22 +266,32 @@ class AbnerJsPdfPreview {
         }
         return this.pdfDocument.getPage(num).then((pdfPage) => {
             if (this.isDestroyed || !this.pdfDocument || currentId !== this.renderId || canvas.parentNode !== this.wrapperMain) {
+                if (pdfPage && typeof pdfPage.cleanup === 'function') {
+                    pdfPage.cleanup();
+                }
                 return;
             }
             const viewport = pdfPage.getViewport({ scale: this.getViewportScale });
-            let outputScale = window.devicePixelRatio > 2 ? 1.5 : 2;
-            const scaledWidth = Math.floor(viewport.width * outputScale);
-            const scaledHeight = Math.floor(viewport.height * outputScale);
+            const baseOutputScale = window.devicePixelRatio > 2 ? 1.5 : 2;
+            let outputScale = clampOutputScale(viewport.width, viewport.height, baseOutputScale);
+            const scaledWidth = Math.max(1, Math.floor(viewport.width * outputScale));
+            const scaledHeight = Math.max(1, Math.floor(viewport.height * outputScale));
             if (scaledHeight !== this.canvasHeight || scaledWidth !== this.canvasWidth) {
                 if (scaledHeight > 0 && viewport.height > 0 && this.pageHeight > 0) {
                     const scale = this.canvasHeight / scaledHeight;
-                    outputScale = outputScale * scale;
-                    canvas.width = Math.floor(scaledWidth * scale);
-                    canvas.style.width = Math.floor(this.pageHeight * (viewport.width / viewport.height)) + 'px';
+                    outputScale = clampOutputScale(viewport.width, viewport.height, outputScale * scale);
+                    canvas.width = Math.max(1, Math.floor(viewport.width * outputScale));
+                    canvas.height = Math.max(1, Math.floor(viewport.height * outputScale));
+                    const pageDomWidth = Math.max(1, Math.floor(this.pageHeight * (viewport.width / viewport.height)));
+                    canvas.style.width = `${pageDomWidth}px`;
+                    this.updateMinWidth(pageDomWidth);
                 }
             }
             const ctx = canvas.getContext('2d');
             if (!ctx) {
+                if (typeof pdfPage.cleanup === 'function') {
+                    pdfPage.cleanup();
+                }
                 return;
             }
             const transform = outputScale !== 1
@@ -235,7 +315,19 @@ class AbnerJsPdfPreview {
                 if (this.canvasRenderTasks.get(canvas) === renderTask) {
                     this.canvasRenderTasks.delete(canvas);
                 }
+                if (typeof pdfPage.cleanup === 'function') {
+                    try {
+                        pdfPage.cleanup();
+                    } catch (e) {
+                        // ignore
+                    }
+                }
             });
+        }, err => {
+            if (this.isDestroyed || currentId !== this.renderId || !canvas || canvas.parentNode !== this.wrapperMain) {
+                return;
+            }
+            return Promise.reject(err);
         });
     }
 
@@ -259,21 +351,23 @@ class AbnerJsPdfPreview {
             }
             viewport = pdfPage.getViewport({ scale: this.getViewportScale });
 
-            const outputScale = window.devicePixelRatio > 2 ? 1.5 : 2;
-            const canvasWidth = Math.floor(viewport.width * outputScale);
-            const canvasHeight = Math.floor(viewport.height * outputScale);
-            let domWidth = Math.floor(viewport.width);
-            let domHeight = Math.floor(viewport.height);
+            const baseOutputScale = window.devicePixelRatio > 2 ? 1.5 : 2;
+            const outputScale = clampOutputScale(viewport.width, viewport.height, baseOutputScale);
+            const canvasWidth = Math.max(1, Math.floor(viewport.width * outputScale));
+            const canvasHeight = Math.max(1, Math.floor(viewport.height * outputScale));
+            let domWidth = Math.max(1, Math.floor(viewport.width));
+            let domHeight = Math.max(1, Math.floor(viewport.height));
             if (optWidth && domWidth > 0) {
                 const scale = optWidth / domWidth;
-                domWidth = Math.floor(optWidth);
-                domHeight = Math.floor(domHeight * scale);
-            }
-            const wrapperWidth = this.wrapper.getBoundingClientRect().width - 20;
-            if (domWidth > wrapperWidth && wrapperWidth > 0 && domWidth > 0) {
-                const scale = wrapperWidth / domWidth;
-                domWidth = Math.max(1, Math.floor(wrapperWidth));
+                domWidth = Math.max(1, Math.floor(optWidth));
                 domHeight = Math.max(1, Math.floor(domHeight * scale));
+            } else {
+                const wrapperWidth = this.wrapper.getBoundingClientRect().width - 20;
+                if (domWidth > wrapperWidth && wrapperWidth > 0 && domWidth > 0) {
+                    const scale = wrapperWidth / domWidth;
+                    domWidth = Math.max(1, Math.floor(wrapperWidth));
+                    domHeight = Math.max(1, Math.floor(domHeight * scale));
+                }
             }
 
             return {
@@ -308,6 +402,8 @@ class AbnerJsPdfPreview {
             this.wrapperMain.innerHTML = '';
             if (resetStyle) {
                 this.wrapperMain.style.height = '';
+                this.wrapperMain.style.minWidth = '';
+                this.currentMinWidth = 0;
             }
         }
     }
@@ -346,6 +442,8 @@ class AbnerJsPdfPreview {
             this.visibleItems = Math.ceil(this.containerHeight / Math.max(this.pageHeight + gap, 1)) + 4; //多渲染4个
             const height = Math.max((this.pageHeight + gap) * this.totalItems - gap, 0);
             this.wrapperMain.style.height = height + 'px';
+            this.currentMinWidth = this.pageWidth > 0 ? Math.ceil(this.pageWidth + 20) : 0;
+            this.wrapperMain.style.minWidth = this.currentMinWidth > 0 ? `${this.currentMinWidth}px` : '';
 
             this.clearAllCanvas();
             const scrollTop = this.wrapper.scrollTop || 0;
@@ -365,9 +463,9 @@ class AbnerJsPdfPreview {
         }
         const currentId = ++this.renderId;
         this.onScroll.cancel();
+        this.cleanupPdfResources();
         if (!src) {
             this.clearAllCanvas(true);
-            this.cleanupPdfResources();
             const err = new Error('预览地址不能为空');
             this.options.onError && this.options.onError(err);
             return Promise.reject(err);
@@ -378,7 +476,7 @@ class AbnerJsPdfPreview {
             }
             return this.getDocument(src, currentId).then(pdfDocument => {
                 if (!pdfDocument || this.isDestroyed || currentId !== this.renderId) {
-                    pdfDocument && pdfDocument.destroy();
+                    safeDestroy(pdfDocument);
                     return;
                 }
                 this.pdfDocument = pdfDocument;
@@ -387,7 +485,11 @@ class AbnerJsPdfPreview {
                 }
                 return this.layoutAndRender(currentId, true);
             });
-        }).catch(e => {
+        }).then((rendered) => {
+            if (rendered && !this.isDestroyed && currentId === this.renderId) {
+                this.options.onRendered && this.options.onRendered();
+            }
+        }, e => {
             if (!this.isDestroyed && currentId === this.renderId) {
                 this.clearAllCanvas(true);
                 this.cleanupPdfResources();
@@ -461,9 +563,13 @@ class AbnerJsPdfPreview {
         }
         return Promise.all(tasks).then(() => {
             if (emitRendered && !this.isDestroyed && currentId === this.renderId) {
+                if (rethrow) {
+                    return true;
+                }
                 this.options.onRendered && this.options.onRendered();
             }
-        }).catch(e => {
+            return false;
+        }, e => {
             if (rethrow) {
                 return Promise.reject(e);
             }
@@ -478,7 +584,11 @@ class AbnerJsPdfPreview {
             return Promise.resolve();
         }
         const currentId = ++this.renderId;
-        return this.layoutAndRender(currentId, true).catch(e => {
+        return this.layoutAndRender(currentId, true).then((rendered) => {
+            if (rendered && !this.isDestroyed && currentId === this.renderId) {
+                this.options.onRendered && this.options.onRendered();
+            }
+        }, e => {
             if (!this.isDestroyed && currentId === this.renderId) {
                 this.options.onError && this.options.onError(e);
                 return Promise.reject(e);
@@ -487,19 +597,20 @@ class AbnerJsPdfPreview {
     }
 
     save(fileName) {
-        if (!this.pdfDocument || typeof this.pdfDocument.getData !== 'function') {
+        const doc = this.pdfDocument;
+        if (!doc || typeof doc.getData !== 'function') {
             return;
         }
-        this.pdfDocument.getData().then(fileData => {
-            if (this.isDestroyed || typeof Blob === 'undefined') {
+        doc.getData().then(fileData => {
+            if (this.isDestroyed || doc !== this.pdfDocument || typeof Blob === 'undefined') {
                 return;
             }
-            downloadFile(
+            return downloadFile(
                 fileName || `abner-vue-office-js-pdf-${new Date().getTime()}.pdf`,
                 new Blob([fileData], { type: 'application/pdf' })
             );
         }).catch(e => {
-            if (!this.isDestroyed && this.options && this.options.onError) {
+            if (!this.isDestroyed && doc === this.pdfDocument && this.options && this.options.onError) {
                 this.options.onError(e);
             }
         });

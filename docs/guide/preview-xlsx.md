@@ -3,6 +3,13 @@
 支持 `.xlsx` 和 `.xls` 文件预览。预览 `.xls` 文件时，需在 `options` 中配置 `xls: true`。
 :::
 
+## 安装
+
+```shell
+# 安装组件（Vue 2.6 及以下需额外安装 @vue/composition-api）
+npm install @abner-vue-office/excel vue-demi@0.14.6
+```
+
 ## 使用网络地址预览
 
 ```vue
@@ -57,4 +64,4 @@ export default {
 
 和docx的上传文件预览一样，获取文件的ArrayBuffer，传给组件的src属性。
 
-需要注意：如果允许用户同时上传 `.xlsx` 和 `.xls` 本地文件，请根据上传文件名的后缀动态设置 `options.xls`（例如：`this.options.xls = /\.xls$/i.test(file.name)`），因为传入 `ArrayBuffer` 后组件无法仅凭二进制自动判断为 `.xls`。
+需要注意：如果允许用户同时上传 `.xlsx` 和 `.xls` 本地文件，请在 `FileReader.onload` 中更新 `this.src` 之前根据上传文件名的后缀动态设置 `options.xls`（例如：`this.options.xls = /\.xls$/i.test(file.name); this.src = reader.result;`），因为传入 `ArrayBuffer` 后组件无法仅凭二进制自动判断为 `.xls`。

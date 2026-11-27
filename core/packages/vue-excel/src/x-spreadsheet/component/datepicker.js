@@ -13,9 +13,13 @@ export default class Datepicker {
   setValue(date) {
     const { calendar } = this;
     if (typeof date === 'string') {
-      if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(date)) {
-        const parsed = new Date(date.replace(/-/g, '/'));
-        if (!Number.isNaN(parsed.getTime())) {
+      const m = date.trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+      if (m) {
+        const y = Number(m[1]);
+        const mo = Number(m[2]);
+        const d = Number(m[3]);
+        const parsed = new Date(y, mo - 1, d);
+        if (parsed.getFullYear() === y && parsed.getMonth() === mo - 1 && parsed.getDate() === d) {
           calendar.setValue(parsed);
           return this;
         }

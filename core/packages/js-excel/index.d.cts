@@ -8,6 +8,7 @@ declare namespace abnerJsExcel {
         credentials?: RequestCredentials;
         timeout?: number;
         body?: any;
+        signal?: AbortSignal;
         [key: string]: any;
     }
 

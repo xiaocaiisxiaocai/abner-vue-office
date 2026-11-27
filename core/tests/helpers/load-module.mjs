@@ -139,6 +139,9 @@ export function createDomMocks() {
         }
 
         get textContent() {
+            if (this.childNodes.length > 0) {
+                return this.childNodes.map(n => (n && typeof n.textContent === 'string' ? n.textContent : (n && typeof n.data === 'string' ? n.data : ''))).join('');
+            }
             return this._textContent;
         }
 
@@ -290,13 +293,30 @@ export function createDomMocks() {
         }
 
         getBoundingClientRect() {
+            const parsePx = (v) => {
+                if (typeof v === 'number' && Number.isFinite(v)) return v;
+                if (typeof v === 'string') {
+                    const m = v.trim().match(/^(-?\d+(?:\.\d+)?)px$/i);
+                    if (m) return Number(m[1]);
+                }
+                return null;
+            };
+            const isHidden = this.style && this.style.display === 'none';
+            const cssW = parsePx(this.style && this.style.width);
+            const cssH = parsePx(this.style && this.style.height);
+            const cssL = parsePx(this.style && this.style.left);
+            const cssT = parsePx(this.style && this.style.top);
+            const w = isHidden ? 0 : (cssW !== null ? cssW : this.clientWidth);
+            const h = isHidden ? 0 : (cssH !== null ? cssH : this.clientHeight);
+            const l = cssL !== null ? cssL : 0;
+            const t = cssT !== null ? cssT : 0;
             return {
-                width: this.clientWidth,
-                height: this.clientHeight,
-                top: 0,
-                left: 0,
-                right: this.clientWidth,
-                bottom: this.clientHeight
+                width: w,
+                height: h,
+                top: t,
+                left: l,
+                right: l + w,
+                bottom: t + h
             };
         }
 
@@ -497,7 +517,7 @@ export function loadExcelModule() {
     const factory = new Function(
         'require',
         'colorMod',
-        `${excelSrc}\nreturn { getData, readExcelData, transferExcelToSpreadSheet, getCellText, getStyle, transferColumns, formatNumberValue, splitNumFmtSections, formatExcelDate, formatExcelDateByNumFmt, transferArgbColor, transferThemeColor };`
+        `${excelSrc}\nreturn { getData, readExcelData, transferExcelToSpreadSheet, getCellText, getCellTextWithMeta, getStyle, transferColumns, formatNumberValue, formatNumberWithMeta, splitNumFmtSections, formatExcelDate, formatExcelDateByNumFmt, formatElapsedDuration, transferArgbColor, transferThemeColor, extractWorkbookThemeColors };`
     );
     return factory(id => require(id), colorMod);
 }
@@ -796,4 +816,168 @@ export function loadStrippedModule(relPath, extraVars = {}) {
 export function runVmBundle(relPath, sandbox) {
     const code = fs.readFileSync(path.join(CORE_DIR, relPath), 'utf8');
     return vm.runInNewContext(code, sandbox, { filename: relPath });
+}
+
+export function loadXSpreadsheetStack() {
+    const alphabetMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/alphabet.js');
+    const { CellRange } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/cell_range.js', {
+        expr2xy: alphabetMod.expr2xy,
+        xy2expr: alphabetMod.xy2expr
+    });
+    const { Merges } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/merge.js', { CellRange });
+    const helperMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/helper.js');
+    const { Rows, shiftFormulaRefs } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/row.js', {
+        helper: helperMod,
+        expr2expr: alphabetMod.expr2expr,
+        expr2xy: alphabetMod.expr2xy,
+        stringAt: alphabetMod.stringAt
+    });
+    const { Cols } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/col.js', { helper: helperMod });
+    const History = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/history.js');
+    const Clipboard = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/clipboard.js');
+    const Scroll = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/scroll.js');
+    const CoreSelector = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/selector.js', { CellRange });
+    const AutoFilter = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/auto_filter.js', { CellRange });
+    const enLocale = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/locale/en.js');
+    const localeMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/locale/locale.js', { en: enLocale });
+    const { t, tf, locale } = localeMod;
+    const Validator = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/validator.js', { t, helper: helperMod });
+    const { Validations } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/validation.js', { Validator, CellRange });
+    const fontMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/font.js');
+    const formatMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/format.js', { tf });
+    const { formulas, formulam, baseFormulas } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/formula.js', { tf, numberCalc: helperMod.numberCalc });
+    const cellMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/cell.js', {
+        expr2xy: alphabetMod.expr2xy,
+        xy2expr: alphabetMod.xy2expr,
+        numberCalc: helperMod.numberCalc
+    });
+    const DataProxy = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/data_proxy.js', {
+        Selector: CoreSelector,
+        Scroll,
+        History,
+        Clipboard,
+        AutoFilter,
+        Merges,
+        helper: helperMod,
+        Rows,
+        shiftFormulaRefs,
+        Cols,
+        Validations,
+        CellRange,
+        expr2xy: alphabetMod.expr2xy,
+        xy2expr: alphabetMod.xy2expr,
+        t
+    });
+
+    const eventMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/event.js');
+    const { Element, h } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/element.js');
+    const Icon = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/icon.js', { Element, h, cssPrefix: 'x-spreadsheet' });
+    const Button = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/button.js', { Element, cssPrefix: 'x-spreadsheet', t });
+    const tooltipMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/tooltip.js', { h, bind: eventMod.bind, unbind: eventMod.unbind, cssPrefix: 'x-spreadsheet' });
+    const messageMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/message.js', { h, Icon, bind: eventMod.bind, unbind: eventMod.unbind, cssPrefix: 'x-spreadsheet' });
+    const Dropdown = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/dropdown.js', {
+        Element, h, bindClickoutside: eventMod.bindClickoutside, unbindClickoutside: eventMod.unbindClickoutside, cssPrefix: 'x-spreadsheet'
+    });
+    const ColorPalette = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/color_palette.js', { h, cssPrefix: 'x-spreadsheet' });
+    const DropdownColor = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/dropdown_color.js', { Dropdown, ColorPalette, Icon });
+    const DropdownAlign = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/dropdown_align.js', { Dropdown, h, Icon, cssPrefix: 'x-spreadsheet' });
+    const DropdownFont = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/dropdown_font.js', { Dropdown, h, baseFonts: fontMod.baseFonts, cssPrefix: 'x-spreadsheet' });
+    const DropdownFontSize = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/dropdown_fontsize.js', { Dropdown, h, fontSizes: fontMod.fontSizes, cssPrefix: 'x-spreadsheet' });
+    const DropdownFormat = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/dropdown_format.js', { Dropdown, h, baseFormats: formatMod.baseFormats, cssPrefix: 'x-spreadsheet' });
+    const DropdownFormula = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/dropdown_formula.js', { Dropdown, h, Icon, baseFormulas: formulas, cssPrefix: 'x-spreadsheet' });
+    const DropdownLineType = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/dropdown_linetype.js', { Dropdown, h, Icon, cssPrefix: 'x-spreadsheet' });
+    const BorderPalette = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/border_palette.js', { h, Icon, DropdownColor, DropdownLineType, cssPrefix: 'x-spreadsheet' });
+    const DropdownBorder = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/dropdown_border.js', { Dropdown, Icon, BorderPalette });
+    const ContextMenu = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/contextmenu.js', {
+        h, bindClickoutside: eventMod.bindClickoutside, unbindClickoutside: eventMod.unbindClickoutside, cssPrefix: 'x-spreadsheet', tf
+    });
+    const Scrollbar = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/scrollbar.js', { h, cssPrefix: 'x-spreadsheet' });
+
+    const Item = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/item.js', { cssPrefix: 'x-spreadsheet', tooltip: tooltipMod, h, t });
+    const IconItem = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/icon_item.js', { Item, Icon });
+    const ToggleItem = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/toggle_item.js', { Item, Icon });
+    const DropdownItem = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/dropdown_item.js', { Dropdown, Item });
+    const toolbarItems = {
+        Align: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/align.js', { DropdownItem, DropdownAlign }),
+        Valign: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/valign.js', { DropdownItem, DropdownAlign }),
+        Autofilter: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/autofilter.js', { ToggleItem }),
+        Bold: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/bold.js', { ToggleItem }),
+        Italic: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/italic.js', { ToggleItem }),
+        Strike: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/strike.js', { ToggleItem }),
+        Underline: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/underline.js', { ToggleItem }),
+        Border: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/border.js', { DropdownItem, DropdownBorder }),
+        Clearformat: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/clearformat.js', { IconItem }),
+        Paintformat: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/paintformat.js', { ToggleItem }),
+        TextColor: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/text_color.js', { DropdownItem, DropdownColor }),
+        FillColor: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/fill_color.js', { DropdownItem, DropdownColor }),
+        FontSize: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/font_size.js', { DropdownItem, DropdownFontSize, DropdownFontsize: DropdownFontSize }),
+        Font: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/font.js', { DropdownItem, DropdownFont }),
+        Format: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/format.js', { DropdownItem, DropdownFormat }),
+        Formula: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/formula.js', { DropdownItem, DropdownFormula }),
+        Freeze: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/freeze.js', { ToggleItem }),
+        Merge: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/merge.js', { ToggleItem }),
+        Redo: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/redo.js', { IconItem }),
+        Undo: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/undo.js', { IconItem }),
+        Print: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/print.js', { IconItem }),
+        Textwrap: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/textwrap.js', { ToggleItem }),
+        More: loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/more.js', { Dropdown, DropdownItem, cssPrefix: 'x-spreadsheet', h, Icon })
+    };
+    const Toolbar = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/toolbar/index.js', {
+        ...toolbarItems,
+        Item, h, cssPrefix: 'x-spreadsheet', bind: eventMod.bind, unbind: eventMod.unbind, hideTooltip: tooltipMod.hideTooltip
+    });
+
+    const Suggest = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/suggest.js', {
+        h, bindClickoutside: eventMod.bindClickoutside, unbindClickoutside: eventMod.unbindClickoutside, cssPrefix: 'x-spreadsheet'
+    });
+    const Calendar = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/calendar.js', { h, Icon, t, cssPrefix: 'x-spreadsheet' });
+    const Datepicker = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/datepicker.js', { Calendar, h, cssPrefix: 'x-spreadsheet' });
+    const Editor = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/editor.js', { h, Suggest, Datepicker, cssPrefix: 'x-spreadsheet' });
+    const FormInput = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/form_input.js', { h, cssPrefix: 'x-spreadsheet' });
+    const FormSelect = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/form_select.js', { h, Suggest, cssPrefix: 'x-spreadsheet' });
+    const FormField = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/form_field.js', { h, cssPrefix: 'x-spreadsheet', t });
+    const Modal = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/modal.js', { h, Icon, cssPrefix: 'x-spreadsheet', bind: eventMod.bind, unbind: eventMod.unbind });
+    const ModalValidation = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/modal_validation.js', { Modal, FormInput, FormSelect, FormField, Button, t, h, cssPrefix: 'x-spreadsheet' });
+    const SortFilter = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/sort_filter.js', {
+        h, Button, bindClickoutside: eventMod.bindClickoutside, unbindClickoutside: eventMod.unbindClickoutside, cssPrefix: 'x-spreadsheet', t
+    });
+    const Resizer = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/resizer.js', { h, mouseMoveUp: eventMod.mouseMoveUp, cssPrefix: 'x-spreadsheet' });
+    const Selector = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/selector.js', { h, cssPrefix: 'x-spreadsheet', CellRange });
+    const drawMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/canvas/draw.js');
+    const draw2Mod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/canvas/draw2.js');
+    const Table = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/table.js', {
+        stringAt: alphabetMod.stringAt,
+        getFontSizePxByPt: fontMod.getFontSizePxByPt,
+        _cell: cellMod,
+        formulam,
+        formatm: formatMod.formatm,
+        Draw: drawMod.Draw,
+        DrawBox: drawMod.DrawBox,
+        thinLineWidth: drawMod.thinLineWidth,
+        npx: drawMod.npx
+    });
+    const Print = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/print.js', {
+        h, cssPrefix: 'x-spreadsheet', Button, Draw: drawMod.Draw, npx: drawMod.npx, renderCell: Table.renderCell, t
+    });
+    const Bottombar = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/bottombar.js', {
+        h, bindClickoutside: eventMod.bindClickoutside, unbindClickoutside: eventMod.unbindClickoutside, cssPrefix: 'x-spreadsheet', Icon, FormInput, Dropdown, tf
+    });
+    const Sheet = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/sheet.js', {
+        h, bind: eventMod.bind, unbind: eventMod.unbind, mouseMoveUp: eventMod.mouseMoveUp, bindTouch: eventMod.bindTouch, createEventEmitter: eventMod.createEventEmitter,
+        Resizer, Scrollbar, Selector, Editor, Print, ContextMenu, Table, Toolbar, ModalValidation, SortFilter, xtoast: messageMod.xtoast, cssPrefix: 'x-spreadsheet', formulas
+    });
+    const Spreadsheet = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/index.js', {
+        h, DataProxy, Sheet, Bottombar, cssPrefix: 'x-spreadsheet', locale
+    });
+
+    return {
+        alphabetMod, CellRange, Merges, helperMod, Rows, shiftFormulaRefs, Cols, History, Clipboard, Scroll, CoreSelector,
+        AutoFilter, enLocale, localeMod, t, tf, locale, Validator, Validations, fontMod, formatMod, formulas, formulam, baseFormulas,
+        cellMod, DataProxy, eventMod, Element, h, Icon, Button, tooltipMod, messageMod, Dropdown, ColorPalette, DropdownColor,
+        DropdownAlign, DropdownFont, DropdownFontSize, DropdownFormat, DropdownFormula, DropdownLineType, BorderPalette,
+        DropdownBorder, ContextMenu, Scrollbar, Item, IconItem, ToggleItem, DropdownItem, toolbarItems, Toolbar, Suggest,
+        Calendar, Datepicker, Editor, FormInput, FormSelect, FormField, Modal, ModalValidation, SortFilter, Resizer, Selector,
+        drawMod, draw2Mod, Table, Print, Bottombar, Sheet, Spreadsheet,
+        spreadsheet: Spreadsheet.spreadsheet
+    };
 }

@@ -10,11 +10,24 @@ const defaultOptions = {
     minColLength: 20
 };
 
+function mergeExcelOptions(base, override) {
+    const merged = { ...base };
+    if (override && typeof override === 'object') {
+        Object.keys(override).forEach(k => {
+            if (override[k] !== undefined) {
+                merged[k] = override[k];
+            }
+        });
+    }
+    return merged;
+}
+
 class AbnerJsExcelPreview {
     container = null;
     wrapper = null;
     wrapperMain = null;
     options = {};
+    renderedOptions = { ...defaultOptions };
     requestOptions = {};
     mediasSource = [];
     workbookDataSource = {
@@ -26,12 +39,17 @@ class AbnerJsExcelPreview {
     offset = null;
     observer = null;
     observerCallback = null;
+    resizeObserver = null;
+    resizeReloadDebounce = null;
+    lastObservedWidth = 0;
+    lastObservedHeight = 0;
     renderImageDebounce = null;
     swapTimer = null;
     fileData = null;
     renderId = 0;
     tableRenderVersion = 0;
     activeAbortController = null;
+    isInternalLoad = false;
     isDestroyed = false;
 
     abortActiveRequest() {
@@ -50,11 +68,13 @@ class AbnerJsExcelPreview {
             throw new Error('container is required');
         }
         this.container = container;
-        this.options = { ...defaultOptions, ...(options || {}) };
+        this.options = mergeExcelOptions(defaultOptions, options);
+        this.renderedOptions = { ...this.options };
         this.requestOptions = { ...(requestOptions || {}) };
         this.createWrapper();
         this.initSpreadsheet();
         this.hack();
+        this.observeResize();
     }
 
     createWrapper() {
@@ -122,6 +142,9 @@ class AbnerJsExcelPreview {
             that.renderImageDebounce && that.renderImageDebounce.cancel();
             swapFunc.call(that.xs.bottombar, index);
             that.offset = that.xs.sheet.data.getSelectedRect();
+            if (that.isInternalLoad) {
+                return;
+            }
             that.clearSwapTimer();
             that.swapTimer = setTimeout(() => {
                 that.swapTimer = null;
@@ -149,7 +172,7 @@ class AbnerJsExcelPreview {
                 that.mediasSource,
                 that.workbookDataSource._worksheets[targetSheetIndex],
                 that.offset,
-                that.options,
+                that.renderedOptions,
                 () => !that.isDestroyed && targetRenderId === that.renderId && targetSheetIndex === that.sheetIndex && targetTableVersion === that.tableRenderVersion
             );
         }, 200, {
@@ -179,6 +202,18 @@ class AbnerJsExcelPreview {
         }
     }
 
+    loadDataInternal(data) {
+        if (!this.xs) {
+            return;
+        }
+        this.isInternalLoad = true;
+        try {
+            this.xs.loadData(data);
+        } finally {
+            this.isInternalLoad = false;
+        }
+    }
+
     resetEmptyState() {
         this.clearSwapTimer();
         this.mediasSource = [];
@@ -187,7 +222,7 @@ class AbnerJsExcelPreview {
         };
         this.renderImageDebounce && this.renderImageDebounce.cancel();
         clearCache(this.ctx);
-        this.xs && this.xs.loadData({});
+        this.loadDataInternal({});
     }
 
     hasValidWorksheets(wb) {
@@ -202,17 +237,18 @@ class AbnerJsExcelPreview {
 
     renderExcel(buffer, currentId = this.renderId) {
         if (this.isDestroyed || currentId !== this.renderId || !this.xs) {
-            return Promise.resolve();
+            return Promise.resolve(false);
         }
-        return readExcelData(buffer, this.options.xls).then(workbook => {
+        const opts = mergeExcelOptions(defaultOptions, this.options);
+        return readExcelData(buffer, opts.xls).then(workbook => {
             if (this.isDestroyed || currentId !== this.renderId || !this.xs) {
-                return;
+                return false;
             }
             if (!this.hasValidWorksheets(workbook)) {
                 throw new Error('未获取到数据，可能文件格式不正确或文件已损坏');
             }
-            if (this.options.beforeTransformData && typeof this.options.beforeTransformData === 'function') {
-                const nextWb = this.options.beforeTransformData(workbook);
+            if (opts.beforeTransformData && typeof opts.beforeTransformData === 'function') {
+                const nextWb = opts.beforeTransformData(workbook);
                 if (nextWb !== undefined) {
                     workbook = nextWb;
                 }
@@ -220,23 +256,24 @@ class AbnerJsExcelPreview {
                     throw new Error('未获取到数据，可能文件格式不正确或文件已损坏');
                 }
             }
-            let { workbookData, medias, workbookSource } = transferExcelToSpreadSheet(workbook, this.options);
-            if (this.options.transformData && typeof this.options.transformData === 'function') {
-                const nextData = this.options.transformData(workbookData);
+            let { workbookData, medias, workbookSource } = transferExcelToSpreadSheet(workbook, opts);
+            if (opts.transformData && typeof opts.transformData === 'function') {
+                const nextData = opts.transformData(workbookData);
                 if (nextData !== undefined) {
                     workbookData = nextData;
                 }
             }
             this.clearSwapTimer();
             this.fileData = buffer;
+            this.renderedOptions = { ...opts };
             this.mediasSource = medias;
             this.workbookDataSource = workbookSource;
             this.offset = null;
             this.sheetIndex = 0;
             clearCache(this.ctx);
             this.renderImageDebounce && this.renderImageDebounce.cancel();
-            this.xs.loadData(workbookData);
-            typeof this.options.switchSheet === 'function' && this.options.switchSheet(0);
+            this.loadDataInternal(workbookData);
+            return true;
         }).catch(e => {
             if (!this.isDestroyed && currentId === this.renderId) {
                 this.fileData = null;
@@ -247,16 +284,50 @@ class AbnerJsExcelPreview {
 
     hack() {
         if (typeof MutationObserver !== 'undefined') {
-            this.observerCallback = debounce(() => readOnlyInput(this.wrapperMain), 200);
+            this.observerCallback = debounce(() => {
+                if (!this.isDestroyed && this.wrapperMain) {
+                    readOnlyInput(this.wrapperMain);
+                }
+            }, 200);
             this.observer = new MutationObserver(this.observerCallback);
-            const observerConfig = { attributes: true, childList: true, subtree: true };
+            const observerConfig = { childList: true, subtree: true };
             this.observer.observe(this.wrapperMain, observerConfig);
         }
         readOnlyInput(this.wrapperMain);
     }
 
+    observeResize() {
+        if (typeof ResizeObserver === 'undefined' || !this.wrapper) {
+            return;
+        }
+        this.lastObservedWidth = this.wrapper.clientWidth || 0;
+        this.lastObservedHeight = this.wrapper.clientHeight || 0;
+        this.resizeReloadDebounce = debounce(() => {
+            if (this.isDestroyed || !this.xs || !this.xs.sheet || typeof this.xs.sheet.reload !== 'function') {
+                return;
+            }
+            this.xs.sheet.reload();
+        }, 100);
+        this.resizeObserver = new ResizeObserver(() => {
+            if (this.isDestroyed || !this.wrapper) {
+                return;
+            }
+            const nextW = this.wrapper.clientWidth || 0;
+            const nextH = this.wrapper.clientHeight || 0;
+            if (nextW > 0 && nextH > 0 && (nextW !== this.lastObservedWidth || nextH !== this.lastObservedHeight)) {
+                this.lastObservedWidth = nextW;
+                this.lastObservedHeight = nextH;
+                this.resizeReloadDebounce && this.resizeReloadDebounce();
+            }
+        });
+        this.resizeObserver.observe(this.wrapper);
+    }
+
     setOptions(options = {}) {
-        this.options = { ...defaultOptions, ...(this.options || {}), ...(options || {}) };
+        this.options = mergeExcelOptions(mergeExcelOptions(defaultOptions, this.options), options);
+        if (this.xs && this.xs.sheet && this.xs.sheet.contextMenu) {
+            this.xs.sheet.contextMenu.isHide = !this.options.showContextmenu;
+        }
     }
 
     setRequestOptions(requestOptions = {}) {
@@ -274,6 +345,7 @@ class AbnerJsExcelPreview {
             this.resetEmptyState();
             throw new Error('预览地址不能为空');
         }
+        let didRender = false;
         try {
             const reqOpts = this.requestOptions || {};
             let fetchOpts = reqOpts;
@@ -288,7 +360,7 @@ class AbnerJsExcelPreview {
             if (this.isDestroyed || currentId !== this.renderId) {
                 return;
             }
-            await this.renderExcel(res, currentId);
+            didRender = Boolean(await this.renderExcel(res, currentId));
         } catch (e) {
             if (currentId === this.renderId) {
                 this.activeAbortController = null;
@@ -298,12 +370,18 @@ class AbnerJsExcelPreview {
                 this.resetEmptyState();
                 throw e;
             }
+            return;
+        }
+        if (didRender && !this.isDestroyed && currentId === this.renderId) {
+            this.options && typeof this.options.switchSheet === 'function' && this.options.switchSheet(0);
         }
     }
 
     save(fileName) {
         const ext = this.options && this.options.xls ? 'xls' : 'xlsx';
-        downloadFile(fileName || `abner-vue-office-js-excel-${new Date().getTime()}.${ext}`, this.fileData);
+        Promise.resolve(
+            downloadFile(fileName || `abner-vue-office-js-excel-${new Date().getTime()}.${ext}`, this.fileData)
+        ).catch(() => {});
     }
 
     destroy() {
@@ -318,6 +396,12 @@ class AbnerJsExcelPreview {
         if (this.observer) {
             this.observer.disconnect();
             this.observer = null;
+        }
+        this.resizeReloadDebounce && this.resizeReloadDebounce.cancel();
+        this.resizeReloadDebounce = null;
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+            this.resizeObserver = null;
         }
         clearCache(this.ctx);
         if (this.xs && typeof this.xs.destroy === 'function') {

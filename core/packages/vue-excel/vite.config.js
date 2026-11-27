@@ -24,8 +24,8 @@ export default defineConfig({
     lib: {
       entry: resolve(__dirname, 'index.js'), //指定组件编译入口文件
       name: 'AbnerVueOfficeExcel',
-      formats: ['umd'],
-      fileName: () => 'index.js',
+      formats: ['es', 'umd'],
+      fileName: (format) => (format === 'es' ? 'index.mjs' : 'index.js'),
     },
     rollupOptions: {
       external: ['vue-demi','vue'],

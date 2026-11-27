@@ -17,7 +17,7 @@ function buildCoreSuite() {
     });
     const { Merges } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/merge.js', { CellRange });
     const helperMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/helper.js');
-    const { Rows } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/row.js', {
+    const { Rows, shiftFormulaRefs } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/row.js', {
         helper: helperMod,
         expr2expr: alphabetMod.expr2expr,
         expr2xy: alphabetMod.expr2xy,
@@ -59,6 +59,7 @@ function buildCoreSuite() {
         Merges,
         helper: helperMod,
         Rows,
+        shiftFormulaRefs,
         Cols,
         Validations,
         CellRange,
@@ -160,7 +161,10 @@ test('excel.js covers DST UTC dates, formatNumberValue scaling/sci/empty/currenc
     assert.equal(wbWithThemeAndFreeze._worksheets, origWorksheets);
     assert.deepEqual(out.workbookData[0].freeze, [2, 1]);
     assert.equal(out.workbookData[0].cols[0].hide, true);
-    const masterStyle = out.workbookData[0].styles[out.workbookData[0].rows[0].cells[0].style];
+    // Col 0 is hidden (width: 0), so A1:B2 remaps its visible merge master to B1 (cells[1]) with B1:B2 range
+    assert.deepEqual(out.workbookData[0].merges, ['B1:B2']);
+    const masterStyle = out.workbookData[0].styles[out.workbookData[0].rows[0].cells[1].style];
+    assert.equal(out.workbookData[0].rows[0].cells[1].text, 'Master');
     assert.equal(masterStyle.color, '#ABCDEF');
     assert.deepEqual(masterStyle.border.right, ['medium', '#ff0000']);
     assert.deepEqual(masterStyle.border.bottom, ['double', '#00ff00']);

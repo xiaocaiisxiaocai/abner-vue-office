@@ -44,8 +44,8 @@ class SelectorElement {
       left, top, width, height,
     } = v;
     const of = {
-      width: width - selectorHeightBorderWidth + 0.8,
-      height: height - selectorHeightBorderWidth + 0.8,
+      width: Math.max(0, width - selectorHeightBorderWidth + 0.8),
+      height: Math.max(0, height - selectorHeightBorderWidth + 0.8),
       left: left - 0.8,
       top: top - 0.8,
     };
@@ -66,8 +66,8 @@ class SelectorElement {
     this.clipboardEl.offset({
       left,
       top,
-      width: width - 5,
-      height: height - 5,
+      width: Math.max(0, width - 5),
+      height: Math.max(0, height - 5),
     });
   }
 
@@ -76,8 +76,8 @@ class SelectorElement {
       left, top, width, height,
     } = v;
     this.autofillEl.offset({
-      width: width - selectorHeightBorderWidth,
-      height: height - selectorHeightBorderWidth,
+      width: Math.max(0, width - selectorHeightBorderWidth),
+      height: Math.max(0, height - selectorHeightBorderWidth),
       left,
       top,
     }).show();
@@ -281,29 +281,34 @@ export default class Selector {
   resetAreaOffset() {
     // console.log('offset:', offset);
     const offset = this.data.getSelectedRect();
-    const coffset = this.data.getClipboardRect();
     setAllAreaOffset.call(this, offset);
-    setAllClipboardOffset.call(this, coffset);
+    if (this.data.clipboard && !this.data.clipboard.isClear()) {
+      setAllClipboardOffset.call(this, this.data.getClipboardRect());
+    }
     this.resetOffset();
   }
 
   resetBRTAreaOffset() {
     const offset = this.data.getSelectedRect();
-    const coffset = this.data.getClipboardRect();
     setBRAreaOffset.call(this, offset);
     setTAreaOffset.call(this, offset);
-    setBRClipboardOffset.call(this, coffset);
-    setTClipboardOffset.call(this, coffset);
+    if (this.data.clipboard && !this.data.clipboard.isClear()) {
+      const coffset = this.data.getClipboardRect();
+      setBRClipboardOffset.call(this, coffset);
+      setTClipboardOffset.call(this, coffset);
+    }
     this.resetOffset();
   }
 
   resetBRLAreaOffset() {
     const offset = this.data.getSelectedRect();
-    const coffset = this.data.getClipboardRect();
     setBRAreaOffset.call(this, offset);
     setLAreaOffset.call(this, offset);
-    setBRClipboardOffset.call(this, coffset);
-    setLClipboardOffset.call(this, coffset);
+    if (this.data.clipboard && !this.data.clipboard.isClear()) {
+      const coffset = this.data.getClipboardRect();
+      setBRClipboardOffset.call(this, coffset);
+      setLClipboardOffset.call(this, coffset);
+    }
     this.resetOffset();
   }
 
@@ -317,12 +322,15 @@ export default class Selector {
       this.indexes = [cri, cci];
     }
 
+    this.lastri = -1;
+    this.lastci = -1;
     this.moveIndexes = [sri, sci];
     this.range = cellRange;
     const offset = this.data.getSelectedRect();
-    const coffset = this.data.getClipboardRect();
     setAllAreaOffset.call(this, offset, true);
-    setAllClipboardOffset.call(this, coffset);
+    if (this.data.clipboard && !this.data.clipboard.isClear()) {
+      setAllClipboardOffset.call(this, this.data.getClipboardRect());
+    }
     this.resetOffset();
     this.el.show();
   }

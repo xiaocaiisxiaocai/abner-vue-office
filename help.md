@@ -13,7 +13,7 @@ npm run dev
 
 # 发包
 
-> 构建脚本已适配为 Windows 原生 Node 脚本（不再依赖 macOS/Linux 的 `cp`/`mkdir`/`mv` 命令）。
+> 构建脚本已适配为跨平台 Node 脚本（Windows/macOS/Linux 通用，不再依赖 `cp`/`mkdir`/`mv` 命令）。
 
 发包之前首先要对各个库进行打包，支持一键打包：
 

@@ -11,6 +11,9 @@ class AbnerJsDocxPreview {
     fileData = null;
     renderId = 0;
     isDestroyed = false;
+    activeAbortController = null;
+    activeUserSignal = null;
+    activeUserSignalListener = null;
 
     constructor(container, options = {}, requestOptions = {}) {
         if (!container) {
@@ -20,6 +23,40 @@ class AbnerJsDocxPreview {
         this.options = { ...(options || {}) };
         this.requestOptions = { ...(requestOptions || {}) };
         this.createWrapper();
+    }
+
+    abortActiveRequest() {
+        if (this.activeUserSignal && this.activeUserSignalListener) {
+            this.activeUserSignal.removeEventListener('abort', this.activeUserSignalListener);
+        }
+        this.activeUserSignal = null;
+        this.activeUserSignalListener = null;
+        if (this.activeAbortController) {
+            this.activeAbortController.abort();
+            this.activeAbortController = null;
+        }
+    }
+
+    buildFetchOptions() {
+        const opts = { ...(this.requestOptions || {}) };
+        if (typeof AbortController === 'undefined') {
+            return opts;
+        }
+        const controller = new AbortController();
+        this.activeAbortController = controller;
+        const userSignal = opts.signal;
+        if (userSignal && typeof userSignal.addEventListener === 'function') {
+            if (userSignal.aborted) {
+                controller.abort();
+            } else {
+                const onAbort = () => controller.abort();
+                userSignal.addEventListener('abort', onAbort, { once: true });
+                this.activeUserSignal = userSignal;
+                this.activeUserSignalListener = onAbort;
+            }
+        }
+        opts.signal = controller.signal;
+        return opts;
     }
 
     createWrapper() {
@@ -46,6 +83,7 @@ class AbnerJsDocxPreview {
         if (this.isDestroyed) {
             return;
         }
+        this.abortActiveRequest();
         const currentId = ++this.renderId;
         const shouldCommit = () => !this.isDestroyed && currentId === this.renderId && !!this.wrapperMain;
         if (!src) {
@@ -55,8 +93,9 @@ class AbnerJsDocxPreview {
             }
             throw new Error('预览地址不能为空');
         }
+        const fetchOptions = this.buildFetchOptions();
         try {
-            const res = await docx.getData(src, this.requestOptions);
+            const res = await docx.getData(src, fetchOptions);
             if (!shouldCommit()) {
                 return;
             }
@@ -67,8 +106,10 @@ class AbnerJsDocxPreview {
             if (!blob) {
                 throw new Error('Unsupported docx data');
             }
-            this.fileData = blob;
             await docx.render(blob, this.wrapperMain, this.options, shouldCommit);
+            if (shouldCommit()) {
+                this.fileData = blob;
+            }
         } catch (err) {
             if (!this.isDestroyed && currentId === this.renderId) {
                 this.fileData = null;
@@ -81,12 +122,18 @@ class AbnerJsDocxPreview {
     }
 
     save(fileName) {
-        downloadFile(fileName || `abner-vue-office-js-docx-${new Date().getTime()}.docx`, this.fileData);
+        Promise.resolve(
+            downloadFile(fileName || `abner-vue-office-js-docx-${new Date().getTime()}.docx`, this.fileData)
+        ).catch(() => {});
     }
 
     destroy() {
         this.isDestroyed = true;
         ++this.renderId;
+        this.abortActiveRequest();
+        if (this.wrapperMain && typeof docx.revokeContainerBlobUrls === 'function') {
+            docx.revokeContainerBlobUrls(this.wrapperMain);
+        }
         if (this.wrapper && this.wrapper.parentNode) {
             this.wrapper.parentNode.removeChild(this.wrapper);
         }

@@ -130,8 +130,10 @@ function digits(a) {
 }
 
 export function numberCalc(type, a1, a2) {
-  const s1 = a1 == null ? '' : String(a1).trim();
-  const s2 = a2 == null ? '' : String(a2).trim();
+  const v1 = typeof a1 === 'boolean' ? (a1 ? 1 : 0) : a1;
+  const v2 = typeof a2 === 'boolean' ? (a2 ? 1 : 0) : a2;
+  const s1 = v1 == null ? '' : String(v1).trim();
+  const s2 = v2 == null ? '' : String(v2).trim();
   const num1 = s1 === '' ? 0 : Number(s1);
   const num2 = s2 === '' ? 0 : Number(s2);
   if (Number.isNaN(num1) || Number.isNaN(num2)) {
@@ -140,14 +142,14 @@ export function numberCalc(type, a1, a2) {
   const al1 = digits(s1 || '0');
   const al2 = digits(s2 || '0');
   let ret = 0;
-  let precision = Math.min(Math.max(al1, al2), 100);
+  let rawPrecision = Math.max(al1, al2);
   if (type === '-') {
     ret = num1 - num2;
   } else if (type === '+') {
     ret = num1 + num2;
   } else if (type === '*') {
     ret = num1 * num2;
-    precision = Math.min(al1 + al2, 100);
+    rawPrecision = al1 + al2;
   } else if (type === '/') {
     if (num2 === 0) return String(num1 / num2);
     ret = num1 / num2;
@@ -157,6 +159,11 @@ export function numberCalc(type, a1, a2) {
   }
   if (!Number.isFinite(ret)) return String(ret);
   if (Object.is(ret, -0)) return '0';
+  if (ret !== 0 && (Math.abs(ret) < 1e-100 || rawPrecision > 100)) {
+    const cleaned = Number(ret.toPrecision(15));
+    return String(Object.is(cleaned, -0) ? 0 : cleaned);
+  }
+  const precision = Math.min(rawPrecision, 100);
   const rounded = ret.toFixed(precision);
   const stripped = rounded.includes('.')
     ? rounded.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1')

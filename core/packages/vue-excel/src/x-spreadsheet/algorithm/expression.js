@@ -5,6 +5,7 @@ const OP_PREC = {
   '-': 1,
   '*': 2,
   '/': 2,
+  'u-': 3,
 };
 
 const infix2suffix = (src) => {
@@ -18,6 +19,9 @@ const infix2suffix = (src) => {
       stack.push(numBuf);
       numBuf = '';
     }
+  };
+  const pushOpToStack = (op) => {
+    stack.push(op === 'u-' ? '-' : op);
   };
   for (let i = 0; i < src.length; i += 1) {
     const c = src.charAt(i);
@@ -37,13 +41,24 @@ const infix2suffix = (src) => {
       while (operatorStack.length > 0) {
         const c1 = operatorStack.pop();
         if (c1 === '(') break;
-        stack.push(c1);
+        pushOpToStack(c1);
       }
       expectUnary = false;
     } else if (OP_PREC[c]) {
       if (expectUnary && (c === '-' || c === '+')) {
-        if (c === '-' && numBuf.length === 0) {
-          numBuf = '-';
+        if (c === '-') {
+          const nextImmediate = src.charAt(i + 1);
+          if (numBuf.length === 0 && ((nextImmediate >= '0' && nextImmediate <= '9') || nextImmediate === '.')) {
+            numBuf = '-';
+          } else {
+            let look = i + 1;
+            while (look < src.length && /\s/.test(src.charAt(look))) look += 1;
+            const ahead = src.charAt(look);
+            if (ahead && ((ahead >= '0' && ahead <= '9') || ahead === '.' || ahead === '(' || ahead === '-' || ahead === '+')) {
+              stack.push('0');
+              operatorStack.push('u-');
+            }
+          }
         }
         continue;
       }
@@ -53,7 +68,7 @@ const infix2suffix = (src) => {
         if (last === '(' || !OP_PREC[last] || OP_PREC[last] < OP_PREC[c]) {
           break;
         }
-        stack.push(operatorStack.pop());
+        pushOpToStack(operatorStack.pop());
       }
       operatorStack.push(c);
       expectUnary = true;
@@ -64,7 +79,7 @@ const infix2suffix = (src) => {
   flushNum();
   while (operatorStack.length > 0) {
     const op = operatorStack.pop();
-    if (op !== '(') stack.push(op);
+    if (op !== '(') pushOpToStack(op);
   }
   return stack;
 };

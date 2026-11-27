@@ -26,13 +26,16 @@ class Filter {
       return true;
     }
     if (operator === 'in') {
-      return Array.isArray(value) && value.includes(v);
+      const sv = v == null ? '' : String(v);
+      return Array.isArray(value) && value.some(it => (it == null ? '' : String(it)) === sv);
     }
     if (operator === 'eq') {
-      return v === value;
+      const sv = v == null ? '' : String(v);
+      return sv === (value == null ? '' : String(value));
     }
     if (operator === 'neq') {
-      return v !== value;
+      const sv = v == null ? '' : String(v);
+      return sv !== (value == null ? '' : String(value));
     }
     const nv = toStrictNum(v);
     if (operator === 'be' && Array.isArray(value) && value.length >= 2) {

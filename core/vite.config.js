@@ -15,6 +15,7 @@ export default defineConfig({
   ],
   base: '/abner-vue-office/examples/dist/',
   build: {
-    outDir: '../examples/dist'
+    outDir: '../examples/dist',
+    emptyOutDir: true
   }
 });

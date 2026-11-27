@@ -38,15 +38,54 @@ export default defineComponent({
         let fileData = null;
         let isUnmounted = false;
         let renderId = 0;
+        let activeAbortController = null;
+        let activeUserSignal = null;
+        let activeUserSignalListener = null;
+
+        function abortActiveRequest() {
+            if (activeUserSignal && activeUserSignalListener) {
+                activeUserSignal.removeEventListener('abort', activeUserSignalListener);
+            }
+            activeUserSignal = null;
+            activeUserSignalListener = null;
+            if (activeAbortController) {
+                activeAbortController.abort();
+                activeAbortController = null;
+            }
+        }
+
+        function buildFetchOptions(reqOptions) {
+            const opts = { ...(reqOptions || {}) };
+            if (typeof AbortController === 'undefined') {
+                return opts;
+            }
+            const controller = new AbortController();
+            activeAbortController = controller;
+            const userSignal = opts.signal;
+            if (userSignal && typeof userSignal.addEventListener === 'function') {
+                if (userSignal.aborted) {
+                    controller.abort();
+                } else {
+                    const onAbort = () => controller.abort();
+                    userSignal.addEventListener('abort', onAbort, { once: true });
+                    activeUserSignal = userSignal;
+                    activeUserSignalListener = onAbort;
+                }
+            }
+            opts.signal = controller.signal;
+            return opts;
+        }
 
         function init() {
             const container = rootRef.value;
             if (!container) {
                 return;
             }
+            abortActiveRequest();
             const currentId = ++renderId;
             const shouldCommit = () => !isUnmounted && currentId === renderId && !!rootRef.value;
-            docx.getData(props.src, props.requestOptions).then(async res => {
+            const fetchOptions = buildFetchOptions(props.requestOptions);
+            docx.getData(props.src, fetchOptions).then(async res => {
                 if (!shouldCommit()) {
                     return;
                 }
@@ -57,26 +96,25 @@ export default defineComponent({
                 if (!blob) {
                     throw new Error('Unsupported docx data');
                 }
-                fileData = blob;
-                docx.render(blob, container, props.options, shouldCommit).then(() => {
-                    if (!isUnmounted && currentId === renderId) {
-                        emit('rendered');
-                    }
-                }).catch(e => {
-                    if (!shouldCommit()) {
-                        return;
-                    }
-                    fileData = null;
-                    docx.render('', container, props.options, shouldCommit).catch(() => {});
-                    emit('error', e);
-                });
-            }).catch(e => {
+                await docx.render(blob, container, props.options, shouldCommit);
+                if (shouldCommit()) {
+                    fileData = blob;
+                }
+                return true;
+            }).then((rendered) => {
+                if (rendered && shouldCommit()) {
+                    emit('rendered');
+                }
+            }, e => {
                 if (!shouldCommit()) {
                     return;
                 }
                 fileData = null;
-                docx.render('', container, props.options, shouldCommit).catch(() => {});
-                emit('error', e);
+                docx.render('', container, props.options, shouldCommit).catch(() => {}).then(() => {
+                    if (shouldCommit()) {
+                        emit('error', e);
+                    }
+                });
             });
         }
 
@@ -89,6 +127,10 @@ export default defineComponent({
         onBeforeUnmount(() => {
             isUnmounted = true;
             ++renderId;
+            abortActiveRequest();
+            if (rootRef.value && typeof docx.revokeContainerBlobUrls === 'function') {
+                docx.revokeContainerBlobUrls(rootRef.value);
+            }
             fileData = null;
         });
 
@@ -99,6 +141,7 @@ export default defineComponent({
             if (props.src) {
                 init();
             } else {
+                abortActiveRequest();
                 const currentId = ++renderId;
                 const shouldCommit = () => !isUnmounted && currentId === renderId && !!rootRef.value;
                 fileData = null;
@@ -106,12 +149,18 @@ export default defineComponent({
                     if (shouldCommit()) {
                         emit('rendered');
                     }
-                }).catch(() => {});
+                }, () => {});
             }
         });
 
         function save(fileName) {
-            downloadFile(fileName || `abner-vue-office-docx-${new Date().getTime()}.docx`, fileData);
+            Promise.resolve(
+                downloadFile(fileName || `abner-vue-office-docx-${new Date().getTime()}.docx`, fileData)
+            ).catch(e => {
+                if (!isUnmounted) {
+                    emit('error', e);
+                }
+            });
         }
 
         return {
@@ -132,22 +181,22 @@ export default defineComponent({
 .abner-vue-office-docx {
     height: 100%;
     overflow-y: auto;
-    .docx-wrapper {
-        > section.docx {
-           margin-bottom: 5px;
-        }
+    .docx-wrapper > section.docx,
+    .abner-vue-office-docx-main > div > section {
+        margin-bottom: 5px;
     }
 }
 
 @media screen and (max-width: 800px) {
     .abner-vue-office-docx {
-        .docx-wrapper {
+        .docx-wrapper,
+        .abner-vue-office-docx-main > div {
             padding: 10px;
-
-            > section.docx {
-                padding: 10px !important;
-                width: 100% !important;
-            }
+        }
+        .docx-wrapper > section.docx,
+        .abner-vue-office-docx-main > div > section {
+            padding: 10px !important;
+            width: 100% !important;
         }
     }
 }

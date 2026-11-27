@@ -91,13 +91,21 @@ class Draw {
 
   fillText(text, x, y, maxWidth) {
     if (!this.ctx) return this;
-    this.ctx.fillText(text, x, y, maxWidth);
+    if (maxWidth !== undefined) {
+      this.ctx.fillText(text, x, y, maxWidth);
+    } else {
+      this.ctx.fillText(text, x, y);
+    }
     return this;
   }
 
   strokeText(text, x, y, maxWidth) {
     if (!this.ctx) return this;
-    this.ctx.strokeText(text, x, y, maxWidth);
+    if (maxWidth !== undefined) {
+      this.ctx.strokeText(text, x, y, maxWidth);
+    } else {
+      this.ctx.strokeText(text, x, y);
+    }
     return this;
   }
 }

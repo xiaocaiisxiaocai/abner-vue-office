@@ -1,10 +1,28 @@
 import { parseAsync, renderDocument } from 'docx-preview';
-import { normalizeFetchOptions } from '../../../utils/url';
+import { normalizeFetchOptions, revokeUrl } from '../../../utils/url';
 
 const defaultOptions = {
     ignoreLastRenderedPageBreak: false
 };
 const containerRenderQueue = new WeakMap();
+
+function revokeContainerBlobUrls(container) {
+    if (!container || typeof container.querySelectorAll !== 'function') {
+        return;
+    }
+    try {
+        const imgs = container.querySelectorAll('img[src^="blob:"]');
+        if (imgs && typeof imgs.length === 'number') {
+            for (let i = 0; i < imgs.length; i++) {
+                const img = imgs[i];
+                const src = img && typeof img.getAttribute === 'function' ? img.getAttribute('src') : (img && img.src);
+                revokeUrl(src);
+            }
+        }
+    } catch (e) {
+        // ignore in minimal mock environments
+    }
+}
 
 function getData(src, options = {}) {
     if (typeof src === 'string') {
@@ -58,6 +76,7 @@ async function render(data, container, options = {}, shouldCommit) {
     }
     if (!data) {
         return enqueueOnContainer(container, () => {
+            revokeContainerBlobUrls(container);
             container.innerHTML = '';
         }, shouldCommit);
     }
@@ -67,6 +86,7 @@ async function render(data, container, options = {}, shouldCommit) {
     }
     if (!blob) {
         await enqueueOnContainer(container, () => {
+            revokeContainerBlobUrls(container);
             container.innerHTML = '';
         }, shouldCommit);
         return Promise.reject(new Error('Unsupported docx data'));
@@ -78,7 +98,10 @@ async function render(data, container, options = {}, shouldCommit) {
     }
     return enqueueOnContainer(
         container,
-        () => renderDocument(doc, container, container, mergedOptions),
+        () => {
+            revokeContainerBlobUrls(container);
+            return renderDocument(doc, container, container, mergedOptions);
+        },
         shouldCommit
     );
 }
@@ -86,5 +109,6 @@ async function render(data, container, options = {}, shouldCommit) {
 export default {
     getData,
     render,
-    getBlob
+    getBlob,
+    revokeContainerBlobUrls
 };

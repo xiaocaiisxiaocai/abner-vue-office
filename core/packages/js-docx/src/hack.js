@@ -3,7 +3,9 @@ if (typeof window !== 'undefined' && typeof window.setImmediate === 'undefined')
         return setTimeout(() => func(...args));
     };
     if (typeof window.clearImmediate === 'undefined') {
-        window.clearImmediate = clearTimeout;
+        window.clearImmediate = function (id) {
+            return clearTimeout(id);
+        };
     }
 }
 

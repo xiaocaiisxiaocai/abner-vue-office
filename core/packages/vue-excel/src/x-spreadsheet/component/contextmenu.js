@@ -95,13 +95,14 @@ export default class ContextMenu {
       left = Math.max(0, left - width);
     }
     el.css('left', `${Math.max(0, left)}px`);
-    if (y > vhf) {
-      el.css('bottom', `${view.height - y}px`)
-        .css('max-height', `${y}px`)
+    const safeY = Math.max(0, y);
+    if (safeY > vhf) {
+      el.css('bottom', `${Math.max(0, view.height - safeY)}px`)
+        .css('max-height', `${safeY}px`)
         .css('top', 'auto');
     } else {
-      el.css('top', `${y}px`)
-        .css('max-height', `${view.height - y}px`)
+      el.css('top', `${safeY}px`)
+        .css('max-height', `${Math.max(0, view.height - safeY)}px`)
         .css('bottom', 'auto');
     }
     bindClickoutside(el);

@@ -185,6 +185,7 @@ test('vue-excel/src/main.vue covers mount, swapFunc, table.render -> renderImage
                     renderImageCalls.push({ sheetName: sheet.name, shouldDraw: shouldDraw() });
                 },
                 clearCache: () => {},
+                readOnlyInput: () => {},
                 debounce,
                 downloadFile: (n, d) => downloads.push({ n, d })
             },
@@ -262,6 +263,7 @@ test('vue-excel/src/main.vue covers mount, swapFunc, table.render -> renderImage
                 transferExcelToSpreadSheet: wb => ({ workbookData: [], medias: [], workbookSource: wb }),
                 renderImage: () => {},
                 clearCache: () => {},
+                readOnlyInput: () => {},
                 debounce,
                 downloadFile: () => {}
             },

@@ -3,20 +3,42 @@
   "version": "1.0.0",
   "description": "基于 Vue 的 docx 文件预览组件（支持 Vue 2 / Vue 3）",
   "main": "lib/index.js",
+  "module": "lib/index.mjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "types": "./lib/index.d.ts",
+      "import": {
+        "types": "./lib/index.d.mts",
+        "default": "./lib/index.mjs"
+      },
+      "require": {
+        "types": "./lib/index.d.cts",
+        "default": "./lib/index.js"
+      },
       "default": "./lib/index.js"
     },
     "./lib/index.css": "./lib/index.css",
     "./lib/v2": {
-      "types": "./lib/v2/index.d.ts",
+      "import": {
+        "types": "./lib/v2/index.d.mts",
+        "default": "./lib/v2/index.mjs"
+      },
+      "require": {
+        "types": "./lib/v2/index.d.cts",
+        "default": "./lib/v2/index.js"
+      },
       "default": "./lib/v2/index.js"
     },
     "./lib/v2/index.css": "./lib/v2/index.css",
     "./lib/v3": {
-      "types": "./lib/v3/index.d.ts",
+      "import": {
+        "types": "./lib/v3/index.d.mts",
+        "default": "./lib/v3/index.mjs"
+      },
+      "require": {
+        "types": "./lib/v3/index.d.cts",
+        "default": "./lib/v3/index.js"
+      },
       "default": "./lib/v3/index.js"
     },
     "./lib/v3/index.css": "./lib/v3/index.css",
@@ -34,16 +56,16 @@
     "clean": "rimraf lib",
     "copyFile2": "node ../../script/copy.js lib/v2/style.css lib/v2/index.css && rimraf lib/v2/style.css",
     "copyFile3": "node ../../script/copy.js lib/v3/style.css lib/v3/index.css && rimraf lib/v3/style.css",
-    "copyDefault": "node ../../script/copy.js lib/v3/index.js lib/index.js lib/v3/index.css lib/index.css",
+    "copyDefault": "node ../../script/copy.js lib/v3/index.js lib/index.js lib/v3/index.mjs lib/index.mjs lib/v3/index.css lib/index.css",
     "copyReadme": "node ../../script/copy.js ../../../README.md README.md",
     "copyLicense": "node ../../script/copy.js ../../LICENSE LICENSE",
-    "copyType": "node ../../script/copy.js index.d.ts lib/index.d.ts index.d.ts lib/v2/index.d.ts index.d.ts lib/v3/index.d.ts",
+    "copyType": "node ../../script/copy.js index.d.ts lib/index.d.ts index.d.ts lib/index.d.mts index.d.cts lib/index.d.cts index.d.ts lib/v2/index.d.ts index.d.ts lib/v2/index.d.mts index.d.cts lib/v2/index.d.cts index.d.ts lib/v3/index.d.ts index.d.ts lib/v3/index.d.mts index.d.cts lib/v3/index.d.cts",
     "copyScripts": "node ../../script/copy.js ../../script/postinstall.js lib/script/postinstall.js ../../script/switch-cli.js lib/script/switch-cli.js ../../script/utils.js lib/script/utils.js",
     "build:2": "npx vue-demi-switch 2 vue2 && vite build && npm run copyFile2",
     "build:3": "npx vue-demi-switch 3 vue3 && vite build && npm run copyFile3",
     "build": "npm run clean && npm run build:2 && npm run build:3 && npm run copyDefault && npm run copyScripts && npm run copyReadme && npm run copyLicense && npm run copyType",
     "postinstall": "node -e \"if(require('fs').existsSync('lib/script/postinstall.js'))require('./lib/script/postinstall.js')\"",
-    "prepublishOnly": "node -e \"const fs=require('fs');const req=['lib/index.js','lib/v2/index.js','lib/v3/index.js','lib/index.d.ts','lib/v2/index.d.ts','lib/v3/index.d.ts','lib/index.css','lib/v2/index.css','lib/v3/index.css','lib/script/postinstall.js','lib/script/switch-cli.js','lib/script/utils.js','README.md','LICENSE'];const miss=req.filter(f=>!fs.existsSync(f));if(miss.length){console.error('Missing artifacts:',miss);process.exit(1);}\""
+    "prepublishOnly": "node -e \"const fs=require('fs');const req=['lib/index.js','lib/index.mjs','lib/v2/index.js','lib/v2/index.mjs','lib/v3/index.js','lib/v3/index.mjs','lib/index.d.ts','lib/index.d.mts','lib/index.d.cts','lib/v2/index.d.ts','lib/v2/index.d.mts','lib/v2/index.d.cts','lib/v3/index.d.ts','lib/v3/index.d.mts','lib/v3/index.d.cts','lib/index.css','lib/v2/index.css','lib/v3/index.css','lib/script/postinstall.js','lib/script/switch-cli.js','lib/script/utils.js','README.md','LICENSE'];const miss=req.filter(f=>!fs.existsSync(f));if(miss.length){console.error('Missing artifacts:',miss);process.exit(1);}\""
   },
   "peerDependencies": {
     "@vue/composition-api": "^1.7.1",

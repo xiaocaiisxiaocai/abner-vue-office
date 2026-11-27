@@ -7,6 +7,7 @@ export interface RequestOptions {
     credentials?: RequestCredentials;
     timeout?: number;
     body?: any;
+    signal?: AbortSignal;
     [key: string]: any;
 }
 
@@ -51,3 +52,4 @@ declare const abnerJsExcel: {
     init: (container: HTMLElement, options?: Options, requestOptions?: RequestOptions) => AbnerJsExcelPreview;
 };
 export default abnerJsExcel;
+export as namespace abnerJsExcel;

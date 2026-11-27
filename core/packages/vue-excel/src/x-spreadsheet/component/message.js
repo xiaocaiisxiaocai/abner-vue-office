@@ -9,14 +9,17 @@ export function clearToasts() {
   Array.from(activeToastRemovers).forEach(fn => fn());
 }
 
-export function xtoast(title, content) {
+export function xtoast(title, content, onClose) {
   if (typeof document === 'undefined' || !document.body) {
     return () => {};
   }
   const el = h('div', `${cssPrefix}-toast`);
   const dimmer = h('div', `${cssPrefix}-dimmer active`);
   let onEsc = null;
+  let removed = false;
   const remove = () => {
+    if (removed) return;
+    removed = true;
     activeToastRemovers.delete(remove);
     if (onEsc && typeof window !== 'undefined') {
       unbind(window, 'keydown', onEsc);
@@ -27,6 +30,9 @@ export function xtoast(title, content) {
     }
     if (dimmer.el.parentNode) {
       dimmer.el.parentNode.removeChild(dimmer.el);
+    }
+    if (typeof onClose === 'function') {
+      onClose();
     }
   };
 

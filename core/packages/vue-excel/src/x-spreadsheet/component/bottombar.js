@@ -78,6 +78,7 @@ export default class Bottombar {
     options = {}) {
     this.swapFunc = swapFunc;
     this.updateFunc = updateFunc;
+    this.options = options || {};
     this.dataNames = [];
     this.activeEl = null;
     this.deleteEl = null;
@@ -88,32 +89,35 @@ export default class Bottombar {
     });
     this.contextMenu = new ContextMenu();
     this.contextMenu.itemClick = deleteFunc;
+    this.controlsEl = h('div', `${cssPrefix}-bottombar-controls`).children(
+      new Icon('add').on('click', () => {
+        if (this.options && this.options.mode === 'read') return;
+        addFunc();
+      }),
+      h('span', '').child(this.moreEl),
+    );
     this.el = h('div', `${cssPrefix}-bottombar`).children(
       this.contextMenu.el,
-      this.menuEl = h('ul', `${cssPrefix}-menu`).child(
-        h('li', '').children(
-          new Icon('add').on('click', () => {
-            if (options && options.mode === 'read') return;
-            addFunc();
-          }),
-          h('span', '').child(this.moreEl),
-        ),
-      ),
+      this.controlsEl,
+      this.menuEl = h('ul', `${cssPrefix}-menu`),
     );
   }
 
-  addItem(name, active, options = {}) {
+  addItem(name, active, options = this.options) {
+    const resolvedOpts = options || this.options || {};
     this.dataNames.push(name);
     const item = h('li', active ? 'active' : '').child(name);
     item.on('click', () => {
       this.clickSwap2(item);
     }).on('contextmenu', () => {
-      if (options && options.mode === 'read') return;
+      if (resolvedOpts.mode === 'read') return;
       const { offsetLeft, offsetHeight } = item.el;
-      this.contextMenu.setOffset({ left: offsetLeft, bottom: offsetHeight + 1 });
+      const scrollLeft = (this.menuEl && this.menuEl.el && this.menuEl.el.scrollLeft) || 0;
+      const left = Math.max(0, offsetLeft - scrollLeft);
+      this.contextMenu.setOffset({ left, bottom: offsetHeight + 1 });
       this.deleteEl = item;
     }).on('dblclick', () => {
-      if (options && options.mode === 'read') return;
+      if (resolvedOpts.mode === 'read') return;
       if (item.el && typeof item.el.querySelector === 'function' && item.el.querySelector('input')) {
         return;
       }
@@ -126,6 +130,10 @@ export default class Bottombar {
       this._cancelRename = () => {
         committed = true;
         input.clearTimer();
+        const nindex = this.items.indexOf(item);
+        if (nindex >= 0) {
+          item.html('').child(this.dataNames[nindex]);
+        }
       };
       const finishRename = (newVal, cancelled = false) => {
         if (committed) return;
@@ -145,6 +153,9 @@ export default class Bottombar {
       input.input
         .on('click.stop', () => {})
         .on('keydown', (evt) => {
+          if (evt.isComposing || evt.keyCode === 229 || evt.key === 'Process') {
+            return;
+          }
           if (evt.keyCode === 13) {
             evt.stopPropagation();
             finishRename(evt.target.value, false);

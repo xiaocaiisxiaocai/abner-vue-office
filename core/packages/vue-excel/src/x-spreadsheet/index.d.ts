@@ -2,7 +2,7 @@ export interface ExtendToolbarOption {
   tip?: string;
   el?: HTMLElement;
   icon?: string;
-  onClick?: (data: SheetData[], dataProxy: any) => void;
+  onClick?: (data: SheetData, dataProxy: any) => void;
 }
 
 export interface Options {
@@ -101,7 +101,7 @@ export interface RowData {
   height?: number;
   hide?: boolean;
   style?: number;
-  cells: {
+  cells?: {
     [key: number]: CellData;
   };
 }

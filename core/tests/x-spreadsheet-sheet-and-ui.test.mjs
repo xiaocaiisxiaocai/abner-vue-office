@@ -14,9 +14,11 @@ function buildFullUiModules() {
     });
     const { Merges } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/merge.js', { CellRange });
     const helperMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/helper.js');
-    const { Rows } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/row.js', {
+    const { Rows, shiftFormulaRefs } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/row.js', {
         helper: helperMod,
-        expr2expr: alphabetMod.expr2expr
+        expr2expr: alphabetMod.expr2expr,
+        expr2xy: alphabetMod.expr2xy,
+        stringAt: alphabetMod.stringAt
     });
     const { Cols } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/col.js', { helper: helperMod });
     const History = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/history.js');
@@ -48,6 +50,7 @@ function buildFullUiModules() {
         Merges,
         helper: helperMod,
         Rows,
+        shiftFormulaRefs,
         Cols,
         Validations,
         CellRange,
@@ -211,7 +214,7 @@ function buildFullUiModules() {
     const Suggest = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/suggest.js', {
         h, bindClickoutside: eventMod.bindClickoutside, unbindClickoutside: eventMod.unbindClickoutside, cssPrefix: 'x-spreadsheet'
     });
-    const Calendar = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/calendar.js', { h, Icon, t });
+    const Calendar = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/calendar.js', { h, Icon, t, cssPrefix: 'x-spreadsheet' });
     const Datepicker = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/datepicker.js', {
         Calendar, h, cssPrefix: 'x-spreadsheet'
     });
@@ -253,7 +256,7 @@ function buildFullUiModules() {
         npx: drawMod.npx
     });
     const Print = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/print.js', {
-        h, cssPrefix: 'x-spreadsheet', Button, Draw: drawMod.Draw, renderCell: Table.renderCell, t
+        h, cssPrefix: 'x-spreadsheet', Button, Draw: drawMod.Draw, npx: drawMod.npx, renderCell: Table.renderCell, t
     });
     const Bottombar = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/bottombar.js', {
         h, bindClickoutside: eventMod.bindClickoutside, unbindClickoutside: eventMod.unbindClickoutside,

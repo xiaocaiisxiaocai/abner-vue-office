@@ -37,7 +37,7 @@ class Cols {
   getWidth(i) {
     if (this.isHide(i)) return 0;
     const col = this._[i];
-    if (col && col.width !== undefined) {
+    if (col && typeof col.width === 'number' && Number.isFinite(col.width) && col.width >= 0) {
       return col.width;
     }
     return this.width;

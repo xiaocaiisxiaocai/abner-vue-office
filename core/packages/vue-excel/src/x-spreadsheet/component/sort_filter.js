@@ -68,10 +68,10 @@ export default class SortFilter {
   }
 
   itemClick(it) {
-    this.sort = it;
+    this.sort = this.sort === it ? null : it;
     const { sortAscEl, sortDescEl } = this;
-    sortAscEl.checked(it === 'asc');
-    sortDescEl.checked(it === 'desc');
+    sortAscEl.checked(this.sort === 'asc');
+    sortDescEl.checked(this.sort === 'desc');
   }
 
   toggleAll() {
@@ -133,23 +133,25 @@ export default class SortFilter {
 
   setOffset(v, view = null) {
     const offset = { ...v };
+    this.el.show();
+    const box = this.el.box ? this.el.box() : null;
     if (typeof offset.left === 'number') {
       if (view && typeof view.width === 'number' && view.width > 0) {
-        const boxW = (this.el.box && this.el.box().width) || 260;
+        const boxW = (box && box.width > 0) ? box.width : 260;
         offset.left = Math.min(offset.left, Math.max(0, view.width - boxW));
       }
       offset.left = Math.max(0, offset.left);
     }
     if (typeof offset.top === 'number') {
       if (view && typeof view.height === 'number' && view.height > 0) {
-        const boxH = (this.el.box && this.el.box().height) || 340;
+        const boxH = (box && box.height > 0) ? box.height : 340;
         if (offset.top + boxH > view.height) {
           offset.top = Math.max(0, view.height - boxH);
         }
       }
       offset.top = Math.max(0, offset.top);
     }
-    this.el.offset(offset).show();
+    this.el.offset(offset);
     if (this._outsideTimer) {
       clearTimeout(this._outsideTimer);
     }

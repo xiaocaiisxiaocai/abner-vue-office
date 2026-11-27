@@ -161,11 +161,15 @@ test('all 7 Demo components resolve static URLs, handle rendered/error, and clea
         }
         assert.equal(hideCount, 6);
 
-        const pptxWide = mountScriptSetup('src/components/PptxDemo.vue', { ...commonDeps, AbnerVueOfficePptx: {} }, {}, ['pptxWidth']);
-        assert.ok(pptxWide.bindings.pptxWidth < 960);
+        const pptxNarrow = mountScriptSetup('src/components/PptxDemo.vue', { ...commonDeps, AbnerVueOfficePptx: {} }, {}, ['pptxWidth']);
+        assert.equal(pptxNarrow.bindings.pptxWidth.value, 720);
+        await runWithDomGlobals({ window: { innerWidth: 1600, addEventListener: () => {}, removeEventListener: () => {} }, location: { origin: 'http://localhost', pathname: '/' } }, () => {
+            const pptxWide = mountScriptSetup('src/components/PptxDemo.vue', { ...commonDeps, AbnerVueOfficePptx: {} }, {}, ['pptxWidth']);
+            assert.equal(pptxWide.bindings.pptxWidth.value, 960);
+        });
         await runWithDomGlobals({ window: undefined, location: { origin: 'http://localhost', pathname: '/' } }, () => {
             const pptxSsr = mountScriptSetup('src/components/PptxDemo.vue', { ...commonDeps, AbnerVueOfficePptx: {} }, {}, ['pptxWidth']);
-            assert.equal(pptxSsr.bindings.pptxWidth, 960);
+            assert.equal(pptxSsr.bindings.pptxWidth.value, 960);
         });
 
         const excelDemo = mountScriptSetup(

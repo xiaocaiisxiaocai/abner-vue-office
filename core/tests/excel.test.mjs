@@ -251,7 +251,7 @@ test('excel.js formatNumberValue, getCellText, getStyle, and transferExcelToSpre
         }
     });
     assert.equal(diagTransparent.bgcolor, undefined);
-    assert.equal(diagTransparent.border.diagonal, undefined);
+    assert.equal(diagTransparent.border, undefined);
 
     assert.equal(excelMod.formatExcelDate(null, 'YYYY-MM-DD'), '');
     assert.equal(excelMod.formatExcelDate('not-a-date', 'YYYY-MM-DD'), '');
@@ -350,7 +350,10 @@ test('excel.js formatNumberValue, getCellText, getStyle, and transferExcelToSpre
     assert.equal(edgeSheet.rows.len, 100);
     assert.equal(edgeSheet.cols['0'].hide, true);
     assert.equal(edgeSheet.cols['1'].width, 95);
-    assert.equal(edgeSheet.rows[0].cells[1].text, undefined);
+    // Because col 0 is hidden, A1:B10 remaps its visible merge master to B1:B10
+    assert.equal(edgeSheet.rows[0].cells[1].text, 'Master');
+    assert.deepEqual(edgeSheet.rows[0].cells[1].merge, [9, 0]);
+    assert.deepEqual(edgeSheet.merges, ['B1:B10']);
 
     const resZeroRows = excelMod.transferExcelToSpreadSheet(wbEdge, { minRowLength: 0, minColLength: 0 });
     assert.equal(resZeroRows.workbookData[0].rows.len, 15);

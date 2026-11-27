@@ -11,7 +11,6 @@ export interface Options {
     staticFileUrl?: string;
     gap?: number;
     width?: number;
-    data?: ArrayBuffer | Uint8Array;
     httpHeaders?: Record<string, string>;
     withCredentials?: boolean;
     password?: string;
@@ -40,3 +39,4 @@ declare const abnerJsPdf: {
     init: (container: HTMLElement, options?: Options, requestOptions?: RequestOptions) => AbnerJsPdfPreview;
 };
 export default abnerJsPdf;
+export as namespace abnerJsPdf;

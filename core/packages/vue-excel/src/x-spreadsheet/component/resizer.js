@@ -96,8 +96,9 @@ export default class Resizer {
       this.hide();
     };
     const finish = () => {
+      const wasMoving = this.moving;
       cleanup();
-      if (this.finishedFn) {
+      if (wasMoving && this.finishedFn && distance !== baseDistance) {
         if (distance < minDistance) distance = minDistance;
         this.finishedFn(cRect, distance);
       }

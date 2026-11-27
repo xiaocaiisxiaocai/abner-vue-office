@@ -1,5 +1,5 @@
 node_modules/
-lib/
+packages/*/lib/
 dist/
 packages/vue-pdf/src/pdf.js
 packages/vue-pdf/src/worker.js

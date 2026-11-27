@@ -19,8 +19,8 @@
       "default": "./lib/index.js"
     },
     "./umd": {
-      "types": "./lib/index.d.ts",
-      "default": "./lib/index.umd.js"
+      "types": "./lib/index.d.cts",
+      "default": "./lib/index.umd.cjs"
     },
     "./lib/*": "./lib/*",
     "./package.json": "./package.json"
@@ -34,9 +34,10 @@
     "copyReadme": "node ../../script/copy.js ../../../README.md README.md",
     "copyLicense": "node ../../script/copy.js ../../LICENSE LICENSE",
     "copyType": "node ../../script/copy.js index.d.ts lib/index.d.ts index.d.cts lib/index.d.cts",
-    "copy": "npm run copyType && npm run copyReadme && npm run copyLicense",
+    "copyUmd": "node ../../script/copy.js lib/index.umd.js lib/index.umd.cjs",
+    "copy": "npm run copyUmd && npm run copyType && npm run copyReadme && npm run copyLicense",
     "build": "npm run clean && rollup --config rollup.config.js && npm run copy",
-    "prepublishOnly": "node -e \"const fs=require('fs');const req=['lib/index.js','lib/index.cjs','lib/index.umd.js','lib/index.d.ts','lib/index.d.cts','README.md','LICENSE'];const miss=req.filter(f=>!fs.existsSync(f));if(miss.length){console.error('Missing artifacts:',miss);process.exit(1);}\""
+    "prepublishOnly": "node -e \"const fs=require('fs');const req=['lib/index.js','lib/index.cjs','lib/index.umd.js','lib/index.umd.cjs','lib/index.d.ts','lib/index.d.cts','README.md','LICENSE'];const miss=req.filter(f=>!fs.existsSync(f));if(miss.length){console.error('Missing artifacts:',miss);process.exit(1);}\""
   },
   "keywords": [
     "javascript",

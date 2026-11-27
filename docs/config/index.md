@@ -25,7 +25,7 @@
 excel相关的配置项如下：
 
 - `xls`：预览 `.xlsx` 文件设为 `false`（默认）；预览 `.xls` 文件设为 `true`
-- `showContextmenu`：是否在初始化时启用右键菜单（仅在挂载/初始化时生效；只读预览模式下仅展示复制操作），默认 `false`
+- `showContextmenu`：是否启用右键菜单（支持动态切换；只读预览模式下仅展示复制操作），默认 `false`
 - `minColLength`：excel最少渲染多少列，如果想实现excel文件内容有几列，就渲染几列，可以将此值设置为0，默认 `20`
 - `minRowLength`：excel最少渲染多少行，如果想实现根据excel实际行数渲染，可以将此值设置为0，默认 `100`
 - `widthOffset`：在默认渲染的列宽上再加 Npx 宽
@@ -34,22 +34,22 @@ excel相关的配置项如下：
 - `transformData`：将获取到的excel数据进行处理之后且渲染到页面之前，可通过transformData对即将渲染的数据及样式进行修改，此时每个单元格的text值就是即将渲染到页面上的内容。
 
 ```javascript
-{
-  "xls": false,
-  "showContextmenu": false,
-  "minColLength": 20, 
-  "minRowLength": 100,
-  "widthOffset": 10, // 在默认渲染的列宽上再加10px宽
-  "heightOffset": 10, // 在默认渲染的行高上再加10px高
-  "beforeTransformData": function (workbookData){
-        // 修改workbookData，可以打印出来看看数据格式
-        return workbookData;
+const options = {
+  xls: false,
+  showContextmenu: false,
+  minColLength: 20,
+  minRowLength: 100,
+  widthOffset: 10, // 在默认渲染的列宽上再加10px宽
+  heightOffset: 10, // 在默认渲染的行高上再加10px高
+  beforeTransformData: function (workbookData) {
+    // 修改workbookData，可以打印出来看看数据格式
+    return workbookData;
   },
-  "transformData": function (workbookData){
-      // 修改workbookData，可以打印出来看看数据格式
-      return workbookData;    
+  transformData: function (workbookData) {
+    // 修改workbookData，可以打印出来看看数据格式
+    return workbookData;
   }
-}
+};
 ```
 
 - docx预览
@@ -57,26 +57,26 @@ excel相关的配置项如下：
 docx预览组件支持的可配置项如下（对应 `docx-preview@0.3.x`）：
 
 ```typescript
-{
-    className: string = "docx", //class name/prefix for default and document style classes
-    inWrapper: boolean = true, //enables rendering of wrapper around document content
-    hideWrapperOnPrint: boolean = false, //disables wrapper styles when printing
-    ignoreWidth: boolean = false, //disables rendering width of page
-    ignoreHeight: boolean = false, //disables rendering height of page
-    ignoreFonts: boolean = false, //disables fonts rendering
-    breakPages: boolean = true, //enables page breaking on page breaks
-    ignoreLastRenderedPageBreak: boolean = false, //disables page breaking on lastRenderedPageBreak elements
-    experimental: boolean = false, //enables experimental features (tab stops calculation)
-    trimXmlDeclaration: boolean = true, //if true, xml declaration will be removed from xml documents before parsing
-    useBase64URL: boolean = false, //if true, images, fonts, etc. will be converted to base 64 URL, otherwise URL.createObjectURL is used
-    renderHeaders: boolean = true, //enables headers rendering
-    renderFooters: boolean = true, //enables footers rendering
-    renderFootnotes: boolean = true, //enables footnotes rendering
-    renderEndnotes: boolean = true, //enables endnotes rendering
-    renderChanges: boolean = false, //enables experimental rendering of document changes (insertions/deletions)
-    renderComments: boolean = false, //enables experimental rendering of document comments
-    renderAltChunks: boolean = true, //enables rendering of altChunks (html parts)
-    debug: boolean = false, //enables additional logging
+interface DocxOptions {
+    className?: string; // 默认 "docx"，class name/prefix for default and document style classes
+    inWrapper?: boolean; // 默认 true，enables rendering of wrapper around document content
+    hideWrapperOnPrint?: boolean; // 默认 false，disables wrapper styles when printing
+    ignoreWidth?: boolean; // 默认 false，disables rendering width of page
+    ignoreHeight?: boolean; // 默认 false，disables rendering height of page
+    ignoreFonts?: boolean; // 默认 false，disables fonts rendering
+    breakPages?: boolean; // 默认 true，enables page breaking on page breaks
+    ignoreLastRenderedPageBreak?: boolean; // 默认 false，disables page breaking on lastRenderedPageBreak elements
+    experimental?: boolean; // 默认 false，enables experimental features (tab stops calculation)
+    trimXmlDeclaration?: boolean; // 默认 true，if true, xml declaration will be removed from xml documents before parsing
+    useBase64URL?: boolean; // 默认 false，if true, images, fonts, etc. will be converted to base 64 URL, otherwise URL.createObjectURL is used
+    renderHeaders?: boolean; // 默认 true，enables headers rendering
+    renderFooters?: boolean; // 默认 true，enables footers rendering
+    renderFootnotes?: boolean; // 默认 true，enables footnotes rendering
+    renderEndnotes?: boolean; // 默认 true，enables endnotes rendering
+    renderChanges?: boolean; // 默认 false，enables experimental rendering of document changes (insertions/deletions)
+    renderComments?: boolean; // 默认 false，enables experimental rendering of document comments
+    renderAltChunks?: boolean; // 默认 true，enables rendering of altChunks (html parts)
+    debug?: boolean; // 默认 false，enables additional logging
 }
 ```
 
@@ -102,6 +102,7 @@ pptx 预览组件支持的可配置项如下：
 
 ```javascript
 const options = {
+    renderer: 'svg', // string，可不传，pptx-preview 渲染器配置
     width: 960, // number，可不传，默认取容器宽度或 960
     height: 540, // number，可不传，默认取容器高度或 540
 }
@@ -113,7 +114,7 @@ const options = {
 
 pdf渲染时可能会请求一些bcmap文件，这些文件默认从 https://unpkg.com/pdfjs-dist@3.1.81/ 加载，但是可能存在网络不通问题，如果遇到这种问题，可以将这些文件放到自己静态目录，然后修改该属性，告诉组件去这里请求bcmap文件。
 
-涉及的文件存放在当前github项目中 `core/public/static/cmaps` 目录下，可将 `cmaps` 目录复制到你的静态服务目录下，然后修改 `staticFileUrl` 为 `cmaps` 文件夹对应的父地址，必须以 `http` 或 `https` 开头，如 `https://example.com/static/`
+涉及的文件存放在当前github项目中 `core/public/static/cmaps` 目录下，可将 `cmaps` 目录复制到你的静态服务目录下，然后修改 `staticFileUrl` 为 `cmaps` 文件夹对应的父地址，可传入完整 URL（如 `https://example.com/static/`）或同源相对路径（如 `/static/`）。
 
 ## defaultScale [pdf特有属性]
 - 类型：`Number`（默认 `1`）

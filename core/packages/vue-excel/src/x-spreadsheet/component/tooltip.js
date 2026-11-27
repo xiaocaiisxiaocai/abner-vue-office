@@ -34,8 +34,8 @@ export default function tooltip(html, target) {
   el.el.textContent = html != null ? String(html) : '';
   document.body.appendChild(el.el);
   const elBox = el.box();
-  el.css('left', `${left + scrollX + (width / 2) - (elBox.width / 2)}px`)
-    .css('top', `${top + scrollY + height + 2}px`);
+  el.css('left', `${Math.max(0, left + scrollX + (width / 2) - (elBox.width / 2))}px`)
+    .css('top', `${Math.max(0, top + scrollY + height + 2)}px`);
 
   const cleanup = () => {
     if (el.el.parentNode) {

@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import AbnerVueOfficePptx from '../../packages/vue-pptx/index';
 import PreviewWrapper from '../common/PreviewWrapper.vue';
 import useLoading from '../hooks/useLoading.js';
@@ -15,10 +15,27 @@ function onError(e) {
 
 const defaultSrc = getStaticFileUrl('static/test-files/test.pptx');
 const pptxRef = ref();
-const pptxWidth = typeof window !== 'undefined' ? Math.min(960, window.innerWidth) : 960;
+const calcPptxWidth = () => (typeof window !== 'undefined' ? Math.min(960, window.innerWidth) : 960);
+const pptxWidth = ref(calcPptxWidth());
 const requestOptions = {
     headers: {}
 };
+
+function handleResize() {
+    pptxWidth.value = calcPptxWidth();
+}
+
+onMounted(() => {
+    if (typeof window !== 'undefined') {
+        window.addEventListener('resize', handleResize);
+    }
+});
+
+onBeforeUnmount(() => {
+    if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', handleResize);
+    }
+});
 </script>
 
 <template>

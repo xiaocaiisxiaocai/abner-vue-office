@@ -43,6 +43,7 @@ function insertText({ target }, itxt) {
   target.setSelectionRange(start + itxt.length, start + itxt.length);
 
   this.inputText = ntxt;
+  this._dirty = true;
   this.textlineEl.el.textContent = ntxt;
   resetTextareaSize.call(this);
   this.change('input', ntxt);
@@ -76,19 +77,18 @@ function inputEventHandler(evt) {
   if (cell !== null) {
     if (('editable' in cell && cell.editable === true) || (cell.editable === undefined)) {
       this.inputText = v;
+      this._dirty = true;
       if (validator) {
         if (validator.type === 'list') {
           suggest.search(v);
         } else {
           suggest.hide();
         }
-      } else {
+      } else if (v.length > 0 && v[0] === '=') {
         const start = v.lastIndexOf('=');
-        if (start !== -1) {
-          suggest.search(v.substring(start + 1));
-        } else {
-          suggest.hide();
-        }
+        suggest.search(v.substring(start + 1));
+      } else {
+        suggest.hide();
       }
       textlineEl.el.textContent = v;
       resetTextareaSize.call(this);
@@ -98,19 +98,18 @@ function inputEventHandler(evt) {
     }
   } else {
     this.inputText = v;
+    this._dirty = true;
     if (validator) {
       if (validator.type === 'list') {
         suggest.search(v);
       } else {
         suggest.hide();
       }
-    } else {
+    } else if (v.length > 0 && v[0] === '=') {
       const start = v.lastIndexOf('=');
-      if (start !== -1) {
-        suggest.search(v.substring(start + 1));
-      } else {
-        suggest.hide();
-      }
+      suggest.search(v.substring(start + 1));
+    } else {
+      suggest.hide();
     }
     textlineEl.el.textContent = v;
     resetTextareaSize.call(this);
@@ -160,6 +159,7 @@ function suggestItemClick(it) {
     position = this.inputText.length;
     this.inputText += `)${eit}`;
   }
+  this._dirty = true;
   setText.call(this, this.inputText, position);
   resetTextareaSize.call(this);
   this.change('input', this.inputText);
@@ -188,7 +188,10 @@ export default class Editor {
     });
     this.datepicker = new Datepicker();
     this.datepicker.change((d) => {
-      this.setText(dateFormat(d));
+      const formatted = dateFormat(d);
+      this._dirty = true;
+      this.setText(formatted);
+      this.change('input', formatted);
       this.clear();
     });
     this.areaEl = h('div', `${cssPrefix}-editor-area`)
@@ -212,9 +215,11 @@ export default class Editor {
     this.areaOffset = null;
     this.freeze = { w: 0, h: 0 };
     this.cell = null;
+    this.validator = null;
     this.inputText = '';
     this._initialText = '';
     this._editing = false;
+    this._dirty = false;
     this.change = () => {};
   }
 
@@ -238,11 +243,17 @@ export default class Editor {
       clearTimeout(this._focusTimer);
       this._focusTimer = null;
     }
-    if (!silent && this._editing && this.inputText !== this._initialText) {
-      this.change('finished', this.inputText);
+    if (!silent && this._editing) {
+      if (this.inputText !== this._initialText) {
+        this.change('finished', this.inputText);
+      } else if (this._dirty) {
+        this.change('cancel', this._initialText);
+      }
     }
     this._editing = false;
+    this._dirty = false;
     this.cell = null;
+    this.validator = null;
     this.areaOffset = null;
     this.inputText = '';
     this._initialText = '';
@@ -256,7 +267,7 @@ export default class Editor {
 
   setOffset(offset, suggestPosition = 'top') {
     const {
-      textEl, areaEl, suggest, freeze, el,
+      textEl, areaEl, suggest, datepicker, freeze, el,
     } = this;
     if (offset) {
       this.areaOffset = offset;
@@ -276,11 +287,21 @@ export default class Editor {
       }
       el.offset(elOffset);
       areaEl.offset({ left: left - elOffset.left - 0.8, top: top - elOffset.top - 0.8 });
-      textEl.offset({ width: width - 9 + 0.8, height: height - 3 + 0.8 });
+      textEl.offset({ width: Math.max(0, width - 9 + 0.8), height: Math.max(0, height - 3 + 0.8) });
+      if (this._editing) {
+        resetTextareaSize.call(this);
+      }
       const sOffset = { left: 0 };
       sOffset[suggestPosition] = height;
       suggest.setOffset(sOffset);
       suggest.hide();
+      if (datepicker && datepicker.el) {
+        if (suggestPosition === 'bottom') {
+          datepicker.el.css('top', 'auto').css('bottom', `${height}px`);
+        } else {
+          datepicker.el.css('bottom', 'auto').css('top', `${height}px`);
+        }
+      }
     }
   }
 
@@ -291,6 +312,7 @@ export default class Editor {
     datepicker.hide();
     el.show();
     this._editing = true;
+    this._dirty = initialTextOverride !== undefined;
     this.cell = cell;
     const text = (cell && cell.text != null) ? String(cell.text) : '';
     this._initialText = initialTextOverride !== undefined ? String(initialTextOverride) : text;

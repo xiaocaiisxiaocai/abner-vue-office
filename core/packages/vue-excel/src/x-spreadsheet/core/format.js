@@ -27,8 +27,9 @@ const formatNumberRender = (v) => {
     const str = String(v).trim();
     const num = Number(str);
     if (Math.abs(num) >= 1e15) {
-      if (!/[eE]/.test(str)) {
-        const [intPart, decPart = ''] = str.split('.');
+      if (/^[+-]?\d+(?:\.\d*)?$/.test(str)) {
+        const cleanStr = str.startsWith('+') ? str.slice(1) : str;
+        const [intPart, decPart = ''] = cleanStr.split('.');
         return normalizeNegZero(`${addThousands(intPart)}.${decPart.slice(0, 2).padEnd(2, '0')}`);
       }
       const fixed = num.toLocaleString('en-US', { useGrouping: false, minimumFractionDigits: 2, maximumFractionDigits: 2 });

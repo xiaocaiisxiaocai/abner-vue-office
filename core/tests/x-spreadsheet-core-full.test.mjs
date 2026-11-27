@@ -9,9 +9,11 @@ const { CellRange } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/c
 });
 const { Merges } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/merge.js', { CellRange });
 const helperMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/helper.js');
-const { Rows } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/row.js', {
+const { Rows, shiftFormulaRefs } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/row.js', {
     helper: helperMod,
-    expr2expr: alphabetMod.expr2expr
+    expr2expr: alphabetMod.expr2expr,
+    expr2xy: alphabetMod.expr2xy,
+    stringAt: alphabetMod.stringAt
 });
 const { Cols } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/col.js', { helper: helperMod });
 const History = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/history.js');
@@ -54,6 +56,7 @@ const DataProxy = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/
     Merges,
     helper: helperMod,
     Rows,
+    shiftFormulaRefs,
     Cols,
     Validations,
     CellRange,

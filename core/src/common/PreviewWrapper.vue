@@ -28,6 +28,12 @@ function handlePreview() {
     }
 }
 
+watch(type, () => {
+    if (typeof cancelRead === 'function') {
+        cancelRead();
+    }
+});
+
 watch([src, retryKey], ([val]) => {
     if (val) {
         useLoading.showLoading();
@@ -57,7 +63,8 @@ onBeforeUnmount(() => {
           v-if="type==='url'"
           v-model:value="inputSrc"
           :placeholder="props.placeholder"
-          style="width: 600px; margin-left:10px;"
+          @pressEnter="handlePreview"
+          style="width: 600px; max-width: 100%; margin-left:10px;"
       />
       <a-button
           v-if="type==='url'"

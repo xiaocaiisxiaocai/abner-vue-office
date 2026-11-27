@@ -5,6 +5,7 @@ export interface RequestOptions {
     headers?: HeadersInit;
     withCredentials?: boolean;
     credentials?: RequestCredentials;
+    signal?: AbortSignal;
     [key: string]: any;
 }
 
@@ -43,3 +44,4 @@ declare const abnerJsDocx: {
     init: (container: HTMLElement, options?: Options, requestOptions?: RequestOptions) => AbnerJsDocxPreview;
 };
 export default abnerJsDocx;
+export as namespace abnerJsDocx;

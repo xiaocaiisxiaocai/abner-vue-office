@@ -15,14 +15,14 @@
 
 只需要在server或者静态文件对应的location中添加 add_header Access-Control-Allow-Origin *;
 
-```shell
+```nginx
  server {
     add_header Access-Control-Allow-Origin *;
  }
 ```
 这种方式最简单，但是接口也跟着允许跨域了，如果你的文件只是在某个目录下，可以只针对具体配置设置允许跨域。
 
-```shell
+```nginx
  server {
     location /upload/ {
         add_header Access-Control-Allow-Origin *;
@@ -39,13 +39,13 @@
  header('Access-Control-Allow-Origin:*'); // *代表允许任何网址请求
 ```
 
-node服务，以koa为例，可以使用koa-cors中间件
+node服务，以koa为例，可以使用 `@koa/cors` 中间件
 ```javascript
 const serve = require('koa-static');
 const Koa = require('koa');
 const app = new Koa();
 
-var cors = require('koa-cors');
+const cors = require('@koa/cors');
 app.use(cors({
     origin: '*'
 }));

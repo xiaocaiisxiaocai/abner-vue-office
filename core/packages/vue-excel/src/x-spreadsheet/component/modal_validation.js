@@ -22,7 +22,7 @@ export default class ModalValidation extends Modal {
     );
     const rf = new FormField(
       new FormInput('120px', 'E3 or E3:F12'),
-      { required: true, pattern: /^([A-Z]{1,3}[1-9]\d*)(:[A-Z]{1,3}[1-9]\d*)?$/ },
+      { required: true, pattern: /^([A-Za-z]{1,3}[1-9]\d*)(:[A-Za-z]{1,3}[1-9]\d*)?$/ },
     );
     const cf = new FormField(
       new FormSelect('list',
@@ -178,7 +178,8 @@ export default class ModalValidation extends Modal {
       }
 
       const mode = this.mf.val();
-      const ref = this.rf.val();
+      const rawRef = this.rf.val();
+      const ref = rawRef != null ? String(rawRef).trim().toUpperCase() : '';
       const type = this.cf.val();
       const isRangeType = type === 'number' || type === 'date';
       const operator = isRangeType ? this.of.val() : undefined;

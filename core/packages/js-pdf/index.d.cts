@@ -12,7 +12,6 @@ declare namespace abnerJsPdf {
         staticFileUrl?: string;
         gap?: number;
         width?: number;
-        data?: ArrayBuffer | Uint8Array;
         httpHeaders?: Record<string, string>;
         withCredentials?: boolean;
         password?: string;

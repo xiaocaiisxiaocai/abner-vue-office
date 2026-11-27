@@ -34,19 +34,23 @@ function buildDivider() {
 
 function initBtns2() {
   this.btns2 = [];
+  let hasMeasuredWidth = false;
   this.items.forEach((it) => {
     if (Array.isArray(it)) {
       it.forEach(({ el }) => {
         const rect = el.box();
+        if (rect && rect.width > 0) hasMeasuredWidth = true;
         const { marginLeft, marginRight } = el.computedStyle();
         this.btns2.push([el, rect.width + (parseFloat(marginLeft) || 0) + (parseFloat(marginRight) || 0)]);
       });
     } else {
       const rect = it.box();
+      if (rect && rect.width > 0) hasMeasuredWidth = true;
       const { marginLeft, marginRight } = it.computedStyle();
       this.btns2.push([it, rect.width + (parseFloat(marginLeft) || 0) + (parseFloat(marginRight) || 0)]);
     }
   });
+  this._btnsMeasured = hasMeasuredWidth;
 }
 
 function hideAllDropdowns() {
@@ -80,7 +84,7 @@ function moreResize() {
   const elBox = el.box();
   if (!elBox || elBox.width <= 0) return;
 
-  if (this.btns2.length > 0 && this.btns2.every(([, w]) => w === 0)) {
+  if (this.btns2.length > 0 && (!this._btnsMeasured || this.btns2.every(([, w]) => w === 0))) {
     moreBtns.html('');
     btns.html('').children(...this.btns2.map(([it]) => it));
     initBtns2.call(this);
@@ -282,6 +286,9 @@ export default class Toolbar {
   resetData(data) {
     this.data = data;
     hideAllDropdowns.call(this);
+    if (this.paintformatEl && this.paintformatEl.el) {
+      this.paintformatEl.el.active(false);
+    }
     this.reset();
   }
 
@@ -293,6 +300,9 @@ export default class Toolbar {
     this.italicEl.setState(font.italic);
     this.underlineEl.setState(style.underline);
     this.strikeEl.setState(style.strike);
+    if (data.settings && data.settings.mode === 'read' && this.paintformatEl && this.paintformatEl.el) {
+      this.paintformatEl.el.active(false);
+    }
     if (this.isHide) return;
     // console.log('canUndo:', data.canUndo());
     this.undoEl.setState(!data.canUndo());

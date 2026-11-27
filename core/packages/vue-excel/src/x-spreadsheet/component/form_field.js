@@ -75,6 +75,19 @@ export default class FormField {
         el.addClass('error');
         return false;
       }
+      if (!rule.pattern && rule.type === 'date') {
+        const m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+        const y = m ? Number(m[1]) : NaN;
+        const mo = m ? Number(m[2]) : NaN;
+        const d = m ? Number(m[3]) : NaN;
+        const parsed = new Date(y, mo - 1, d);
+        if (!m || parsed.getFullYear() !== y || parsed.getMonth() !== mo - 1 || parsed.getDate() !== d) {
+          tip.el.textContent = t('validation.notMatch');
+          tip.show();
+          el.addClass('error');
+          return false;
+        }
+      }
     }
     this.clearError();
     return true;

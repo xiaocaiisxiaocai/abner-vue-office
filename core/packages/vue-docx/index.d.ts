@@ -5,6 +5,7 @@ export interface RequestOptions {
     headers?: HeadersInit;
     withCredentials?: boolean;
     credentials?: RequestCredentials;
+    signal?: AbortSignal;
     [key: string]: any;
 }
 

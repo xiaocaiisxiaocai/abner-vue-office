@@ -7,6 +7,7 @@ export interface RequestOptions {
     credentials?: RequestCredentials;
     timeout?: number;
     body?: any;
+    signal?: AbortSignal;
     [key: string]: any;
 }
 

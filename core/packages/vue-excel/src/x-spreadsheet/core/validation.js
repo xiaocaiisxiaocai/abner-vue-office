@@ -11,6 +11,7 @@ class Validation {
   includes(ri, ci) {
     const { refs } = this;
     for (let i = 0; i < refs.length; i += 1) {
+      if (!CellRange.isValidRef(refs[i])) continue;
       const cr = CellRange.valueOf(refs[i]);
       if (cr.includes(ri, ci)) return true;
     }
@@ -18,6 +19,7 @@ class Validation {
   }
 
   addRef(ref) {
+    if (!CellRange.isValidRef(ref)) return;
     this.remove(CellRange.valueOf(ref));
     this.refs.push(ref);
   }
@@ -25,6 +27,7 @@ class Validation {
   remove(cellRange) {
     const nrefs = [];
     this.refs.forEach((it) => {
+      if (!CellRange.isValidRef(it)) return;
       const cr = CellRange.valueOf(it);
       if (cr.intersects(cellRange)) {
         const crs = cr.difference(cellRange);
@@ -59,7 +62,8 @@ class Validation {
       refs, mode, type, required, operator, value,
     } = d;
     const clonedValue = Array.isArray(value) ? value.slice() : value;
-    return new Validation(mode, Array.isArray(refs) ? refs.slice() : [], new Validator(type, required, clonedValue, operator));
+    const validRefs = Array.isArray(refs) ? refs.filter(r => CellRange.isValidRef(r)) : [];
+    return new Validation(mode, validRefs, new Validator(type, required, clonedValue, operator));
   }
 }
 
@@ -93,12 +97,17 @@ class Validations {
 
   // type: date|number|phone|email|list
   // validator: { required, value, operator }
-  add(mode, ref, {
-    type, required, value, operator,
-  }) {
+  add(mode, ref, validatorOpts = {}) {
+    if (!CellRange.isValidRef(ref) || !validatorOpts || typeof validatorOpts !== 'object') {
+      return;
+    }
+    const {
+      type, required, value, operator,
+    } = validatorOpts;
+    const clonedValue = Array.isArray(value) ? value.slice() : value;
     this.remove(CellRange.valueOf(ref));
     const validator = new Validator(
-      type, required, value, operator,
+      type, required, clonedValue, operator,
     );
     const v = this.getByValidator(validator, mode);
     if (v !== null) {

@@ -11,7 +11,6 @@ export interface PdfOptions {
     width?: number;
     gap?: number;
     defaultScale?: number;
-    data?: ArrayBuffer | Uint8Array;
     httpHeaders?: Record<string, string>;
     withCredentials?: boolean;
     password?: string;

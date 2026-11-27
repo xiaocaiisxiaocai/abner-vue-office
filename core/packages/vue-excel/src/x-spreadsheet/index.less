@@ -54,6 +54,7 @@
 }
 
 .@{css-prefix} {
+  position: relative;
   font-size: 13px;
   line-height: normal;
   user-select: none;
@@ -403,6 +404,7 @@
       position: fixed;
       top: 0;
       left: 0;
+      white-space: nowrap;
     }
   }
 }
@@ -565,6 +567,24 @@
 .@{css-prefix}-bottombar {
   position: relative;
   border-top: 1px solid #e0e2e4;
+
+  .@{css-prefix}-bottombar-controls {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    height: 40px;
+    padding: 0 6px;
+    border-right: 1px solid #e8eaed;
+
+    .@{css-prefix}-icon {
+      margin: 0 4px;
+      cursor: pointer;
+    }
+
+    .@{css-prefix}-dropdown {
+      display: inline-block;
+    }
+  }
 
   .@{css-prefix}-menu > li {
     line-height: 40px;
@@ -934,7 +954,7 @@
 // form end
 .@{css-prefix}-dimmer {
   display: none;
-  position: absolute;
+  position: fixed;
   top: 0 !important;
   left: 0 !important;
   width: 100%;

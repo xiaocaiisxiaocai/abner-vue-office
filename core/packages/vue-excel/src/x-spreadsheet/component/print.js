@@ -194,7 +194,9 @@ export default class Print {
         data.eachMergesInView(mViewRange, ({ sri, sci }) => {
           if (exceptRowSet && exceptRowSet.has(sri)) return;
           const hiddenAbove = exceptRowSet
-            ? (data.rows.sumHeight(mViewRange.sri, sri, exceptRowSet) - data.rows.sumHeight(mViewRange.sri, sri))
+            ? (sri >= mViewRange.sri
+              ? (data.rows.sumHeight(mViewRange.sri, sri, exceptRowSet) - data.rows.sumHeight(mViewRange.sri, sri))
+              : (data.rows.sumHeight(sri, mViewRange.sri) - data.rows.sumHeight(sri, mViewRange.sri, exceptRowSet)))
             : 0;
           renderCell(draw, data, sri, sci, yof + hiddenAbove, true);
         });
@@ -205,7 +207,7 @@ export default class Print {
       yoffset += yo;
       this.contentEl.child(h('div', `${cssPrefix}-canvas-card-wraper`).child(wrap.child(canvas)));
     }
-    this.el.show();
+    this.el.css('display', 'flex');
   }
 
   removePrintIframe() {
@@ -245,11 +247,16 @@ export default class Print {
     const idoc = contentWindow.document;
     const style = idoc.createElement ? idoc.createElement('style') : window.document.createElement('style');
     style.innerHTML = `
-      @page { size: ${paper.width}px ${paper.height}px; }
+      @page { size: ${paper.width}px ${paper.height}px; margin: 0; }
+      body { margin: 0; }
       canvas {
+        display: block;
         page-break-before: auto;
         page-break-after: always;
         image-rendering: pixelated;
+      }
+      canvas:last-child {
+        page-break-after: auto;
       }
     `;
     if (idoc.head) idoc.head.appendChild(style);

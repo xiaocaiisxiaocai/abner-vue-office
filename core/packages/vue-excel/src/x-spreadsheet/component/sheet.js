@@ -29,10 +29,25 @@ function getOverlayerOffset(overlayerEl, evt) {
   };
 }
 
+function isExternalEditableTarget(target) {
+  if (!target || typeof target !== 'object') return false;
+  const tag = typeof target.tagName === 'string' ? target.tagName.toUpperCase() : '';
+  const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || Boolean(target.isContentEditable);
+  if (!isEditable) return false;
+  if (this.editor && this.editor.textEl && target === this.editor.textEl.el) return false;
+  if (this.selector && this.selector.br && this.selector.br.hideInput && target === this.selector.br.hideInput.el) return false;
+  return true;
+}
+
 function showSheetToast(msg) {
-  const remove = xtoast('Tip', msg);
+  let tracked = null;
+  const remove = xtoast('Tip', msg, () => {
+    if (this._toastRemovers && tracked) {
+      this._toastRemovers.delete(tracked);
+    }
+  });
   if (this._toastRemovers) {
-    const tracked = () => {
+    tracked = () => {
       this._toastRemovers.delete(tracked);
       remove();
     };
@@ -192,6 +207,7 @@ function overlayerMousescroll(evt) {
   const [fri, fci] = freeze;
 
   const { deltaY = 0, deltaX = 0 } = evt;
+  let didScroll = false;
   const moveY = (vertical) => {
     if (vertical > 0) {
       let ri = Math.max(data.scroll.ri, fri);
@@ -202,6 +218,7 @@ function overlayerMousescroll(evt) {
         const rh = rows.getHeight(ri);
         if (rh > 0) {
           verticalScrollbar.move({ top: Math.max(1, data.scroll.y + rh - 1) });
+          didScroll = true;
         }
       }
     } else {
@@ -213,11 +230,14 @@ function overlayerMousescroll(evt) {
         const rh = rows.getHeight(ri);
         if (ri <= fri) {
           verticalScrollbar.move({ top: 0 });
+          didScroll = true;
         } else if (rh > 0) {
           verticalScrollbar.move({ top: Math.max(0, data.scroll.y - rh - 1) });
+          didScroll = true;
         }
-      } else {
+      } else if (data.scroll.y > 0) {
         verticalScrollbar.move({ top: 0 });
+        didScroll = true;
       }
     }
   };
@@ -232,6 +252,7 @@ function overlayerMousescroll(evt) {
         const cw = cols.getWidth(ci);
         if (cw > 0) {
           horizontalScrollbar.move({ left: Math.max(1, data.scroll.x + cw - 1) });
+          didScroll = true;
         }
       }
     } else {
@@ -243,11 +264,14 @@ function overlayerMousescroll(evt) {
         const cw = cols.getWidth(ci);
         if (ci <= fci) {
           horizontalScrollbar.move({ left: 0 });
+          didScroll = true;
         } else if (cw > 0) {
           horizontalScrollbar.move({ left: Math.max(0, data.scroll.x - cw - 1) });
+          didScroll = true;
         }
-      } else {
+      } else if (data.scroll.x > 0) {
         horizontalScrollbar.move({ left: 0 });
+        didScroll = true;
       }
     }
   };
@@ -257,9 +281,13 @@ function overlayerMousescroll(evt) {
   if (typeof window !== 'undefined' && window.navigator && /Firefox/i.test(window.navigator.userAgent) && evt.detail) {
     moveY(evt.detail);
   }
-  if (temp === 0) return;
+  if (temp === 0) {
+    if (didScroll && typeof evt.preventDefault === 'function') evt.preventDefault();
+    return;
+  }
   if (deltaX !== 0 && temp === tempX) moveX(deltaX);
   if (deltaY !== 0 && temp === tempY) moveY(deltaY);
+  if (didScroll && typeof evt.preventDefault === 'function') evt.preventDefault();
 }
 
 function overlayerTouch(direction, distance) {
@@ -278,15 +306,26 @@ function verticalScrollbarSet() {
   const { data, verticalScrollbar } = this;
   const { height } = this.getTableOffset();
   const erth = data.exceptRowTotalHeight(0, -1);
-  // console.log('erth:', erth);
-  verticalScrollbar.set(height, data.rows.totalHeight() - erth);
+  const contentHeight = Math.max(0, data.rows.totalHeight() - erth);
+  verticalScrollbar.set(height, contentHeight);
+  if (contentHeight <= height - 1 && (data.scroll.y > 0 || data.scroll.ri > 0)) {
+    data.scroll.y = 0;
+    data.scroll.ri = 0;
+    verticalScrollbar.move({ top: 0 }, true);
+  }
 }
 
 function horizontalScrollbarSet() {
   const { data, horizontalScrollbar } = this;
   const { width } = this.getTableOffset();
   if (data) {
-    horizontalScrollbar.set(width, data.cols.totalWidth());
+    const contentWidth = Math.max(0, data.cols.totalWidth());
+    horizontalScrollbar.set(width, contentWidth);
+    if (contentWidth <= width - 1 && (data.scroll.x > 0 || data.scroll.ci > 0)) {
+      data.scroll.x = 0;
+      data.scroll.ci = 0;
+      horizontalScrollbar.move({ left: 0 }, true);
+    }
   }
 }
 
@@ -337,7 +376,6 @@ function clearClipboard() {
 
 function copy(evt) {
   const { data, selector } = this;
-  if (data.settings.mode === 'read') return;
   data.copy();
   data.copyToSystemClipboard(evt);
   selector.showClipboard();
@@ -445,6 +483,10 @@ function overlayerMousedown(evt) {
     // mouse move up
     if (typeof window !== 'undefined') {
       this._cancelMoveUp = mouseMoveUp(window, (e) => {
+        if (e.buttons === 0) {
+          if (typeof this._cancelMoveUp === 'function') this._cancelMoveUp();
+          return;
+        }
         const { offsetX: mx, offsetY: my } = getOverlayerOffset(overlayerEl, e);
         ({ ri, ci } = data.getCellRectByXY(mx, my));
         if (startedOnCell && !isAutofillEl) {
@@ -716,15 +758,27 @@ function sheetInitEvents() {
           && sel.size()[0] === dRows.len
           && hitRect.ci >= sel.range.sci && hitRect.ci <= sel.range.eci;
         if (this.data.xyInSelectedRect(offsetX, offsetY) || inRowHeaderSelection || inColHeaderSelection) {
+          if (this.data.settings && this.data.settings.mode === 'read') {
+            contextMenu.setMode('read');
+          } else {
+            contextMenu.setMode((inRowHeaderSelection || inColHeaderSelection) ? 'row-col' : 'range');
+          }
           contextMenu.setPosition(offsetX, offsetY);
         } else {
           overlayerMousedown.call(this, evt);
           contextMenu.setPosition(offsetX, offsetY);
         }
         evt.stopPropagation();
-      } else if (evt.detail === 2) {
+      } else if (evt.detail === 2 && (evt.button === undefined || evt.button === 0)) {
         if (offsetX > this.data.cols.indexWidth && offsetY > this.data.rows.height) {
-          editorSet.call(this);
+          const hitRect = this.data.getCellRectByXY(offsetX, offsetY);
+          const { autoFilter } = this.data;
+          const onFilterBtn = autoFilter && autoFilter.includes(hitRect.ri, hitRect.ci)
+            && hitRect.left + hitRect.width - 20 < offsetX
+            && hitRect.top + hitRect.height - 20 < offsetY;
+          if (!onFilterBtn) {
+            editorSet.call(this);
+          }
         }
       } else {
         overlayerMousedown.call(this, evt);
@@ -835,11 +889,13 @@ function sheetInitEvents() {
   };
   this._onWindowPaste = (evt) => {
     if (!this.focusing || this.data.settings.mode === 'read') return;
+    if (isExternalEditableTarget.call(this, evt.target)) return;
     paste.call(this, 'all', evt);
     evt.preventDefault();
   };
   this._onWindowCopy = (evt) => {
-    if (!this.focusing || this.data.settings.mode === 'read') return;
+    if (!this.focusing) return;
+    if (isExternalEditableTarget.call(this, evt.target)) return;
     copy.call(this, evt);
     evt.preventDefault();
   };
@@ -851,6 +907,12 @@ function sheetInitEvents() {
       key, ctrlKey, shiftKey, metaKey, altKey, isComposing,
     } = evt;
     if (isComposing || keyCode === 229 || key === 'Process') {
+      return;
+    }
+    if (isExternalEditableTarget.call(this, evt.target)) {
+      return;
+    }
+    if (typeof document !== 'undefined' && isExternalEditableTarget.call(this, document.activeElement)) {
       return;
     }
     if (this.print && this.print.el && typeof this.print.el.css === 'function' && this.print.el.css('display') !== 'none') {
@@ -1059,6 +1121,7 @@ export default class Sheet {
     this.modalValidation = new ModalValidation();
     // contextMenu
     this.contextMenu = new ContextMenu(() => this.getRect(), !showContextmenu);
+    this.contextMenu.setMode(data.settings && data.settings.mode === 'read' ? 'read' : 'range');
     // selector
     this.selector = new Selector(data);
     this.overlayerCEl = h('div', `${cssPrefix}-overlayer-content`)
@@ -1114,6 +1177,7 @@ export default class Sheet {
     this.colResizer.destroy();
     // after
     this.data = data;
+    this.contextMenu.setMode(data.settings && data.settings.mode === 'read' ? 'read' : 'range');
     verticalScrollbarSet.call(this);
     horizontalScrollbarSet.call(this);
     this.verticalScrollbar.move({ top: data.scroll.y }, true);
@@ -1126,7 +1190,18 @@ export default class Sheet {
   }
 
   loadData(data) {
+    if (typeof this._cancelMoveUp === 'function') {
+      this._cancelMoveUp();
+      this._cancelMoveUp = null;
+    }
+    this.editor.clear(true);
+    this.contextMenu.hide();
+    this.sortFilter.hide();
+    this.modalValidation.hide();
+    this.rowResizer.destroy();
+    this.colResizer.destroy();
     this.data.setData(data);
+    this.contextMenu.setMode(this.data.settings && this.data.settings.mode === 'read' ? 'read' : 'range');
     sheetReset.call(this);
     return this;
   }

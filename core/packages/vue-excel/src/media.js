@@ -43,7 +43,11 @@ export function renderImage(ctx, medias, sheet, offset, options = {}, shouldDraw
                 if (typeof shouldDraw === 'function' && !shouldDraw()) {
                     return;
                 }
-                drawImageBitmap(ctx, item.image, item.position);
+                try {
+                    drawImageBitmap(ctx, item.image, item.position);
+                } catch (e) {
+                    console.error(e);
+                }
             }
         });
     });
@@ -103,8 +107,6 @@ export function calcPosition(sheet, range, offset, options) {
     for (let i = 0; i < nativeRow; i++) {
         basicY += getRowHeight(sheet, i, heightOffset);
     }
-    const x = basicX + nativeColOff / 12700;
-    const y = basicY + nativeRowOff / 12700;
 
     const {
         nativeCol: nativeColEnd = 0,
@@ -112,27 +114,57 @@ export function calcPosition(sheet, range, offset, options) {
         nativeRow: nativeRowEnd = 0,
         nativeRowOff: nativeRowOffEnd = 0
     } = br || {};
+
+    const startColW = getColWidth(sheet, nativeCol, widthOffset);
+    const startRowH = getRowHeight(sheet, nativeRow, heightOffset);
+    const endColW = getColWidth(sheet, nativeColEnd, widthOffset);
+    const endRowH = getRowHeight(sheet, nativeRowEnd, heightOffset);
+
+    const sameColAnchor = Boolean(br) && nativeCol === nativeColEnd;
+    const sameRowAnchor = Boolean(br) && nativeRow === nativeRowEnd;
+
+    const startColOffPt = sameColAnchor
+        ? Math.max(0, nativeColOff / 12700)
+        : Math.min(Math.max(0, nativeColOff / 12700), startColW);
+    const startRowOffPt = sameRowAnchor
+        ? Math.max(0, nativeRowOff / 12700)
+        : Math.min(Math.max(0, nativeRowOff / 12700), startRowH);
+
+    const x = basicX + startColOffPt;
+    const y = basicY + startRowOffPt;
+
     let width = 0;
-    if (nativeCol === nativeColEnd && br) {
-        width = (nativeColOffEnd - nativeColOff) / 12700;
-    } else if (br) {
-        width = getColWidth(sheet, nativeCol, widthOffset) - nativeColOff / 12700;
-        for (let i = nativeCol + 1; i < nativeColEnd; i++) {
-            width += getColWidth(sheet, i, widthOffset);
+    if (br) {
+        if (nativeColEnd < nativeCol) {
+            width = 0;
+        } else if (sameColAnchor) {
+            width = Math.max(0, (nativeColOffEnd - nativeColOff) / 12700);
+        } else {
+            const endColOffPt = Math.min(Math.max(0, nativeColOffEnd / 12700), endColW);
+            width = Math.max(0, startColW - startColOffPt);
+            for (let i = nativeCol + 1; i < nativeColEnd; i++) {
+                width += getColWidth(sheet, i, widthOffset);
+            }
+            width += endColOffPt;
         }
-        width += nativeColOffEnd / 12700;
     } else if (ext?.width) {
         width = ext.width / 1.333333;
     }
+
     let height = 0;
-    if (nativeRow === nativeRowEnd && br) {
-        height = (nativeRowOffEnd - nativeRowOff) / 12700;
-    } else if (br) {
-        height = getRowHeight(sheet, nativeRow, heightOffset) - nativeRowOff / 12700;
-        for (let i = nativeRow + 1; i < nativeRowEnd; i++) {
-            height += getRowHeight(sheet, i, heightOffset);
+    if (br) {
+        if (nativeRowEnd < nativeRow) {
+            height = 0;
+        } else if (sameRowAnchor) {
+            height = Math.max(0, (nativeRowOffEnd - nativeRowOff) / 12700);
+        } else {
+            const endRowOffPt = Math.min(Math.max(0, nativeRowOffEnd / 12700), endRowH);
+            height = Math.max(0, startRowH - startRowOffPt);
+            for (let i = nativeRow + 1; i < nativeRowEnd; i++) {
+                height += getRowHeight(sheet, i, heightOffset);
+            }
+            height += endRowOffPt;
         }
-        height += nativeRowOffEnd / 12700;
     } else if (ext?.height) {
         height = ext.height / 1.333333;
     }
@@ -142,14 +174,26 @@ export function calcPosition(sheet, range, offset, options) {
         : null;
     const freezeCol = frozenView ? (frozenView.xSplit || 0) : 0;
     const freezeRow = frozenView ? (frozenView.ySplit || 0) : 0;
+    let freezeWidth = 0;
+    for (let i = 0; i < freezeCol; i++) {
+        freezeWidth += getColWidth(sheet, i, widthOffset);
+    }
+    let freezeHeight = 0;
+    for (let i = 0; i < freezeRow; i++) {
+        freezeHeight += getRowHeight(sheet, i, heightOffset);
+    }
     const scrollX = nativeCol < freezeCol ? 0 : (offset?.scroll?.x || 0);
     const scrollY = nativeRow < freezeRow ? 0 : (offset?.scroll?.y || 0);
+    const minX = (clipWidth + (nativeCol >= freezeCol ? freezeWidth : 0)) * dpr;
+    const minY = (clipHeight + (nativeRow >= freezeRow ? freezeHeight : 0)) * dpr;
 
     return {
         x: (x - scrollX) * dpr,
         y: (y - scrollY) * dpr,
         width: width * dpr,
         height: height * dpr,
+        minX,
+        minY,
         dpr
     };
 }
@@ -167,8 +211,8 @@ function drawImageBitmap(ctx, image, position) {
     const dpr = position.dpr || (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
     let sx = 0;
     let sy = 0;
-    let sWidth = image.width;
-    let sHeight = image.height;
+    let sWidth = image.naturalWidth || image.width;
+    let sHeight = image.naturalHeight || image.height;
     let dx = position.x;
     let dy = position.y;
     let dWidth = position.width;
@@ -178,17 +222,19 @@ function drawImageBitmap(ctx, image, position) {
     }
     const scaleX = dWidth / sWidth;
     const scaleY = dHeight / sHeight;
+    const minX = typeof position.minX === 'number' ? position.minX : clipWidth * dpr;
+    const minY = typeof position.minY === 'number' ? position.minY : clipHeight * dpr;
 
-    if (dx < clipWidth * dpr) {
-        const diff = clipWidth * dpr - dx;
-        dx = clipWidth * dpr;
+    if (dx < minX) {
+        const diff = minX - dx;
+        dx = minX;
         dWidth -= diff;
         sWidth -= diff / scaleX;
         sx += diff / scaleX;
     }
-    if (dy < clipHeight * dpr) {
-        const diff = clipHeight * dpr - dy;
-        dy = clipHeight * dpr;
+    if (dy < minY) {
+        const diff = minY - dy;
+        dy = minY;
         dHeight -= diff;
         sHeight -= diff / scaleY;
         sy += diff / scaleY;

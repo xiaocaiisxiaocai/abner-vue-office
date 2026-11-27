@@ -9,10 +9,12 @@ export function getStaticFileUrl(relativePath) {
     if (typeof location === 'undefined') {
         return cleanRel;
     }
-    const baseDir = location.pathname.endsWith('.html')
-        ? location.pathname.replace(/[^/]+$/, '')
-        : (location.pathname.endsWith('/') ? location.pathname : `${location.pathname}/`);
-    return `${location.origin}${baseDir}${cleanRel}`;
+    const pathname = typeof location.pathname === 'string' ? location.pathname : '/';
+    const baseDir = /\/[^/]+\.[^/]+$/.test(pathname)
+        ? pathname.replace(/[^/]+$/, '')
+        : (pathname.endsWith('/') ? pathname : `${pathname}/`);
+    const origin = location.origin && location.origin !== 'null' ? location.origin : '';
+    return `${origin}${baseDir}${cleanRel}`;
 }
 
 export default function (defaultSrc) {
@@ -68,7 +70,14 @@ export default function (defaultSrc) {
                 activeReader = null;
             }
         };
-        reader.readAsArrayBuffer(file);
+        try {
+            reader.readAsArrayBuffer(file);
+        } catch (err) {
+            if (activeReader === reader) {
+                activeReader = null;
+            }
+            console.warn(err);
+        }
         return false;
     }
 

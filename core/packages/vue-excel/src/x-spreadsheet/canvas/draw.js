@@ -30,9 +30,11 @@ class DrawBox {
     this.borderLeft = null;
   }
 
-  setBorders({
-    top, bottom, left, right,
-  }) {
+  setBorders(borders) {
+    if (!borders || typeof borders !== 'object') return;
+    const {
+      top, bottom, left, right,
+    } = borders;
     if (top) this.borderTop = top;
     if (right) this.borderRight = right;
     if (bottom) this.borderBottom = bottom;
@@ -158,53 +160,63 @@ class Draw {
   }
 
   clear() {
+    if (!this.el || !this.ctx) return this;
     const { width, height } = this.el;
     this.ctx.clearRect(0, 0, width, height);
     return this;
   }
 
   attr(options) {
+    if (!this.ctx) return this;
     Object.assign(this.ctx, options);
     return this;
   }
 
   save() {
+    if (!this.ctx) return this;
     this.ctx.save();
     this.ctx.beginPath();
     return this;
   }
 
   restore() {
+    if (!this.ctx) return this;
     this.ctx.restore();
     return this;
   }
 
   beginPath() {
+    if (!this.ctx) return this;
     this.ctx.beginPath();
     return this;
   }
 
   translate(x, y) {
+    if (!this.ctx) return this;
     this.ctx.translate(npx(x), npx(y));
     return this;
   }
 
   scale(x, y) {
+    if (!this.ctx) return this;
     this.ctx.scale(x, y);
     return this;
   }
 
   clearRect(x, y, w, h) {
+    if (!this.ctx) return this;
     this.ctx.clearRect(npx(x), npx(y), npx(w), npx(h));
     return this;
   }
 
   fillRect(x, y, w, h) {
+    if (!this.ctx) return this;
     this.ctx.fillRect(npx(x) - 0.5, npx(y) - 0.5, npx(w), npx(h));
     return this;
   }
 
   fillText(text, x, y) {
+    if (!this.ctx) return this;
     this.ctx.fillText(text, npx(x), npx(y));
     return this;
   }
@@ -228,6 +240,7 @@ class Draw {
   */
   text(mtxt, box, attr = {}, textWrap = true) {
     const { ctx } = this;
+    if (!ctx) return this;
     const rawAlign = attr.align;
     const align = (rawAlign === 'center' || rawAlign === 'right' || rawAlign === 'left') ? rawAlign : 'left';
     const rawValign = attr.valign;
@@ -238,10 +251,11 @@ class Draw {
       underline = false,
     } = attr;
     const rawFont = attr.font || {};
+    const parsedFontSize = Number(rawFont.size);
     const font = {
       name: formatCssFontFamily(rawFont.name),
-      size: (typeof rawFont.size === 'number' && Number.isFinite(rawFont.size) && rawFont.size > 0)
-        ? rawFont.size
+      size: (rawFont.size !== '' && rawFont.size != null && typeof rawFont.size !== 'boolean' && Number.isFinite(parsedFontSize) && parsedFontSize > 0)
+        ? parsedFontSize
         : 10,
       bold: Boolean(rawFont.bold),
       italic: Boolean(rawFont.italic),
@@ -252,7 +266,7 @@ class Draw {
     this.attr({
       textAlign: align,
       textBaseline: valign,
-      font: `${font.italic ? 'italic' : ''} ${font.bold ? 'bold' : ''} ${npx(font.size)}px ${font.name}`,
+      font: `${font.italic ? 'italic' : ''} ${font.bold ? 'bold' : ''} ${Math.max(1, npx(font.size))}px ${font.name}`,
       fillStyle: color,
       strokeStyle: color,
     });
@@ -306,6 +320,7 @@ class Draw {
 
   border(style, color) {
     const { ctx } = this;
+    if (!ctx) return this;
     const hasDash = typeof ctx.setLineDash === 'function';
     if (hasDash) {
       ctx.setLineDash([]);
@@ -344,6 +359,7 @@ class Draw {
 
   line(...xys) {
     const { ctx } = this;
+    if (!ctx) return this;
     if (xys.length > 1) {
       ctx.beginPath();
       const [x, y] = xys[0];
@@ -359,25 +375,26 @@ class Draw {
 
   strokeBorders(box) {
     const { ctx } = this;
+    if (!ctx || !box) return;
     ctx.save();
     // border
     const {
       borderTop, borderRight, borderBottom, borderLeft,
     } = box;
-    if (borderTop) {
+    if (Array.isArray(borderTop)) {
       this.border(...borderTop);
       // console.log('box.topxys:', box.topxys());
       this.line(...box.topxys());
     }
-    if (borderRight) {
+    if (Array.isArray(borderRight)) {
       this.border(...borderRight);
       this.line(...box.rightxys());
     }
-    if (borderBottom) {
+    if (Array.isArray(borderBottom)) {
       this.border(...borderBottom);
       this.line(...box.bottomxys());
     }
-    if (borderLeft) {
+    if (Array.isArray(borderLeft)) {
       this.border(...borderLeft);
       this.line(...box.leftxys());
     }
@@ -386,6 +403,7 @@ class Draw {
 
   dropdown(box) {
     const { ctx } = this;
+    if (!ctx) return;
     const {
       x, y, width, height,
     } = box;
@@ -404,6 +422,7 @@ class Draw {
 
   error(box) {
     const { ctx } = this;
+    if (!ctx) return;
     const { x, y, width } = box;
     const sx = x + width - 1;
     ctx.save();
@@ -419,6 +438,7 @@ class Draw {
 
   frozen(box) {
     const { ctx } = this;
+    if (!ctx) return;
     const { x, y, width } = box;
     const sx = x + width - 1;
     ctx.save();
@@ -434,17 +454,25 @@ class Draw {
 
   rect(box, dtextcb) {
     const { ctx } = this;
+    if (!ctx) return;
     const {
       x, y, width, height, bgcolor,
     } = box;
     ctx.save();
-    ctx.beginPath();
-    ctx.fillStyle = bgcolor || '#fff';
-    ctx.rect(npxLine(x + 1), npxLine(y + 1), npx(Math.max(0, width - 2)), npx(Math.max(0, height - 2)));
-    ctx.clip();
-    ctx.fill();
-    dtextcb();
-    ctx.restore();
+    try {
+      ctx.beginPath();
+      ctx.fillStyle = bgcolor || '#fff';
+      const rx = npxLine(x) + 0.5;
+      const ry = npxLine(y) + 0.5;
+      const rw = Math.max(0, npxLine(x + width) - rx - 0.5);
+      const rh = Math.max(0, npxLine(y + height) - ry - 0.5);
+      ctx.rect(rx, ry, rw, rh);
+      ctx.clip();
+      ctx.fill();
+      dtextcb();
+    } finally {
+      ctx.restore();
+    }
   }
 }
 

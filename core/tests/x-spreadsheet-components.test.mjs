@@ -16,9 +16,11 @@ const { CellRange } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/c
 });
 const { Merges } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/merge.js', { CellRange });
 const helperMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/helper.js');
-const { Rows } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/row.js', {
+const { Rows, shiftFormulaRefs } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/row.js', {
     helper: helperMod,
-    expr2expr: alphabetMod.expr2expr
+    expr2expr: alphabetMod.expr2expr,
+    expr2xy: alphabetMod.expr2xy,
+    stringAt: alphabetMod.stringAt
 });
 const { Cols } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/col.js', { helper: helperMod });
 const History = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/history.js');
@@ -45,6 +47,7 @@ function createDataProxyClass() {
         Merges,
         helper: helperMod,
         Rows,
+        shiftFormulaRefs,
         Cols,
         Validations,
         CellRange,
@@ -185,7 +188,8 @@ test('x-spreadsheet element, event, modal, tooltip, suggest, calendar, and sortF
         const Calendar = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/calendar.js', {
             h,
             Icon,
-            t: () => ''
+            t: () => '',
+            cssPrefix: 'x-spreadsheet'
         });
         const cal = new Calendar(new Date(2025, 0, 31));
         cal.next();
@@ -271,7 +275,8 @@ test('x-spreadsheet Bottombar, Editor, Selector, ModalValidation, FormField, Dro
         const Calendar = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/calendar.js', {
             h,
             Icon,
-            t: () => ''
+            t: () => '',
+            cssPrefix: 'x-spreadsheet'
         });
         const Datepicker = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/datepicker.js', {
             Calendar,
@@ -790,7 +795,9 @@ test('x-spreadsheet sheet.js and index.js cover editor clear, paste merged guard
                 removeValidation: () => mutated++,
                 delete: () => mutated++,
                 insert: () => mutated++,
-                deleteCell: () => mutated++
+                deleteCell: () => mutated++,
+                copy: () => {},
+                copyToSystemClipboard: () => {}
             },
             toolbar: { trigger: () => mutated++, paintformatActive: () => false },
             verticalScrollbar: { scroll: () => ({ top: 0 }), move: () => {} },
@@ -800,7 +807,7 @@ test('x-spreadsheet sheet.js and index.js cover editor clear, paste merged guard
             colResizer: { hide: () => {} },
             editor: { clear: () => {} },
             modalValidation: { setValue: () => mutated++ },
-            selector: { set: () => {}, showAutofill: () => autofillShown++, hideAutofill: () => {} },
+            selector: { set: () => {}, showAutofill: () => autofillShown++, hideAutofill: () => {}, showClipboard: () => {} },
             sortFilter: { hide: () => mutated++ },
             overlayerEl,
             trigger: () => {}
@@ -819,9 +826,11 @@ test('x-spreadsheet sheet.js and index.js cover editor clear, paste merged guard
         readCtx.contextMenu.itemClick('hide');
         assert.equal(mutated, 0);
 
+        // Read-only mode allows Ctrl+C copy without mutating sheet data
         const copyHandler = Array.from(windowListeners.get('copy'))[0];
         copyHandler({ preventDefault: () => { prevented = true; } });
-        assert.equal(prevented, false);
+        assert.equal(prevented, true);
+        assert.equal(mutated, 0);
 
         // x-spreadsheet/index.js syncs this.data and cleans up on destroy
         const { h } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/element.js');

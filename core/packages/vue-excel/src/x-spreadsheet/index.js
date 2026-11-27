@@ -19,11 +19,7 @@ class Spreadsheet {
     }
     this.bottombar = this.options.showBottomBar ? new Bottombar(() => {
       if (this.options.mode === 'read') return;
-      const d = this.addSheet();
-      this.data = d;
-      if (this.sheet) {
-        this.sheet.resetData(d);
-      }
+      this.addSheet();
     }, (index) => {
       const d = this.datas[index];
       if (d) {
@@ -117,10 +113,12 @@ class Spreadsheet {
           this.data = nd;
         }
       }
+      let swapped = false;
       if (this.bottombar !== null && this.bottombar.items && this.bottombar.items[0]) {
         this.bottombar.clickSwap2(this.bottombar.items[0]);
+        swapped = true;
       }
-      if (firstData && this.sheet) {
+      if (!swapped && firstData && this.sheet) {
         this.sheet.resetData(firstData);
       }
     } else {

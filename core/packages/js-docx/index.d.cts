@@ -6,6 +6,7 @@ declare namespace abnerJsDocx {
         headers?: HeadersInit;
         withCredentials?: boolean;
         credentials?: RequestCredentials;
+        signal?: AbortSignal;
         [key: string]: any;
     }
 

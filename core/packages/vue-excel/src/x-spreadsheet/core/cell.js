@@ -55,13 +55,33 @@ const infixExprToSuffixExpr = (src) => {
   let i = 0;
   const len = src.length;
 
+  const isTopOpFn = () => {
+    for (let k = operatorStack.length - 1; k >= 0; k -= 1) {
+      const top = operatorStack[k];
+      if (top === '(') return false;
+      if (typeof top === 'object' && top.type === 'fn') return true;
+    }
+    return false;
+  };
+
+  const markArgStarted = () => {
+    if (callStack.length > 0 && isTopOpFn()) {
+      const frame = callStack[callStack.length - 1];
+      if (frame.expectFirstArg) {
+        frame.expectFirstArg = false;
+        frame.argCount = 1;
+      }
+      frame.expectArg = false;
+    }
+  };
+
   const flushRange = () => {
     if (operatorStack.length > 0 && operatorStack[operatorStack.length - 1] === ':') {
       operatorStack.pop();
       const endRef = stack.pop();
       const startRef = stack.pop();
       const rangeCount = expandRange(startRef, endRef, stack);
-      if (callStack.length > 0) {
+      if (callStack.length > 0 && isTopOpFn()) {
         const frame = callStack[callStack.length - 1];
         frame.argCount += rangeCount - 1;
       }
@@ -95,11 +115,7 @@ const infixExprToSuffixExpr = (src) => {
         throw new Error('Unclosed string literal');
       }
       stack.push(`"${str}`);
-      if (callStack.length > 0 && callStack[callStack.length - 1].expectFirstArg) {
-        const frame = callStack[callStack.length - 1];
-        frame.expectFirstArg = false;
-        frame.argCount = 1;
-      }
+      markArgStarted();
       expectUnary = false;
     } else if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c === '.' || c === '$') {
       let token = '';
@@ -126,36 +142,33 @@ const infixExprToSuffixExpr = (src) => {
       }
       if (look < len && src.charAt(look) === '(') {
         i = look;
-        if (callStack.length > 0 && callStack[callStack.length - 1].expectFirstArg) {
-          const parentFrame = callStack[callStack.length - 1];
-          parentFrame.expectFirstArg = false;
-          parentFrame.argCount = 1;
-        }
+        markArgStarted();
         operatorStack.push({ type: 'fn', name: token });
-        callStack.push({ name: token, argCount: 0, expectFirstArg: true });
+        callStack.push({ name: token, argCount: 0, expectFirstArg: true, expectArg: true });
         i += 1;
         expectUnary = true;
       } else {
         stack.push(token);
-        if (callStack.length > 0 && callStack[callStack.length - 1].expectFirstArg) {
-          const frame = callStack[callStack.length - 1];
-          frame.expectFirstArg = false;
-          frame.argCount = 1;
-        }
+        markArgStarted();
         expectUnary = false;
       }
     } else if (c === '(') {
-      if (callStack.length > 0 && callStack[callStack.length - 1].expectFirstArg) {
-        const parentFrame = callStack[callStack.length - 1];
-        parentFrame.expectFirstArg = false;
-        parentFrame.argCount = 1;
-      }
+      markArgStarted();
       operatorStack.push('(');
       i += 1;
       expectUnary = true;
     } else if (c === ')') {
-      if (expectUnary && callStack.length > 0 && !callStack[callStack.length - 1].expectFirstArg) {
-        stack.push('"');
+      const directFnOpener = operatorStack.length > 0
+        && typeof operatorStack[operatorStack.length - 1] === 'object'
+        && operatorStack[operatorStack.length - 1].type === 'fn';
+      if (directFnOpener && callStack.length > 0) {
+        const frame = callStack[callStack.length - 1];
+        if (!frame.expectFirstArg && frame.expectArg) {
+          stack.push('"');
+          frame.expectArg = false;
+        }
+      } else if (expectUnary) {
+        throw new Error('Unexpected closing parenthesis');
       }
       while (operatorStack.length > 0) {
         const top = operatorStack[operatorStack.length - 1];
@@ -178,13 +191,18 @@ const infixExprToSuffixExpr = (src) => {
       i += 1;
       expectUnary = false;
     } else if (c === ',') {
-      if (expectUnary && callStack.length > 0) {
-        const frame = callStack[callStack.length - 1];
+      if (!isTopOpFn() || callStack.length === 0) {
+        throw new Error('Unexpected comma');
+      }
+      const frame = callStack[callStack.length - 1];
+      if (frame.expectArg) {
         stack.push('"');
         if (frame.expectFirstArg) {
           frame.expectFirstArg = false;
           frame.argCount = 1;
         }
+      } else if (expectUnary) {
+        throw new Error('Unexpected comma');
       }
       while (operatorStack.length > 0) {
         const top = operatorStack[operatorStack.length - 1];
@@ -196,24 +214,25 @@ const infixExprToSuffixExpr = (src) => {
           stack.push(operatorStack.pop());
         }
       }
-      if (callStack.length > 0) {
-        const frame = callStack[callStack.length - 1];
-        frame.argCount += 1;
-        frame.expectFirstArg = false;
-      } else {
-        throw new Error('Unexpected comma');
-      }
+      frame.argCount += 1;
+      frame.expectFirstArg = false;
+      frame.expectArg = true;
       i += 1;
       expectUnary = true;
     } else if (c === ':') {
+      if (expectUnary || (operatorStack.length > 0 && operatorStack[operatorStack.length - 1] === ':')) {
+        throw new Error('Unexpected range operator');
+      }
       operatorStack.push(':');
       i += 1;
       expectUnary = true;
     } else if ((c === '-' || c === '+') && expectUnary) {
+      markArgStarted();
       operatorStack.push(c === '-' ? 'u-' : 'u+');
       i += 1;
       expectUnary = true;
     } else {
+      markArgStarted();
       let op = c;
       if (c === '>' || c === '<' || c === '=') {
         const nc = src.charAt(i + 1);
@@ -354,10 +373,17 @@ const evalSuffixExpr = (srcStack, formulaMap, cellRender, cellList) => {
       const fc = exprStr[0];
       const stripped = fc === '-' ? exprStr.substring(1) : exprStr;
       const sc = stripped[0];
-      const normalizedRef = stripped.replace(/\$/g, '').toUpperCase();
+      const rawNormalizedRef = stripped.replace(/\$/g, '').toUpperCase();
       const isCellRef = stripped !== '' && sc !== '"' && !((sc >= '0' && sc <= '9')) && sc !== '.'
-        && normalizedRef !== 'TRUE' && normalizedRef !== 'FALSE'
+        && rawNormalizedRef !== 'TRUE' && rawNormalizedRef !== 'FALSE'
         && ((sc >= 'A' && sc <= 'Z') || (sc >= 'a' && sc <= 'z') || sc === '$');
+      let normalizedRef = rawNormalizedRef;
+      if (isCellRef) {
+        const [rx, ry] = expr2xy(stripped);
+        if (!Number.isNaN(rx) && !Number.isNaN(ry) && rx >= 0 && ry >= 0) {
+          normalizedRef = xy2expr(rx, ry);
+        }
+      }
       if (isCellRef && cellList.includes(normalizedRef)) {
         stack.push(0);
         continue;

@@ -22,9 +22,6 @@ const defaultSrc = getStaticFileUrl('static/test-files/test.xlsx');
 const excelRef = ref();
 
 function beforeTransformData(data) {
-    if (!data || !Array.isArray(data._worksheets)) {
-        return data;
-    }
     return data;
 }
 
@@ -44,7 +41,7 @@ function cellsSelected(event) {
 <template>
   <PreviewWrapper
       accept=".xlsx,.xls"
-      placeholder="请输入xlsx文件地址"
+      placeholder="请输入xlsx/xls文件地址"
       :default-src="defaultSrc"
   >
     <template v-slot="slotProps">

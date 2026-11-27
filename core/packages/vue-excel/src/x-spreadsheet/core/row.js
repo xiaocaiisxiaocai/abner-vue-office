@@ -4,6 +4,7 @@ import { expr2expr, expr2xy, stringAt } from './alphabet';
 function shiftFormulaRefs(formula, xn, yn, condition, ignoreAbs = false, delBounds = null) {
   let out = '';
   let i = 0;
+  const formatRef = (absCol, x, absRow, y) => `${absCol}${stringAt(x)}${absRow}${y + 1}`;
   while (i < formula.length) {
     const ch = formula[i];
     if (ch === '"') {
@@ -26,53 +27,84 @@ function shiftFormulaRefs(formula, xn, yn, condition, ignoreAbs = false, delBoun
     const tail = formula.slice(i);
     const prevChar = i > 0 ? formula[i - 1] : '';
     const isBoundaryBefore = !prevChar || !/[A-Za-z0-9_!]/.test(prevChar);
-    const m = isBoundaryBefore && tail.match(/^(\$?[A-Za-z]{1,3}\$?\d+)(?![A-Za-z0-9_(])/);
-    if (m) {
-      const word = m[1];
-      const afterPos = i + word.length;
-      const nextChar = formula[afterPos] || '';
-      if (nextChar === '!') {
-        out += word;
-        i = afterPos;
-        continue;
-      }
-      if (delBounds) {
-        const refMatch = word.match(/^(\$?)([A-Za-z]+)(\$?)(\d+)$/);
-        if (refMatch) {
-          const [, absCol, , absRow] = refMatch;
-          const [x, y] = expr2xy(word);
-          if (!Number.isNaN(x) && !Number.isNaN(y)) {
-            if (delBounds.axis === 'row' && y >= delBounds.start && y <= delBounds.end) {
-              if (prevChar === ':') {
-                const clampedY = Math.max(0, delBounds.start - 1);
-                out += `${absCol}${stringAt(x)}${absRow}${clampedY + 1}`;
-                i = afterPos;
+    if (isBoundaryBefore) {
+      const rangeMatch = tail.match(/^(\$?[A-Za-z]{1,3}\$?\d+)(\s*:\s*)(\$?[A-Za-z]{1,3}\$?\d+)(?![A-Za-z0-9_(!])/);
+      if (rangeMatch) {
+        const [, ref1, sep, ref2] = rangeMatch;
+        const afterRange = i + rangeMatch[0].length;
+        if (delBounds) {
+          const m1 = ref1.match(/^(\$?)([A-Za-z]+)(\$?)(\d+)$/);
+          const m2 = ref2.match(/^(\$?)([A-Za-z]+)(\$?)(\d+)$/);
+          const [x1, y1] = expr2xy(ref1);
+          const [x2, y2] = expr2xy(ref2);
+          if (m1 && m2 && !Number.isNaN(x1) && !Number.isNaN(y1) && !Number.isNaN(x2) && !Number.isNaN(y2)) {
+            const delCount = delBounds.end - delBounds.start + 1;
+            if (delBounds.axis === 'row') {
+              const lo = Math.min(y1, y2);
+              const hi = Math.max(y1, y2);
+              if (lo >= delBounds.start && hi <= delBounds.end) {
+                out += '#REF!';
+                i = afterRange;
                 continue;
               }
-              if (nextChar === ':') {
-                out += `${absCol}${stringAt(x)}${absRow}${delBounds.start + 1}`;
-                i = afterPos;
+              if (hi >= delBounds.start) {
+                const newLo = lo < delBounds.start
+                  ? lo
+                  : (lo > delBounds.end ? lo - delCount : delBounds.start);
+                const newHi = hi > delBounds.end ? hi - delCount : delBounds.start - 1;
+                const ny1 = y1 <= y2 ? newLo : newHi;
+                const ny2 = y1 <= y2 ? newHi : newLo;
+                out += `${formatRef(m1[1], x1, m1[3], ny1)}${sep}${formatRef(m2[1], x2, m2[3], ny2)}`;
+                i = afterRange;
                 continue;
               }
-            } else if (delBounds.axis === 'col' && x >= delBounds.start && x <= delBounds.end) {
-              if (prevChar === ':') {
-                const clampedX = Math.max(0, delBounds.start - 1);
-                out += `${absCol}${stringAt(clampedX)}${absRow}${y + 1}`;
-                i = afterPos;
+              out += rangeMatch[0];
+              i = afterRange;
+              continue;
+            }
+            if (delBounds.axis === 'col') {
+              const lo = Math.min(x1, x2);
+              const hi = Math.max(x1, x2);
+              if (lo >= delBounds.start && hi <= delBounds.end) {
+                out += '#REF!';
+                i = afterRange;
                 continue;
               }
-              if (nextChar === ':') {
-                out += `${absCol}${stringAt(delBounds.start)}${absRow}${y + 1}`;
-                i = afterPos;
+              if (hi >= delBounds.start) {
+                const newLo = lo < delBounds.start
+                  ? lo
+                  : (lo > delBounds.end ? lo - delCount : delBounds.start);
+                const newHi = hi > delBounds.end ? hi - delCount : delBounds.start - 1;
+                const nx1 = x1 <= x2 ? newLo : newHi;
+                const nx2 = x1 <= x2 ? newHi : newLo;
+                out += `${formatRef(m1[1], nx1, m1[3], y1)}${sep}${formatRef(m2[1], nx2, m2[3], y2)}`;
+                i = afterRange;
                 continue;
               }
+              out += rangeMatch[0];
+              i = afterRange;
+              continue;
             }
           }
         }
+        out += `${expr2expr(ref1, xn, yn, condition, ignoreAbs)}${sep}${expr2expr(ref2, xn, yn, condition, ignoreAbs)}`;
+        i = afterRange;
+        continue;
       }
-      out += expr2expr(word, xn, yn, condition, ignoreAbs);
-      i = afterPos;
-      continue;
+      const m = tail.match(/^(\$?[A-Za-z]{1,3}\$?\d+)(?![A-Za-z0-9_(])/);
+      if (m) {
+        const word = m[1];
+        const afterPos = i + word.length;
+        const nextChar = formula[afterPos] || '';
+        if (nextChar === '!') {
+          out += word;
+          i = afterPos;
+          continue;
+        }
+        out += expr2expr(word, xn, yn, condition, ignoreAbs);
+        i = afterPos;
+        continue;
+      }
     }
     out += ch;
     i += 1;
@@ -91,7 +123,7 @@ class Rows {
   getHeight(ri) {
     if (this.isHide(ri)) return 0;
     const row = this.get(ri);
-    if (row && row.height !== undefined) {
+    if (row && typeof row.height === 'number' && Number.isFinite(row.height) && row.height >= 0) {
       return row.height;
     }
     return this.height;
@@ -176,11 +208,11 @@ class Rows {
   }
 
   // what: all | text | format
-  setCell(ri, ci, cell, what = 'all') {
+  setCell(ri, ci, cell, what = 'all', force = false) {
     const row = this.getOrNew(ri);
     const existing = row.cells[ci];
-    if (existing && existing.editable === false) {
-      return;
+    if (!force && existing && existing.editable === false) {
+      return false;
     }
     if (what === 'all') {
       row.cells[ci] = helper.cloneDeep(cell);
@@ -192,11 +224,16 @@ class Rows {
       row.cells[ci].style = cell.style;
       if (cell.merge) row.cells[ci].merge = cell.merge.slice();
     }
+    return true;
   }
 
   setCellText(ri, ci, text) {
     const cell = this.getCellOrNew(ri, ci);
-    if (cell.editable !== false) cell.text = text;
+    if (cell.editable !== false) {
+      cell.text = text;
+      return true;
+    }
+    return false;
   }
 
   // what: all | format | text
@@ -229,6 +266,12 @@ class Rows {
           const nci = jj + (j - sci);
           if (nri > deri || nci > deci) continue;
           const ncell = helper.cloneDeep(srcCell);
+          if (what !== 'text' && ncell && Array.isArray(ncell.merge)) {
+            const [mrn, mcn] = ncell.merge;
+            if ((mrn <= 0 && mcn <= 0) || nri + mrn > deri || nci + mcn > deci) {
+              delete ncell.merge;
+            }
+          }
           if (autofill && ncell && ncell.text != null) {
             const textStr = String(ncell.text);
             if (textStr.length > 0) {
@@ -240,23 +283,45 @@ class Rows {
                 || (cn <= 1 && rn > 1 && (dsci > eci || deci < sci))
                 || (rn <= 1 && cn <= 1)) {
                 const step = (nci - j) !== 0 ? (nci - j) : (nri - i);
-                const result = /^-?\d+$/.exec(textStr) || /\d+$/.exec(textStr);
-                if (result !== null) {
-                  const index = Number(result[0]) + step;
-                  ncell.text = `${textStr.substring(0, result.index)}${index}`;
+                const decMatch = /^-?\d+\.(\d+)$/.exec(textStr);
+                if (decMatch !== null) {
+                  const decPlaces = decMatch[1].length;
+                  const nextVal = Number(textStr) + step;
+                  ncell.text = nextVal.toFixed(decPlaces);
+                } else {
+                  const intMatch = /^-?\d+$/.exec(textStr);
+                  if (intMatch !== null) {
+                    ncell.text = `${Number(intMatch[0]) + step}`;
+                  } else {
+                    const suffixMatch = /\d+$/.exec(textStr);
+                    if (suffixMatch !== null) {
+                      const rawDigits = suffixMatch[0];
+                      const nextNum = Number(rawDigits) + step;
+                      if (nextNum >= 0) {
+                        const formatted = rawDigits.length > 1 && rawDigits.startsWith('0')
+                          ? String(nextNum).padStart(rawDigits.length, '0')
+                          : String(nextNum);
+                        ncell.text = `${textStr.substring(0, suffixMatch.index)}${formatted}`;
+                      }
+                    }
+                  }
                 }
               }
             }
           }
-          this.setCell(nri, nci, ncell, what);
-          cb(nri, nci, ncell);
+          const written = this.setCell(nri, nci, ncell, what);
+          if (written) {
+            cb(nri, nci, ncell);
+          }
         }
       }
     });
   }
 
-  cutPaste(srcCellRange, dstCellRange) {
+  cutPaste(srcCellRange, dstCellRange, what = 'all') {
     const [srn, scn] = srcCellRange.size();
+    const dRi = dstCellRange.sri - srcCellRange.sri;
+    const dCi = dstCellRange.sci - srcCellRange.sci;
     const snapshot = [];
     srcCellRange.each((ri, ci) => {
       const cell = this.getCell(ri, ci);
@@ -264,15 +329,28 @@ class Rows {
         snapshot.push([ri - srcCellRange.sri, ci - srcCellRange.sci, helper.cloneDeep(cell)]);
       }
     });
-    this.deleteCells(srcCellRange, 'all');
+    if (what === 'all' || what === 'format') {
+      this.deleteCells(srcCellRange, what);
+    } else if (what === 'text') {
+      this.deleteCells(srcCellRange, 'text');
+    }
     for (let dr = 0; dr < srn; dr += 1) {
       for (let dc = 0; dc < scn; dc += 1) {
-        this.deleteCell(dstCellRange.sri + dr, dstCellRange.sci + dc, 'all');
+        this.deleteCell(dstCellRange.sri + dr, dstCellRange.sci + dc, what);
       }
     }
+    const movedCoords = new Set();
     snapshot.forEach(([dr, dc, cell]) => {
-      this.setCell(dstCellRange.sri + dr, dstCellRange.sci + dc, cell, 'all');
+      const targetRi = dstCellRange.sri + dr;
+      const targetCi = dstCellRange.sci + dc;
+      if (this.setCell(targetRi, targetCi, cell, what)) {
+        movedCoords.add(`${srcCellRange.sri + dr}:${srcCellRange.sci + dc}`);
+      } else if (what === 'all' || what === 'format') {
+        // Destination cell was locked; restore source cell so data/merge stays consistent
+        this.setCell(srcCellRange.sri + dr, srcCellRange.sci + dc, cell, 'all');
+      }
     });
+    return { dRi, dCi, movedCoords };
   }
 
   // src: Array<Array<String>>
@@ -460,10 +538,17 @@ class Rows {
       } else if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype') {
         const rowObj = d[k];
         if (rowObj && typeof rowObj === 'object') {
-          copy[k] = {
-            ...rowObj,
-            ...(rowObj.cells && typeof rowObj.cells === 'object' ? { cells: { ...rowObj.cells } } : {}),
-          };
+          const clonedRow = { ...rowObj };
+          if (rowObj.cells && typeof rowObj.cells === 'object') {
+            const clonedCells = {};
+            Object.keys(rowObj.cells).forEach((ck) => {
+              if (ck === '__proto__' || ck === 'constructor' || ck === 'prototype') return;
+              const c = rowObj.cells[ck];
+              clonedCells[ck] = c && typeof c === 'object' ? helper.cloneDeep(c) : c;
+            });
+            clonedRow.cells = clonedCells;
+          }
+          copy[k] = clonedRow;
         } else {
           copy[k] = rowObj;
         }
@@ -481,4 +566,5 @@ class Rows {
 export default {};
 export {
   Rows,
+  shiftFormulaRefs,
 };

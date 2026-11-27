@@ -36,9 +36,49 @@ export default defineComponent({
     setup(props, { emit }) {
         let pptxViewer = null;
         let fileData = null;
+        let fileDataSrc = null;
         let isUnmounted = false;
+        let isLoading = false;
+        let activeLoadPromise = null;
+        let activeAbortController = null;
+        let activeUserSignal = null;
+        let activeUserSignalListener = null;
         let renderId = 0;
         const rootRef = ref(null);
+
+        function abortActiveRequest() {
+            if (activeUserSignal && activeUserSignalListener) {
+                activeUserSignal.removeEventListener('abort', activeUserSignalListener);
+            }
+            activeUserSignal = null;
+            activeUserSignalListener = null;
+            if (activeAbortController) {
+                activeAbortController.abort();
+                activeAbortController = null;
+            }
+        }
+
+        function buildFetchOptions() {
+            const opts = normalizeFetchOptions(props.requestOptions);
+            if (typeof AbortController === 'undefined') {
+                return opts;
+            }
+            const controller = new AbortController();
+            activeAbortController = controller;
+            const userSignal = opts.signal;
+            if (userSignal && typeof userSignal.addEventListener === 'function') {
+                if (userSignal.aborted) {
+                    controller.abort();
+                } else {
+                    const onAbort = () => controller.abort();
+                    userSignal.addEventListener('abort', onAbort, { once: true });
+                    activeUserSignal = userSignal;
+                    activeUserSignalListener = onAbort;
+                }
+            }
+            opts.signal = controller.signal;
+            return opts;
+        }
 
         function destroyViewer(viewer) {
             if (viewer && typeof viewer.destroy === 'function') {
@@ -65,7 +105,7 @@ export default defineComponent({
 
         function getPptxData(src) {
             if (typeof src === 'string') {
-                return fetch(src, normalizeFetchOptions(props.requestOptions)).then(response => {
+                return fetch(src, buildFetchOptions()).then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
                     }
@@ -87,12 +127,14 @@ export default defineComponent({
             return Promise.reject(new Error('不支持的 src 格式'));
         }
 
-        async function renderArrayBuffer(arrayBuffer, currentId) {
+        async function renderArrayBuffer(arrayBuffer, currentId, sourceRef) {
             if (isUnmounted || currentId !== renderId || !rootRef.value) {
                 return;
             }
             const stageEl = document.createElement('div');
             let viewer = null;
+            let didRender = false;
+            let renderedPptx;
             try {
                 viewer = createViewer(stageEl);
                 const pptx = await viewer.preview(arrayBuffer);
@@ -105,27 +147,40 @@ export default defineComponent({
                 while (stageEl.firstChild) {
                     rootRef.value.appendChild(stageEl.firstChild);
                 }
+                if (viewer && typeof viewer === 'object') {
+                    viewer.dom = rootRef.value;
+                }
                 pptxViewer = viewer;
                 fileData = arrayBuffer;
-                emit('rendered', pptx);
+                fileDataSrc = sourceRef;
+                renderedPptx = pptx;
+                didRender = true;
             } catch (e) {
                 destroyViewer(viewer);
                 if (!isUnmounted && currentId === renderId) {
                     destroyViewer(pptxViewer);
                     pptxViewer = null;
                     fileData = null;
+                    fileDataSrc = null;
                     if (rootRef.value) {
                         rootRef.value.innerHTML = '';
                     }
                     emit('error', e);
                 }
             }
+            if (didRender && !isUnmounted && currentId === renderId) {
+                emit('rendered', renderedPptx);
+            }
         }
 
         function preview() {
+            abortActiveRequest();
             if (!props.src) {
                 ++renderId;
+                isLoading = false;
+                activeLoadPromise = null;
                 fileData = null;
+                fileDataSrc = null;
                 destroyViewer(pptxViewer);
                 pptxViewer = null;
                 if (rootRef.value) {
@@ -134,22 +189,32 @@ export default defineComponent({
                 return Promise.resolve();
             }
             const currentId = ++renderId;
-            return getPptxData(props.src).then(arrayBuffer => {
+            const currentSrc = props.src;
+            isLoading = true;
+            const loadPromise = getPptxData(currentSrc).then(arrayBuffer => {
                 if (isUnmounted || currentId !== renderId || !rootRef.value) {
                     return;
                 }
-                return renderArrayBuffer(arrayBuffer, currentId);
+                return renderArrayBuffer(arrayBuffer, currentId, currentSrc);
             }).catch(e => {
                 if (!isUnmounted && currentId === renderId) {
                     destroyViewer(pptxViewer);
                     pptxViewer = null;
                     fileData = null;
+                    fileDataSrc = null;
                     if (rootRef.value) {
                         rootRef.value.innerHTML = '';
                     }
                     emit('error', e);
                 }
+            }).finally(() => {
+                if (currentId === renderId) {
+                    isLoading = false;
+                    activeLoadPromise = null;
+                }
             });
+            activeLoadPromise = loadPromise;
+            return loadPromise;
         }
 
         function rerender() {
@@ -159,15 +224,24 @@ export default defineComponent({
             if (!props.src) {
                 return preview();
             }
-            if (fileData) {
+            if (isLoading && activeLoadPromise) {
+                return activeLoadPromise;
+            }
+            if (fileData && fileDataSrc === props.src) {
                 const currentId = ++renderId;
-                return renderArrayBuffer(fileData, currentId);
+                return renderArrayBuffer(fileData, currentId, fileDataSrc);
             }
             return preview();
         }
 
         function save(fileName) {
-            downloadFile(fileName || `abner-vue-office-pptx-${new Date().getTime()}.pptx`, fileData);
+            Promise.resolve(
+                downloadFile(fileName || `abner-vue-office-pptx-${new Date().getTime()}.pptx`, fileData)
+            ).catch(e => {
+                if (!isUnmounted) {
+                    emit('error', e);
+                }
+            });
         }
 
         onMounted(() => {
@@ -178,13 +252,17 @@ export default defineComponent({
 
         onBeforeUnmount(() => {
             isUnmounted = true;
+            isLoading = false;
+            activeLoadPromise = null;
             ++renderId;
+            abortActiveRequest();
             destroyViewer(pptxViewer);
             if (rootRef.value) {
                 rootRef.value.innerHTML = '';
             }
             pptxViewer = null;
             fileData = null;
+            fileDataSrc = null;
         });
 
         watch(() => props.src, () => {
@@ -204,9 +282,7 @@ export default defineComponent({
 </script>
 
 <template>
-    <div class="abner-vue-office-pptx">
+    <div class="abner-vue-office-pptx" style="height: 100%;">
         <div class="abner-vue-office-pptx-main" ref="rootRef" style="width:100%; height: 100%;"></div>
     </div>
 </template>
-<style lang="less">
-</style>

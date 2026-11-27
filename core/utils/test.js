@@ -27,8 +27,11 @@ export function isTest() {
     }
     if (!location.search && !location.hash && typeof location.href === 'string') {
         const qIndex = location.href.indexOf('?');
-        if (qIndex !== -1 && hasTruthyTestParam(location.href.slice(qIndex + 1))) {
-            return true;
+        if (qIndex !== -1) {
+            const queryPart = location.href.slice(qIndex + 1).split('#')[0];
+            if (hasTruthyTestParam(queryPart)) {
+                return true;
+            }
         }
     }
     return false;

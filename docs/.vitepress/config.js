@@ -27,7 +27,7 @@ export default defineConfig({
           items: [
             { text: '快速上手', link: '/guide/' },
             { text: 'docx文件预览', link: '/guide/preview-docx' },
-            { text: 'xlsx文件预览', link: '/guide/preview-xlsx' },
+            { text: 'xlsx/xls文件预览', link: '/guide/preview-xlsx' },
             { text: 'pdf文件预览', link: '/guide/preview-pdf' },
             { text: 'pptx文件预览', link: '/guide/preview-pptx' },
             { text: '非Vue框架进行文件预览', link: '/guide/js-preview' },

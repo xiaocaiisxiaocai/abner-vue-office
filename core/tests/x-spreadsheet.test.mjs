@@ -18,7 +18,9 @@ const { Merges } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core
 const helperMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/helper.js');
 const { Rows } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/row.js', {
     helper: helperMod,
-    expr2expr: alphabetMod.expr2expr
+    expr2expr: alphabetMod.expr2expr,
+    expr2xy: alphabetMod.expr2xy,
+    stringAt: alphabetMod.stringAt
 });
 const { Cols } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/col.js', { helper: helperMod });
 const { formulam } = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/formula.js', {
@@ -372,7 +374,7 @@ test('x-spreadsheet sheet.js blocks read-only shortcuts and zero-delta scroll ev
     );
     assert.match(sheetSrc, /if \(data\.settings\.mode === 'read'\) return;/);
     assert.match(sheetSrc, /if \(this\.data\.settings\.mode === 'read'\) return;/);
-    assert.match(sheetSrc, /if \(temp === 0\) return;/);
+    assert.match(sheetSrc, /if \(temp === 0\)/);
 
     const { mockDocument, mockWindow, windowListeners } = createDomMocks();
     let triggerCount = 0;
@@ -411,7 +413,7 @@ test('x-spreadsheet sheet.js blocks read-only shortcuts and zero-delta scroll ev
     };
 
     const fnBody = sheetSrc
-        .slice(sheetSrc.indexOf('function overlayerMousescroll'), sheetSrc.indexOf('export default class Sheet'))
+        .slice(sheetSrc.indexOf('function getOverlayerOffset'), sheetSrc.indexOf('export default class Sheet'))
         .replace(/sheetReset\.call\(this\)/g, '(() => {})()');
 
     await runWithDomGlobals({ document: mockDocument, window: mockWindow }, () => {
