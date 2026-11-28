@@ -624,8 +624,14 @@ test('vue-pptx/src/main.vue covers off-DOM stageEl swap, race guard, sync rerend
         );
         sfc2.mount();
         await new Promise(r => setTimeout(r, 15));
-        assert.equal(seenOpts[0].width, 800);
+        assert.equal(seenOpts[0].width, 742);
         assert.equal(seenOpts[0].height, 600);
+        assert.equal(sfc2.setupResult.resolvedBackground.value, '#f2f3f5');
+
+        sfc2.setProp('options', { background: '#e5e7eb', width: 900 });
+        await new Promise(r => setTimeout(r, 180));
+        assert.equal(sfc2.setupResult.resolvedBackground.value, '#e5e7eb');
+        assert.equal(seenOpts[seenOpts.length - 1].width, 900);
 
         sfc2.setProp('src', new Blob([new TextEncoder().encode('from-blob')]));
         await new Promise(r => setTimeout(r, 15));
@@ -652,5 +658,108 @@ test('vue-pptx/src/main.vue covers off-DOM stageEl swap, race guard, sync rerend
         );
         prePptx.setProp('src', 'b.pptx');
         assert.equal(prePptx.emitted.length, 0);
+    });
+
+    // Responsive width (padding + scrollbar reserve), maxWidth capping/uncapping, normalizePreviewLayout, and ResizeObserver re-render
+    const resizeCallbacks = [];
+    let resizeDisconnected = false;
+    class MockResizeObserver {
+        constructor(cb) {
+            this.cb = cb;
+            resizeCallbacks.push(cb);
+        }
+        observe() {}
+        disconnect() {
+            resizeDisconnected = true;
+        }
+    }
+    let pptxFetchCount = 0;
+    const layoutOpts = [];
+    await runWithDomGlobals({
+        document: mockDocument,
+        ResizeObserver: MockResizeObserver,
+        fetch: async () => {
+            pptxFetchCount++;
+            return {
+                ok: true,
+                status: 200,
+                arrayBuffer: async () => new TextEncoder().encode('deck').buffer
+            };
+        }
+    }, async () => {
+        const containerEl = mockDocument.createElement('div');
+        containerEl.offsetWidth = 1920;
+        containerEl.clientWidth = 1920;
+        containerEl.clientHeight = 900;
+        containerEl.scrollHeight = 2000;
+        containerEl.scrollTop = 400;
+        const rootEl = mockDocument.createElement('div');
+        containerEl.appendChild(rootEl);
+
+        const sfcLayout = mountSfcScript(
+            'packages/vue-pptx/src/main.vue',
+            {
+                initPptxPreviewer: (el, opts) => {
+                    layoutOpts.push(opts);
+                    return {
+                        async preview() {
+                            const wrapper = mockDocument.createElement('div');
+                            wrapper.className = 'pptx-preview-wrapper';
+                            wrapper.style.width = `${opts.width}px`;
+                            wrapper.style.height = `${opts.height}px`;
+                            wrapper.style.overflowY = 'auto';
+                            wrapper.style.background = '#000';
+                            const s1 = mockDocument.createElement('div');
+                            s1.className = 'pptx-preview-slide-wrapper';
+                            const s2 = mockDocument.createElement('div');
+                            s2.className = 'pptx-preview-slide-wrapper';
+                            wrapper.appendChild(s1);
+                            wrapper.appendChild(s2);
+                            el.appendChild(wrapper);
+                            return { slideCount: 2 };
+                        },
+                        destroy() {}
+                    };
+                },
+                downloadFile: () => {},
+                normalizeFetchOptions: o => o || {}
+            },
+            { src: 'https://example.com/wide.pptx', options: {} },
+            { containerRef: containerEl, rootRef: rootEl }
+        );
+        sfcLayout.mount();
+        await new Promise(r => setTimeout(r, 20));
+        assert.equal(layoutOpts[0].width, 1200);
+        const wrapper = rootEl.querySelector('.pptx-preview-wrapper');
+        assert.ok(wrapper);
+        assert.equal(wrapper.style.width, '100%');
+        assert.equal(wrapper.style.minWidth, '1240px');
+        assert.equal(wrapper.style.height, 'auto');
+        assert.equal(wrapper.style.overflowX, 'visible');
+        assert.equal(wrapper.style.overflowY, 'visible');
+        assert.equal(wrapper.style.background, 'transparent');
+        assert.equal(wrapper.style.padding, '16px 20px');
+        const slides = rootEl.querySelectorAll('.pptx-preview-slide-wrapper');
+        assert.equal(slides[0].style.margin, '0 auto 16px');
+        assert.equal(slides[1].style.margin, '0 auto');
+        assert.equal(containerEl.scrollTop, 0);
+
+        // Uncap maxWidth via options.maxWidth: 0
+        sfcLayout.setProp('options', { maxWidth: 0 });
+        await new Promise(r => setTimeout(r, 180));
+        assert.equal(layoutOpts[layoutOpts.length - 1].width, 1920 - 40 - 18);
+
+        // Narrow resize via ResizeObserver re-renders from cached buffer without re-fetching
+        containerEl.scrollTop = 550;
+        containerEl.offsetWidth = 600;
+        containerEl.clientWidth = 600;
+        resizeCallbacks.forEach(cb => cb());
+        await new Promise(r => setTimeout(r, 180));
+        assert.equal(pptxFetchCount, 1);
+        assert.equal(layoutOpts[layoutOpts.length - 1].width, 600 - 24 - 18);
+        assert.equal(rootEl.querySelector('.pptx-preview-wrapper').style.padding, '16px 12px');
+
+        sfcLayout.unmount();
+        assert.equal(resizeDisconnected, true);
     });
 });

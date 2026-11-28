@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref } from 'vue';
 import AbnerVueOfficePptx from '../../packages/vue-pptx/index';
 import PreviewWrapper from '../common/PreviewWrapper.vue';
 import useLoading from '../hooks/useLoading.js';
@@ -15,27 +15,9 @@ function onError(e) {
 
 const defaultSrc = getStaticFileUrl('static/test-files/test.pptx');
 const pptxRef = ref();
-const calcPptxWidth = () => (typeof window !== 'undefined' ? Math.min(960, window.innerWidth) : 960);
-const pptxWidth = ref(calcPptxWidth());
 const requestOptions = {
     headers: {}
 };
-
-function handleResize() {
-    pptxWidth.value = calcPptxWidth();
-}
-
-onMounted(() => {
-    if (typeof window !== 'undefined') {
-        window.addEventListener('resize', handleResize);
-    }
-});
-
-onBeforeUnmount(() => {
-    if (typeof window !== 'undefined') {
-        window.removeEventListener('resize', handleResize);
-    }
-});
 </script>
 
 <template>
@@ -45,17 +27,14 @@ onBeforeUnmount(() => {
       :default-src="defaultSrc"
   >
     <template v-slot="slotProps">
-       <div style="flex: 1;height: 0; background: black">
-           <AbnerVueOfficePptx
-               ref="pptxRef"
-               :src="slotProps.src"
-               :request-options="requestOptions"
-               style="height: 100%"
-               :options="{width: pptxWidth}"
-               @rendered="onRendered"
-               @error="onError"
-           />
-       </div>
+       <AbnerVueOfficePptx
+           ref="pptxRef"
+           :src="slotProps.src"
+           :request-options="requestOptions"
+           style="flex: 1;height: 0"
+           @rendered="onRendered"
+           @error="onError"
+       />
     </template>
   </PreviewWrapper>
 </template>

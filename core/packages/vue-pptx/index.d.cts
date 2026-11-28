@@ -14,6 +14,8 @@ declare namespace AbnerVueOfficePptx {
         renderer?: string;
         width?: number;
         height?: number;
+        maxWidth?: number;
+        background?: string;
         [key: string]: any;
     }
 

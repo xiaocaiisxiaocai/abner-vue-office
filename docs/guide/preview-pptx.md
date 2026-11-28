@@ -29,8 +29,10 @@ export default {
     data() {
         return {
             options: {
-                width: 960, // 可不传，默认取容器宽度或 960
-                height: 540 // 可不传，默认取容器高度或 540
+                // width: 960,      // 可选：指定幻灯片渲染宽度（默认自动适配容器宽度，且预留内边距与滚动条空间）
+                // height: 540,     // 可选：指定视口高度（默认自动适配容器高度）
+                maxWidth: 1200,     // 可选：自适应最大幻灯片宽度，默认 1200（设为 0 则不限上限）
+                background: '#f2f3f5' // 可选：预览区背景色，默认 '#f2f3f5'
             },
             pptx: 'https://your-domain.com/test.pptx' // 设置文档地址
         }
