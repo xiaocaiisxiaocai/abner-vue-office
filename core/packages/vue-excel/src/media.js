@@ -58,7 +58,10 @@ const clipHeight = 24; //顶部序号行高
 const defaultColWidth = 80;
 const defaultRowHeight = 24;
 
-function getColWidth(sheet, index, widthOffset = 0) {
+function getColWidth(sheet, index, widthOffset = 0, liveData = null) {
+    if (liveData && liveData.cols && typeof liveData.cols.getWidth === 'function') {
+        return liveData.cols.getWidth(index);
+    }
     const col = sheet?._columns?.[index];
     if (col?._hidden || col?.width === 0) {
         return 0;
@@ -67,7 +70,10 @@ function getColWidth(sheet, index, widthOffset = 0) {
     return Math.max(1, baseWidth + (widthOffset || 0));
 }
 
-function getRowHeight(sheet, index, heightOffset = 0) {
+function getRowHeight(sheet, index, heightOffset = 0, liveData = null) {
+    if (liveData && liveData.rows && typeof liveData.rows.getHeight === 'function') {
+        return liveData.rows.getHeight(index);
+    }
     const row = sheet?._rows?.[index];
     if (row?._hidden || row?.height === 0) {
         return 0;
@@ -95,17 +101,19 @@ export function getImageMimeType(extension) {
 
 export function calcPosition(sheet, range, offset, options) {
     const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-    const { widthOffset, heightOffset } = options || {};
+    const { widthOffset, heightOffset, sheetData: liveData } = options || {};
     const { tl, br, ext } = range || {};
     const { nativeCol = 0, nativeColOff = 0, nativeRow = 0, nativeRowOff = 0 } = tl || {};
+    const headerW = (liveData && liveData.cols && typeof liveData.cols.indexWidth === 'number') ? liveData.cols.indexWidth : clipWidth;
+    const headerH = (liveData && liveData.rows && typeof liveData.rows.height === 'number') ? liveData.rows.height : clipHeight;
 
-    let basicX = clipWidth;
-    let basicY = clipHeight;
+    let basicX = headerW;
+    let basicY = headerH;
     for (let i = 0; i < nativeCol; i++) {
-        basicX += getColWidth(sheet, i, widthOffset);
+        basicX += getColWidth(sheet, i, widthOffset, liveData);
     }
     for (let i = 0; i < nativeRow; i++) {
-        basicY += getRowHeight(sheet, i, heightOffset);
+        basicY += getRowHeight(sheet, i, heightOffset, liveData);
     }
 
     const {
@@ -115,10 +123,10 @@ export function calcPosition(sheet, range, offset, options) {
         nativeRowOff: nativeRowOffEnd = 0
     } = br || {};
 
-    const startColW = getColWidth(sheet, nativeCol, widthOffset);
-    const startRowH = getRowHeight(sheet, nativeRow, heightOffset);
-    const endColW = getColWidth(sheet, nativeColEnd, widthOffset);
-    const endRowH = getRowHeight(sheet, nativeRowEnd, heightOffset);
+    const startColW = getColWidth(sheet, nativeCol, widthOffset, liveData);
+    const startRowH = getRowHeight(sheet, nativeRow, heightOffset, liveData);
+    const endColW = getColWidth(sheet, nativeColEnd, widthOffset, liveData);
+    const endRowH = getRowHeight(sheet, nativeRowEnd, heightOffset, liveData);
 
     const sameColAnchor = Boolean(br) && nativeCol === nativeColEnd;
     const sameRowAnchor = Boolean(br) && nativeRow === nativeRowEnd;
@@ -143,7 +151,7 @@ export function calcPosition(sheet, range, offset, options) {
             const endColOffPt = Math.min(Math.max(0, nativeColOffEnd / 12700), endColW);
             width = Math.max(0, startColW - startColOffPt);
             for (let i = nativeCol + 1; i < nativeColEnd; i++) {
-                width += getColWidth(sheet, i, widthOffset);
+                width += getColWidth(sheet, i, widthOffset, liveData);
             }
             width += endColOffPt;
         }
@@ -161,7 +169,7 @@ export function calcPosition(sheet, range, offset, options) {
             const endRowOffPt = Math.min(Math.max(0, nativeRowOffEnd / 12700), endRowH);
             height = Math.max(0, startRowH - startRowOffPt);
             for (let i = nativeRow + 1; i < nativeRowEnd; i++) {
-                height += getRowHeight(sheet, i, heightOffset);
+                height += getRowHeight(sheet, i, heightOffset, liveData);
             }
             height += endRowOffPt;
         }
@@ -172,20 +180,25 @@ export function calcPosition(sheet, range, offset, options) {
     const frozenView = Array.isArray(sheet && sheet.views)
         ? sheet.views.find(v => v && v.state === 'frozen')
         : null;
-    const freezeCol = frozenView ? (frozenView.xSplit || 0) : 0;
-    const freezeRow = frozenView ? (frozenView.ySplit || 0) : 0;
+    const freezeCol = (liveData && Array.isArray(liveData.freeze))
+        ? (liveData.freeze[1] || 0)
+        : (frozenView ? (frozenView.xSplit || 0) : 0);
+    const freezeRow = (liveData && Array.isArray(liveData.freeze))
+        ? (liveData.freeze[0] || 0)
+        : (frozenView ? (frozenView.ySplit || 0) : 0);
     let freezeWidth = 0;
     for (let i = 0; i < freezeCol; i++) {
-        freezeWidth += getColWidth(sheet, i, widthOffset);
+        freezeWidth += getColWidth(sheet, i, widthOffset, liveData);
     }
     let freezeHeight = 0;
     for (let i = 0; i < freezeRow; i++) {
-        freezeHeight += getRowHeight(sheet, i, heightOffset);
+        freezeHeight += getRowHeight(sheet, i, heightOffset, liveData);
     }
-    const scrollX = nativeCol < freezeCol ? 0 : (offset?.scroll?.x || 0);
-    const scrollY = nativeRow < freezeRow ? 0 : (offset?.scroll?.y || 0);
-    const minX = (clipWidth + (nativeCol >= freezeCol ? freezeWidth : 0)) * dpr;
-    const minY = (clipHeight + (nativeRow >= freezeRow ? freezeHeight : 0)) * dpr;
+    const scrollObj = (offset && offset.scroll) || (liveData && liveData.scroll) || null;
+    const scrollX = nativeCol < freezeCol ? 0 : (scrollObj?.x || 0);
+    const scrollY = nativeRow < freezeRow ? 0 : (scrollObj?.y || 0);
+    const minX = (headerW + (nativeCol >= freezeCol ? freezeWidth : 0)) * dpr;
+    const minY = (headerH + (nativeRow >= freezeRow ? freezeHeight : 0)) * dpr;
 
     return {
         x: (x - scrollX) * dpr,

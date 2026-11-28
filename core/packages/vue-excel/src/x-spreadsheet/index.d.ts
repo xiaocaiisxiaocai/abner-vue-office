@@ -5,8 +5,21 @@ export interface ExtendToolbarOption {
   onClick?: (data: SheetData, dataProxy: any) => void;
 }
 
+export interface AutoFitOptions {
+  minColWidth?: number;
+  maxColWidth?: number;
+  minRowHeight?: number;
+  maxRowHeight?: number;
+  allSheets?: boolean;
+}
+
 export interface Options {
   mode?: 'edit' | 'read';
+  resizable?: boolean;
+  autoFitMinColWidth?: number;
+  autoFitMaxColWidth?: number;
+  autoFitMinRowHeight?: number;
+  autoFitMaxRowHeight?: number;
   evalPaused?: boolean;
   showToolbar?: boolean;
   showGrid?: boolean;
@@ -166,6 +179,11 @@ export default class Spreadsheet {
   loadData(data: SheetData | SheetData[]): this;
   getData(): SheetData[];
   reRender(): this;
+  autoFitCol(colIndex: number, opts?: AutoFitOptions): this;
+  autoFitAllCols(opts?: AutoFitOptions): this;
+  autoFitRow(rowIndex: number, opts?: AutoFitOptions): this;
+  autoFitAllRows(opts?: AutoFitOptions): this;
+  autoFitAll(opts?: AutoFitOptions): this;
   validate(): boolean;
   change(callback: (json: SheetData | undefined) => void): this;
   destroy(): void;

@@ -11,6 +11,7 @@ import { Validations } from './validation';
 import { CellRange } from './cell_range';
 import { expr2xy, xy2expr } from './alphabet';
 import { t } from '../locale/locale';
+import { computeAutoFitCols, computeAutoFitRows } from './autofit';
 
 // private methods
 /*
@@ -68,6 +69,7 @@ import { t } from '../locale/locale';
  */
 const defaultSettings = {
   mode: 'edit', // edit | read
+  resizable: true,
   view: {
     height: () => (typeof document !== 'undefined' && document.documentElement ? document.documentElement.clientHeight : 0),
     width: () => (typeof document !== 'undefined' && document.documentElement ? document.documentElement.clientWidth : 0),
@@ -399,6 +401,7 @@ export default class DataProxy {
     this.validations = new Validations();
     this.hyperlinks = {};
     this.comments = {};
+    this.media = [];
     // save data end
 
     // don't save object
@@ -678,13 +681,22 @@ export default class DataProxy {
     } = selector.range;
     const cri = selector.ri;
     const cci = selector.ci;
-    let [nri, nci] = [ri, ci];
-    if (ri < 0) nri = rows.len - 1;
-    if (ci < 0) nci = cols.len - 1;
-    if (nri > cri) [sri, eri] = [cri, nri];
-    else [sri, eri] = [nri, cri];
-    if (nci > cci) [sci, eci] = [cci, nci];
-    else [sci, eci] = [nci, cci];
+    if (ri < 0) {
+      sri = 0;
+      eri = Math.max(0, rows.len - 1);
+    } else if (ri > cri) {
+      [sri, eri] = [cri, ri];
+    } else {
+      [sri, eri] = [ri, cri];
+    }
+    if (ci < 0) {
+      sci = 0;
+      eci = Math.max(0, cols.len - 1);
+    } else if (ci > cci) {
+      [sci, eci] = [cci, ci];
+    } else {
+      [sci, eci] = [ci, cci];
+    }
     selector.range = merges.union(new CellRange(
       sri, sci, eri, eci,
     ));
@@ -1734,6 +1746,7 @@ export default class DataProxy {
     if (!Object.prototype.hasOwnProperty.call(d, 'validations')) this.validations.setData([]);
     if (!Object.prototype.hasOwnProperty.call(d, 'hyperlinks')) this.hyperlinks = {};
     if (!Object.prototype.hasOwnProperty.call(d, 'comments')) this.comments = {};
+    if (!Object.prototype.hasOwnProperty.call(d, 'media')) this.media = [];
     Object.keys(d).forEach((property) => {
       if (property === 'merges' || property === 'rows'
         || property === 'cols' || property === 'validations') {
@@ -1759,6 +1772,8 @@ export default class DataProxy {
         if (typeof d.name === 'string' && d.name.trim()) {
           this.name = d.name;
         }
+      } else if (property === 'media') {
+        this.media = Array.isArray(d.media) ? helper.cloneDeep(d.media) : [];
       } else if ((property === 'hyperlinks' || property === 'comments') && d[property] !== undefined) {
         this[property] = d[property] && typeof d[property] === 'object' ? helper.cloneDeep(d[property]) : {};
       }
@@ -1801,6 +1816,82 @@ export default class DataProxy {
       });
     });
     return this;
+  }
+
+  autoFitCols(startCi = 0, endCi = null, opts = {}) {
+    const widths = computeAutoFitCols(this, startCi, endCi, opts);
+    const keys = Object.keys(widths);
+    if (keys.length === 0) return {};
+    const changed = [];
+    for (let i = 0; i < keys.length; i += 1) {
+      const ci = Number(keys[i]);
+      const nextW = widths[ci];
+      if (this.cols.getWidth(ci) !== nextW) {
+        changed.push([ci, nextW]);
+      }
+    }
+    if (changed.length > 0) {
+      const apply = () => {
+        changed.forEach(([ci, w]) => {
+          this.cols.setWidth(ci, w);
+        });
+      };
+      if (this.settings && this.settings.mode !== 'read') {
+        this.changeData(apply);
+      } else {
+        apply();
+      }
+    }
+    return widths;
+  }
+
+  autoFitCol(ci, opts = {}) {
+    if (typeof ci !== 'number' || !Number.isInteger(ci) || ci < 0 || ci >= this.cols.len) {
+      return null;
+    }
+    const widths = this.autoFitCols(ci, ci, opts);
+    return widths[ci] !== undefined ? widths[ci] : null;
+  }
+
+  autoFitRows(startRi = 0, endRi = null, opts = {}) {
+    const heights = computeAutoFitRows(this, startRi, endRi, opts);
+    const keys = Object.keys(heights);
+    if (keys.length === 0) return {};
+    const changed = [];
+    for (let i = 0; i < keys.length; i += 1) {
+      const ri = Number(keys[i]);
+      const nextH = heights[ri];
+      if (this.rows.getHeight(ri) !== nextH) {
+        changed.push([ri, nextH]);
+      }
+    }
+    if (changed.length > 0) {
+      const apply = () => {
+        changed.forEach(([ri, h]) => {
+          this.rows.setHeight(ri, h);
+        });
+      };
+      if (this.settings && this.settings.mode !== 'read') {
+        this.changeData(apply);
+      } else {
+        apply();
+      }
+    }
+    return heights;
+  }
+
+  autoFitRow(ri, opts = {}) {
+    if (typeof ri !== 'number' || !Number.isInteger(ri) || ri < 0 || ri >= this.rows.len) {
+      return null;
+    }
+    const heights = this.autoFitRows(ri, ri, opts);
+    return heights[ri] !== undefined ? heights[ri] : null;
+  }
+
+  autoFitAll(opts = {}) {
+    const cols = this.autoFitCols(0, null, opts);
+    const rows = this.autoFitRows(0, null, opts);
+    return { cols, rows };
   }
 
   getData() {

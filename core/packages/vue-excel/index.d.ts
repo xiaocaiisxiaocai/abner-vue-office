@@ -25,6 +25,14 @@ export interface ExcelCellsEvent {
     endColumnIndex: number;
 }
 
+export interface ExcelAutoFitOptions {
+    minColWidth?: number;
+    maxColWidth?: number;
+    minRowHeight?: number;
+    maxRowHeight?: number;
+    allSheets?: boolean;
+}
+
 export interface ExcelOptions {
     xls?: boolean;
     minColLength?: number;
@@ -32,6 +40,14 @@ export interface ExcelOptions {
     widthOffset?: number;
     heightOffset?: number;
     showContextmenu?: boolean;
+    resizable?: boolean;
+    autoFit?: boolean;
+    autoFitCol?: boolean;
+    autoFitRow?: boolean;
+    autoFitMinColWidth?: number;
+    autoFitMaxColWidth?: number;
+    autoFitMinRowHeight?: number;
+    autoFitMaxRowHeight?: number;
     beforeTransformData?: (workbookData: any) => any;
     transformData?: (workbookData: any) => any;
     [key: string]: any;
@@ -56,6 +72,11 @@ export interface ExcelProps {
 export interface AbnerVueOfficeExcelInstance {
     $props: ExcelProps;
     save: (fileName?: string) => void;
+    autoFitCol: (colIndex: number, options?: ExcelAutoFitOptions) => void;
+    autoFitAllCols: (options?: ExcelAutoFitOptions) => void;
+    autoFitRow: (rowIndex: number, options?: ExcelAutoFitOptions) => void;
+    autoFitAllRows: (options?: ExcelAutoFitOptions) => void;
+    autoFitAll: (options?: ExcelAutoFitOptions) => void;
 }
 
 export interface AbnerVueOfficeExcelComponent {

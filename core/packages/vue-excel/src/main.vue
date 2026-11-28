@@ -9,8 +9,21 @@ import { download as downloadFile } from '../../../utils/url';
 
 const defaultOptions = {
     xls: false,
-    minColLength: 20
+    minColLength: 20,
+    resizable: true
 };
+
+function buildAutoFitOptions(opts, override) {
+    const base = opts || {};
+    const extra = override || {};
+    return {
+        minColWidth: extra.minColWidth !== undefined ? extra.minColWidth : base.autoFitMinColWidth,
+        maxColWidth: extra.maxColWidth !== undefined ? extra.maxColWidth : base.autoFitMaxColWidth,
+        minRowHeight: extra.minRowHeight !== undefined ? extra.minRowHeight : base.autoFitMinRowHeight,
+        maxRowHeight: extra.maxRowHeight !== undefined ? extra.maxRowHeight : base.autoFitMaxRowHeight,
+        allSheets: Boolean(extra.allSheets)
+    };
+}
 
 function mergeExcelOptions(base, override) {
     const merged = { ...base };
@@ -172,6 +185,26 @@ export default defineComponent({
                 clearCache(ctx);
                 renderImageDebounce && renderImageDebounce.cancel();
                 loadDataInternal(workbookData);
+                if (xs && Array.isArray(xs.datas)) {
+                    xs.datas.forEach(d => {
+                        if (d && d.settings) {
+                            d.settings.resizable = opts.resizable !== false;
+                            d.settings.autoFitMinColWidth = opts.autoFitMinColWidth;
+                            d.settings.autoFitMaxColWidth = opts.autoFitMaxColWidth;
+                            d.settings.autoFitMinRowHeight = opts.autoFitMinRowHeight;
+                            d.settings.autoFitMaxRowHeight = opts.autoFitMaxRowHeight;
+                        }
+                    });
+                }
+                if (xs) {
+                    const fitOpts = { ...buildAutoFitOptions(opts), allSheets: true };
+                    if (opts.autoFit || opts.autoFitCol) {
+                        xs.autoFitAllCols(fitOpts);
+                    }
+                    if (opts.autoFit || opts.autoFitRow) {
+                        xs.autoFitAllRows(fitOpts);
+                    }
+                }
                 return true;
             }).then((didRender) => {
                 if (didRender && !isUnmounted && currentId === renderId) {
@@ -226,9 +259,14 @@ export default defineComponent({
             if (isUnmounted || !rootRef.value) {
                 return;
             }
-            const opts = props.options || {};
+            const opts = mergeExcelOptions(defaultOptions, props.options);
             xs = new Spreadsheet(rootRef.value, {
                 mode: 'read',
+                resizable: opts.resizable !== false,
+                autoFitMinColWidth: opts.autoFitMinColWidth,
+                autoFitMaxColWidth: opts.autoFitMaxColWidth,
+                autoFitMinRowHeight: opts.autoFitMinRowHeight,
+                autoFitMaxRowHeight: opts.autoFitMaxRowHeight,
                 evalPaused: true,
                 showToolbar: false,
                 showContextmenu: opts.showContextmenu || false,
@@ -244,7 +282,7 @@ export default defineComponent({
                     len: 26,
                     width: 80,
                     indexWidth: 60,
-                    minWidth: 60,
+                    minWidth: 24,
                 },
                 autoFocus: false
             }).loadData({});
@@ -296,12 +334,13 @@ export default defineComponent({
                 const targetRenderId = renderId;
                 const targetSheetIndex = sheetIndex;
                 const targetTableVersion = tableRenderVersion;
+                const liveSheetData = xs && xs.sheet ? xs.sheet.data : null;
                 renderImage(
                     ctx,
                     mediasSource,
                     workbookDataSource._worksheets[targetSheetIndex],
-                    offset,
-                    renderedOptions,
+                    offset || (liveSheetData ? { scroll: liveSheetData.scroll } : null),
+                    { ...renderedOptions, sheetData: liveSheetData },
                     () => !isUnmounted && targetRenderId === renderId && targetSheetIndex === sheetIndex && targetTableVersion === tableRenderVersion
                 );
             }, 200, {
@@ -408,6 +447,61 @@ export default defineComponent({
             }
         });
 
+        watch(() => props.options && props.options.resizable, (resizable) => {
+            const allow = resizable !== false;
+            if (xs) {
+                if (xs.options) {
+                    xs.options.resizable = allow;
+                }
+                if (Array.isArray(xs.datas)) {
+                    xs.datas.forEach(d => {
+                        if (d && d.settings) {
+                            d.settings.resizable = allow;
+                        }
+                    });
+                }
+                if (!allow && xs.sheet) {
+                    xs.sheet.rowResizer && xs.sheet.rowResizer.hide();
+                    xs.sheet.colResizer && xs.sheet.colResizer.hide();
+                }
+            }
+        });
+
+        function autoFitCol(colIndex, fitOptions) {
+            if (!xs || typeof xs.autoFitCol !== 'function') {
+                return;
+            }
+            xs.autoFitCol(colIndex, buildAutoFitOptions(renderedOptions, fitOptions));
+        }
+
+        function autoFitAllCols(fitOptions) {
+            if (!xs || typeof xs.autoFitAllCols !== 'function') {
+                return;
+            }
+            xs.autoFitAllCols(buildAutoFitOptions(renderedOptions, fitOptions));
+        }
+
+        function autoFitRow(rowIndex, fitOptions) {
+            if (!xs || typeof xs.autoFitRow !== 'function') {
+                return;
+            }
+            xs.autoFitRow(rowIndex, buildAutoFitOptions(renderedOptions, fitOptions));
+        }
+
+        function autoFitAllRows(fitOptions) {
+            if (!xs || typeof xs.autoFitAllRows !== 'function') {
+                return;
+            }
+            xs.autoFitAllRows(buildAutoFitOptions(renderedOptions, fitOptions));
+        }
+
+        function autoFitAll(fitOptions) {
+            if (!xs || typeof xs.autoFitAll !== 'function') {
+                return;
+            }
+            xs.autoFitAll(buildAutoFitOptions(renderedOptions, fitOptions));
+        }
+
         function save(fileName) {
             const ext = props.options && props.options.xls ? 'xls' : 'xlsx';
             Promise.resolve(
@@ -422,7 +516,12 @@ export default defineComponent({
         return {
             wrapperRef,
             rootRef,
-            save
+            save,
+            autoFitCol,
+            autoFitAllCols,
+            autoFitRow,
+            autoFitAllRows,
+            autoFitAll
         };
     }
 });

@@ -251,12 +251,29 @@
   .@{css-prefix}-resizer-hover {
     background-color: rgba(75, 137, 255, .25);
   }
+  .@{css-prefix}-resizer-hover:nth-child(2) {
+    position: relative;
+    background-color: transparent;
+    &:hover {
+      background-color: rgba(75, 137, 255, .28);
+    }
+    &:after {
+      content: '';
+      position: absolute;
+    }
+  }
   .@{css-prefix}-resizer-line {
     position: absolute;
   }
 
   &.horizontal {
     cursor: row-resize;
+    .@{css-prefix}-resizer-hover:nth-child(2):after {
+      left: 0;
+      right: 0;
+      bottom: -4px;
+      height: 4px;
+    }
     .@{css-prefix}-resizer-line {
       border-bottom: 2px dashed rgb(75, 137, 255);
       left: 0;
@@ -265,6 +282,12 @@
   }
   &.vertical {
     cursor: col-resize;
+    .@{css-prefix}-resizer-hover:nth-child(2):after {
+      top: 0;
+      bottom: 0;
+      right: -4px;
+      width: 4px;
+    }
     .@{css-prefix}-resizer-line {
       border-right: 2px dashed rgb(75, 137, 255);
       top: 0;

@@ -84,20 +84,36 @@ function scrollbarMove() {
 }
 
 function selectorSet(multiple, ri, ci, indexesUpdated = true, moving = false) {
-  if (ri === -1 && ci === -1) return;
+  if (multiple && ri === -1 && ci === -1) return;
   const {
     selector, data,
     contextMenu, toolbar,
   } = this;
   const nri = data.sortedRowMap && data.sortedRowMap.has(ri) ? data.sortedRowMap.get(ri) : ri;
   const cell = data.getCell(nri, ci);
+  const prevRange = selector.range
+    ? [selector.range.sri, selector.range.sci, selector.range.eri, selector.range.eci]
+    : null;
   if (multiple) {
     selector.setEnd(ri, ci, moving);
     this.trigger('cells-selected', cell, selector.range);
   } else {
     // trigger click event
     selector.set(ri, ci, indexesUpdated);
-    this.trigger('cell-selected', cell, ri, ci);
+    if (ri === -1 && ci === -1) {
+      this.trigger('cells-selected', cell, selector.range);
+    } else {
+      this.trigger('cell-selected', cell, ri, ci);
+    }
+  }
+  const nextRange = selector.range;
+  const rangeChanged = !prevRange || !nextRange
+    || prevRange[0] !== nextRange.sri
+    || prevRange[1] !== nextRange.sci
+    || prevRange[2] !== nextRange.eri
+    || prevRange[3] !== nextRange.eci;
+  if ((!moving || rangeChanged) && this.table && typeof this.table.render === 'function') {
+    this.table.render();
   }
   if (data.settings && data.settings.mode === 'read') {
     contextMenu.setMode('read');
@@ -152,6 +168,10 @@ function selectorMove(multiple, direction) {
   scrollbarMove.call(this);
 }
 
+function isResizeAllowed(data) {
+  return Boolean(data && data.settings && data.settings.resizable !== false);
+}
+
 // private methods
 function overlayerMousemove(evt) {
   if (evt.buttons !== 0) return;
@@ -159,11 +179,12 @@ function overlayerMousemove(evt) {
   const {
     rowResizer, colResizer, tableEl, data, overlayerEl,
   } = this;
-  if (data.settings.mode === 'read') {
+  if (!isResizeAllowed(data)) {
     rowResizer.hide();
     colResizer.hide();
     return;
   }
+  const isRead = data.settings && data.settings.mode === 'read';
   const { offsetX, offsetY } = getOverlayerOffset(overlayerEl, evt);
   const { rows, cols } = data;
   if (offsetX > cols.indexWidth && offsetY > rows.height) {
@@ -174,12 +195,25 @@ function overlayerMousemove(evt) {
   const tRect = tableEl.box();
   const cRect = data.getCellRectByXY(offsetX, offsetY);
   if (cRect.ri >= 0 && cRect.ci === -1) {
-    cRect.width = cols.indexWidth;
-    rowResizer.show(cRect, {
+    let targetRowRect = cRect;
+    const hasHiddenPrevRow = !isRead && rows.isHide(cRect.ri - 1);
+    if (!hasHiddenPrevRow && offsetY - cRect.top <= 4 && cRect.top > rows.height) {
+      const prevRect = data.getCellRectByXY(offsetX, cRect.top - 1);
+      if (
+        prevRect.ri >= 0
+        && prevRect.ri !== cRect.ri
+        && prevRect.ci === -1
+        && Math.abs((prevRect.top + prevRect.height) - cRect.top) <= 1
+      ) {
+        targetRowRect = prevRect;
+      }
+    }
+    targetRowRect.width = cols.indexWidth;
+    rowResizer.show(targetRowRect, {
       width: tRect.width,
     });
-    if (rows.isHide(cRect.ri - 1)) {
-      rowResizer.showUnhide(cRect.ri);
+    if (!isRead && rows.isHide(targetRowRect.ri - 1)) {
+      rowResizer.showUnhide(targetRowRect.ri);
     } else {
       rowResizer.hideUnhide();
     }
@@ -187,12 +221,25 @@ function overlayerMousemove(evt) {
     rowResizer.hide();
   }
   if (cRect.ri === -1 && cRect.ci >= 0) {
-    cRect.height = rows.height;
-    colResizer.show(cRect, {
+    let targetColRect = cRect;
+    const hasHiddenPrevCol = !isRead && cols.isHide(cRect.ci - 1);
+    if (!hasHiddenPrevCol && offsetX - cRect.left <= 4 && cRect.left > cols.indexWidth) {
+      const prevRect = data.getCellRectByXY(cRect.left - 1, offsetY);
+      if (
+        prevRect.ci >= 0
+        && prevRect.ci !== cRect.ci
+        && prevRect.ri === -1
+        && Math.abs((prevRect.left + prevRect.width) - cRect.left) <= 1
+      ) {
+        targetColRect = prevRect;
+      }
+    }
+    targetColRect.height = rows.height;
+    colResizer.show(targetColRect, {
       height: tRect.height,
     });
-    if (cols.isHide(cRect.ci - 1)) {
-      colResizer.showUnhide(cRect.ci);
+    if (!isRead && cols.isHide(targetColRect.ci - 1)) {
+      colResizer.showUnhide(targetColRect.ci);
     } else {
       colResizer.hideUnhide();
     }
@@ -472,7 +519,14 @@ function overlayerMousedown(evt) {
     }
   }
 
+  if (ri === -1 && ci === -1) {
+    selectorSet.call(this, false, -1, -1);
+    return;
+  }
+
   const startedOnCell = ri >= 0 && ci >= 0;
+  const startedOnColHeader = ri === -1 && ci >= 0;
+  const startedOnRowHeader = ri >= 0 && ci === -1;
   if (!evt.shiftKey) {
     if (isAutofillEl) {
       selector.showAutofill(ri, ci);
@@ -489,7 +543,13 @@ function overlayerMousedown(evt) {
         }
         const { offsetX: mx, offsetY: my } = getOverlayerOffset(overlayerEl, e);
         ({ ri, ci } = data.getCellRectByXY(mx, my));
-        if (startedOnCell && !isAutofillEl) {
+        if (startedOnColHeader && !isAutofillEl) {
+          ri = -1;
+          ci = Math.max(0, ci);
+        } else if (startedOnRowHeader && !isAutofillEl) {
+          ci = -1;
+          ri = Math.max(0, ri);
+        } else if (startedOnCell && !isAutofillEl) {
           ri = Math.max(0, ri);
           ci = Math.max(0, ci);
         }
@@ -517,7 +577,7 @@ function overlayerMousedown(evt) {
     }
   }
 
-  if (!isAutofillEl && evt.buttons === 1) {
+  if (!isAutofillEl && (evt.buttons === 1 || evt.button === 0)) {
     if (evt.shiftKey) {
       selectorSet.call(this, true, ri, ci);
     }
@@ -563,58 +623,75 @@ function horizontalScrollbarMove(distance) {
   });
 }
 
-function rowResizerFinished(cRect, distance) {
-  if (this.data.settings.mode === 'read') return;
-  const { ri } = cRect;
+function refreshAfterSizeChange() {
   const {
-    table, selector, data, toolbar,
+    table, selector, toolbar,
   } = this;
-  const { sri, eri } = selector.range;
-  data.changeData(() => {
-    if (ri >= sri && ri <= eri) {
-      for (let row = sri; row <= eri; row += 1) {
-        data.rows.setHeight(row, distance);
-      }
-    } else {
-      data.rows.setHeight(ri, distance);
-    }
-  });
-
   sheetFreeze.call(this);
   table.render();
   selector.resetAreaOffset();
   verticalScrollbarSet.call(this);
+  horizontalScrollbarSet.call(this);
   editorSetOffset.call(this);
   if (toolbar && typeof toolbar.reset === 'function') {
     toolbar.reset();
   }
 }
 
+function rowResizerFinished(cRect, distance) {
+  if (!isResizeAllowed(this.data)) return;
+  const { ri } = cRect;
+  const {
+    selector, data,
+  } = this;
+  const { range } = selector;
+  const { sri, eri } = range;
+  const isFullRowSel = range && range.sci === 0 && range.eci === data.cols.len - 1;
+  const apply = () => {
+    if (isFullRowSel && ri >= sri && ri <= eri) {
+      for (let row = sri; row <= eri; row += 1) {
+        if (!data.rows.isHide(row) && !(data.exceptRowSet && data.exceptRowSet.has(row))) {
+          data.rows.setHeight(row, distance);
+        }
+      }
+    } else {
+      data.rows.setHeight(ri, distance);
+    }
+  };
+  if (data.settings.mode !== 'read') {
+    data.changeData(apply);
+  } else {
+    apply();
+  }
+  refreshAfterSizeChange.call(this);
+}
+
 function colResizerFinished(cRect, distance) {
-  if (this.data.settings.mode === 'read') return;
+  if (!isResizeAllowed(this.data)) return;
   const { ci } = cRect;
   const {
-    table, selector, data, toolbar,
+    selector, data,
   } = this;
-  const { sci, eci } = selector.range;
-  data.changeData(() => {
-    if (ci >= sci && ci <= eci) {
+  const { range } = selector;
+  const { sci, eci } = range;
+  const isFullColSel = range && range.sri === 0 && range.eri === data.rows.len - 1;
+  const apply = () => {
+    if (isFullColSel && ci >= sci && ci <= eci) {
       for (let col = sci; col <= eci; col += 1) {
-        data.cols.setWidth(col, distance);
+        if (!data.cols.isHide(col)) {
+          data.cols.setWidth(col, distance);
+        }
       }
     } else {
       data.cols.setWidth(ci, distance);
     }
-  });
-
-  sheetFreeze.call(this);
-  table.render();
-  selector.resetAreaOffset();
-  horizontalScrollbarSet.call(this);
-  editorSetOffset.call(this);
-  if (toolbar && typeof toolbar.reset === 'function') {
-    toolbar.reset();
+  };
+  if (data.settings.mode !== 'read') {
+    data.changeData(apply);
+  } else {
+    apply();
   }
+  refreshAfterSizeChange.call(this);
 }
 
 function dataSetCellText(text, state = 'finished') {
@@ -770,7 +847,9 @@ function sheetInitEvents() {
         }
         evt.stopPropagation();
       } else if (evt.detail === 2 && (evt.button === undefined || evt.button === 0)) {
-        if (offsetX > this.data.cols.indexWidth && offsetY > this.data.rows.height) {
+        if (offsetX <= this.data.cols.indexWidth && offsetY <= this.data.rows.height) {
+          selectorSet.call(this, false, -1, -1);
+        } else if (offsetX > this.data.cols.indexWidth && offsetY > this.data.rows.height) {
           const hitRect = this.data.getCellRectByXY(offsetX, offsetY);
           const { autoFilter } = this.data;
           const onFilterBtn = autoFilter && autoFilter.includes(hitRect.ri, hitRect.ci)
@@ -819,6 +898,29 @@ function sheetInitEvents() {
   };
   colResizer.finishedFn = (cRect, distance) => {
     colResizerFinished.call(this, cRect, distance);
+  };
+  // resizer double-click auto-fit callback
+  rowResizer.autoFitFn = (cRect) => {
+    if (!isResizeAllowed(this.data) || !cRect || typeof cRect.ri !== 'number') return;
+    const { range } = this.selector;
+    const isFullRowSel = range && range.sci === 0 && range.eci === this.data.cols.len - 1;
+    if (isFullRowSel && cRect.ri >= range.sri && cRect.ri <= range.eri) {
+      this.data.autoFitRows(range.sri, range.eri);
+      refreshAfterSizeChange.call(this);
+    } else {
+      this.autoFitRow(cRect.ri);
+    }
+  };
+  colResizer.autoFitFn = (cRect) => {
+    if (!isResizeAllowed(this.data) || !cRect || typeof cRect.ci !== 'number') return;
+    const { range } = this.selector;
+    const isFullColSel = range && range.sri === 0 && range.eri === this.data.rows.len - 1;
+    if (isFullColSel && cRect.ci >= range.sci && cRect.ci <= range.eci) {
+      this.data.autoFitCols(range.sci, range.eci);
+      refreshAfterSizeChange.call(this);
+    } else {
+      this.autoFitCol(cRect.ci);
+    }
   };
   // resizer unhide callback
   rowResizer.unhideFn = (index) => {
@@ -885,7 +987,9 @@ function sheetInitEvents() {
     this.reload();
   };
   this._onWindowClick = (evt) => {
-    this.focusing = overlayerEl.contains(evt.target);
+    this.focusing = overlayerEl.contains(evt.target)
+      || Boolean(rowResizer && rowResizer.el && typeof rowResizer.el.contains === 'function' && rowResizer.el.contains(evt.target))
+      || Boolean(colResizer && colResizer.el && typeof colResizer.el.contains === 'function' && colResizer.el.contains(evt.target));
   };
   this._onWindowPaste = (evt) => {
     if (!this.focusing || this.data.settings.mode === 'read') return;
@@ -925,6 +1029,11 @@ function sheetInitEvents() {
     }
     if (ctrlKey || metaKey) {
       switch (keyCode) {
+        case 65:
+          // ctrl + a: select all
+          selectorSet.call(this, false, -1, -1);
+          evt.preventDefault();
+          break;
         case 90:
           // undo: ctrl + z | redo: ctrl + shift + z
           if (this.data.settings.mode !== 'read') {
@@ -1106,7 +1215,7 @@ export default class Sheet {
     // table
     this.tableEl = h('canvas', `${cssPrefix}-table`);
     // resizer
-    this.rowResizer = new Resizer(false, data.rows.height);
+    this.rowResizer = new Resizer(false, Math.min(data.rows.height || 24, 16));
     this.colResizer = new Resizer(true, data.cols.minWidth);
     // scrollbar
     this.verticalScrollbar = new Scrollbar(true);
@@ -1229,6 +1338,41 @@ export default class Sheet {
 
   reload() {
     sheetReset.call(this);
+    return this;
+  }
+
+  autoFitCol(ci, opts = {}) {
+    if (!this.data) return this;
+    this.data.autoFitCol(ci, opts);
+    refreshAfterSizeChange.call(this);
+    return this;
+  }
+
+  autoFitAllCols(opts = {}) {
+    if (!this.data) return this;
+    this.data.autoFitCols(0, null, opts);
+    refreshAfterSizeChange.call(this);
+    return this;
+  }
+
+  autoFitRow(ri, opts = {}) {
+    if (!this.data) return this;
+    this.data.autoFitRow(ri, opts);
+    refreshAfterSizeChange.call(this);
+    return this;
+  }
+
+  autoFitAllRows(opts = {}) {
+    if (!this.data) return this;
+    this.data.autoFitRows(0, null, opts);
+    refreshAfterSizeChange.call(this);
+    return this;
+  }
+
+  autoFitAll(opts = {}) {
+    if (!this.data) return this;
+    this.data.autoFitAll(opts);
+    refreshAfterSizeChange.call(this);
     return this;
   }
 

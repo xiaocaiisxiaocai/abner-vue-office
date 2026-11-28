@@ -851,6 +851,13 @@ export function loadXSpreadsheetStack() {
         xy2expr: alphabetMod.xy2expr,
         numberCalc: helperMod.numberCalc
     });
+    const autoFitMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/autofit.js', {
+        stringAt: alphabetMod.stringAt,
+        getFontSizePxByPt: fontMod.getFontSizePxByPt,
+        _cell: cellMod,
+        formulam,
+        formatm: formatMod.formatm
+    });
     const DataProxy = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/core/data_proxy.js', {
         Selector: CoreSelector,
         Scroll,
@@ -866,7 +873,9 @@ export function loadXSpreadsheetStack() {
         CellRange,
         expr2xy: alphabetMod.expr2xy,
         xy2expr: alphabetMod.xy2expr,
-        t
+        t,
+        computeAutoFitCols: autoFitMod.computeAutoFitCols,
+        computeAutoFitRows: autoFitMod.computeAutoFitRows
     });
 
     const eventMod = loadStrippedModule('packages/vue-excel/src/x-spreadsheet/component/event.js');
@@ -973,7 +982,7 @@ export function loadXSpreadsheetStack() {
     return {
         alphabetMod, CellRange, Merges, helperMod, Rows, shiftFormulaRefs, Cols, History, Clipboard, Scroll, CoreSelector,
         AutoFilter, enLocale, localeMod, t, tf, locale, Validator, Validations, fontMod, formatMod, formulas, formulam, baseFormulas,
-        cellMod, DataProxy, eventMod, Element, h, Icon, Button, tooltipMod, messageMod, Dropdown, ColorPalette, DropdownColor,
+        cellMod, autoFitMod, DataProxy, eventMod, Element, h, Icon, Button, tooltipMod, messageMod, Dropdown, ColorPalette, DropdownColor,
         DropdownAlign, DropdownFont, DropdownFontSize, DropdownFormat, DropdownFormula, DropdownLineType, BorderPalette,
         DropdownBorder, ContextMenu, Scrollbar, Item, IconItem, ToggleItem, DropdownItem, toolbarItems, Toolbar, Suggest,
         Calendar, Datepicker, Editor, FormInput, FormSelect, FormField, Modal, ModalValidation, SortFilter, Resizer, Selector,

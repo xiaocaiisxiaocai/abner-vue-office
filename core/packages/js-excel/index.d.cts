@@ -26,6 +26,14 @@ declare namespace abnerJsExcel {
         endColumnIndex: number;
     }
 
+    export interface ExcelAutoFitOptions {
+        minColWidth?: number;
+        maxColWidth?: number;
+        minRowHeight?: number;
+        maxRowHeight?: number;
+        allSheets?: boolean;
+    }
+
     export interface Options {
         xls?: boolean;
         minColLength?: number;
@@ -33,6 +41,14 @@ declare namespace abnerJsExcel {
         widthOffset?: number;
         heightOffset?: number;
         showContextmenu?: boolean;
+        resizable?: boolean;
+        autoFit?: boolean;
+        autoFitCol?: boolean;
+        autoFitRow?: boolean;
+        autoFitMinColWidth?: number;
+        autoFitMaxColWidth?: number;
+        autoFitMinRowHeight?: number;
+        autoFitMaxRowHeight?: number;
         beforeTransformData?: (workbookData: any) => any;
         transformData?: (workbookData: any) => any;
         switchSheet?: (sheetIndex: number) => void;
@@ -46,6 +62,11 @@ declare namespace abnerJsExcel {
         save: (fileName?: string) => void;
         setOptions: (options?: Options) => void;
         setRequestOptions: (requestOptions?: RequestOptions) => void;
+        autoFitCol: (colIndex: number, options?: ExcelAutoFitOptions) => void;
+        autoFitAllCols: (options?: ExcelAutoFitOptions) => void;
+        autoFitRow: (rowIndex: number, options?: ExcelAutoFitOptions) => void;
+        autoFitAllRows: (options?: ExcelAutoFitOptions) => void;
+        autoFitAll: (options?: ExcelAutoFitOptions) => void;
         destroy: () => void;
     }
 

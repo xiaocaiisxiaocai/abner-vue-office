@@ -153,6 +153,74 @@ class Spreadsheet {
     return this;
   }
 
+  autoFitCol(ci, opts = {}) {
+    if (this.sheet) {
+      this.sheet.autoFitCol(ci, opts);
+    }
+    return this;
+  }
+
+  autoFitAllCols(opts = {}) {
+    if (opts && opts.allSheets) {
+      this.datas.forEach((d) => {
+        if (d && typeof d.autoFitCols === 'function') {
+          d.autoFitCols(0, null, opts);
+        }
+      });
+      if (this.sheet && typeof this.sheet.reload === 'function') {
+        this.sheet.reload();
+      }
+      return this;
+    }
+    if (this.sheet) {
+      this.sheet.autoFitAllCols(opts);
+    }
+    return this;
+  }
+
+  autoFitRow(ri, opts = {}) {
+    if (this.sheet) {
+      this.sheet.autoFitRow(ri, opts);
+    }
+    return this;
+  }
+
+  autoFitAllRows(opts = {}) {
+    if (opts && opts.allSheets) {
+      this.datas.forEach((d) => {
+        if (d && typeof d.autoFitRows === 'function') {
+          d.autoFitRows(0, null, opts);
+        }
+      });
+      if (this.sheet && typeof this.sheet.reload === 'function') {
+        this.sheet.reload();
+      }
+      return this;
+    }
+    if (this.sheet) {
+      this.sheet.autoFitAllRows(opts);
+    }
+    return this;
+  }
+
+  autoFitAll(opts = {}) {
+    if (opts && opts.allSheets) {
+      this.datas.forEach((d) => {
+        if (d && typeof d.autoFitAll === 'function') {
+          d.autoFitAll(opts);
+        }
+      });
+      if (this.sheet && typeof this.sheet.reload === 'function') {
+        this.sheet.reload();
+      }
+      return this;
+    }
+    if (this.sheet) {
+      this.sheet.autoFitAll(opts);
+    }
+    return this;
+  }
+
   on(eventName, func) {
     if (this.sheet) {
       this.sheet.on(eventName, func);

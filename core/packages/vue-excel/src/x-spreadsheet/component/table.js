@@ -254,11 +254,55 @@ function renderFixedHeaders(type, viewRange, w, h, tx, ty) {
 }
 
 function renderFixedLeftTopCell(fw, fh) {
-  const { draw } = this;
+  const { draw, data } = this;
+  const range = data && data.selector ? data.selector.range : null;
+  const isAllSelected = Boolean(
+    range
+    && data.rows
+    && data.cols
+    && data.rows.len > 0
+    && data.cols.len > 0
+    && range.sri === 0
+    && range.sci === 0
+    && range.eri === data.rows.len - 1
+    && range.eci === data.cols.len - 1,
+  );
   draw.save();
   // left-top-cell
   draw.attr({ fillStyle: '#f4f5f8' })
     .fillRect(0, 0, fw, fh);
+  if (isAllSelected) {
+    draw.attr({ fillStyle: 'rgba(75, 137, 255, 0.12)' })
+      .fillRect(0, 0, fw, fh);
+  }
+  draw.attr({
+    lineWidth: thinLineWidth(),
+    strokeStyle: '#e6e6e6',
+  });
+  draw.line([fw, 0], [fw, fh]);
+  draw.line([0, fh], [fw, fh]);
+  // Excel-style Select-All bottom-right triangle
+  const { ctx } = draw;
+  const tri = Math.min(10, Math.floor(Math.min(fw, fh) * 0.45));
+  const pad = 3;
+  if (
+    tri >= 4
+    && fw > tri + pad * 2
+    && fh > tri + pad * 2
+    && ctx
+    && typeof ctx.moveTo === 'function'
+    && typeof ctx.lineTo === 'function'
+    && typeof ctx.closePath === 'function'
+    && typeof ctx.fill === 'function'
+  ) {
+    ctx.beginPath();
+    ctx.moveTo(npx(fw - pad), npx(fh - pad));
+    ctx.lineTo(npx(fw - pad), npx(fh - pad - tri));
+    ctx.lineTo(npx(fw - pad - tri), npx(fh - pad));
+    ctx.closePath();
+    ctx.fillStyle = isAllSelected ? '#4b89ff' : '#c5c8ce';
+    ctx.fill();
+  }
   draw.restore();
 }
 

@@ -137,11 +137,28 @@
 .x-spreadsheet-resizer .x-spreadsheet-resizer-hover {
   background-color: rgba(75, 137, 255, 0.25);
 }
+.x-spreadsheet-resizer .x-spreadsheet-resizer-hover:nth-child(2) {
+  position: relative;
+  background-color: transparent;
+}
+.x-spreadsheet-resizer .x-spreadsheet-resizer-hover:nth-child(2):hover {
+  background-color: rgba(75, 137, 255, 0.28);
+}
+.x-spreadsheet-resizer .x-spreadsheet-resizer-hover:nth-child(2):after {
+  content: '';
+  position: absolute;
+}
 .x-spreadsheet-resizer .x-spreadsheet-resizer-line {
   position: absolute;
 }
 .x-spreadsheet-resizer.horizontal {
   cursor: row-resize;
+}
+.x-spreadsheet-resizer.horizontal .x-spreadsheet-resizer-hover:nth-child(2):after {
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 4px;
 }
 .x-spreadsheet-resizer.horizontal .x-spreadsheet-resizer-line {
   border-bottom: 2px dashed #4b89ff;
@@ -150,6 +167,12 @@
 }
 .x-spreadsheet-resizer.vertical {
   cursor: col-resize;
+}
+.x-spreadsheet-resizer.vertical .x-spreadsheet-resizer-hover:nth-child(2):after {
+  top: 0;
+  bottom: 0;
+  right: -4px;
+  width: 4px;
 }
 .x-spreadsheet-resizer.vertical .x-spreadsheet-resizer-line {
   border-right: 2px dashed #4b89ff;

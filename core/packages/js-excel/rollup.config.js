@@ -20,25 +20,27 @@ const babelOptions = {
     ]
 };
 
+const terserPlugin = terser({ maxWorkers: 1 });
+
 export default {
     input: 'index.js',
     output: [
         {
             file: 'lib/index.js',
             format: 'es',
-            plugins: [terser()]
+            plugins: [terserPlugin]
         },
         {
             file: 'lib/index.cjs',
             format: 'cjs',
             exports: 'default',
-            plugins: [terser()]
+            plugins: [terserPlugin]
         },
         {
             file: 'lib/index.umd.js',
             name: 'abnerJsExcel',
             format: 'umd',
-            plugins: [terser()]
+            plugins: [terserPlugin]
         }
     ],
     plugins: [

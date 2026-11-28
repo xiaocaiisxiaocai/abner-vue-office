@@ -7,8 +7,21 @@ import { download as downloadFile } from '../../../utils/url.js';
 
 const defaultOptions = {
     xls: false,
-    minColLength: 20
+    minColLength: 20,
+    resizable: true
 };
+
+function buildAutoFitOptions(opts, override) {
+    const base = opts || {};
+    const extra = override || {};
+    return {
+        minColWidth: extra.minColWidth !== undefined ? extra.minColWidth : base.autoFitMinColWidth,
+        maxColWidth: extra.maxColWidth !== undefined ? extra.maxColWidth : base.autoFitMaxColWidth,
+        minRowHeight: extra.minRowHeight !== undefined ? extra.minRowHeight : base.autoFitMinRowHeight,
+        maxRowHeight: extra.maxRowHeight !== undefined ? extra.maxRowHeight : base.autoFitMaxRowHeight,
+        allSheets: Boolean(extra.allSheets)
+    };
+}
 
 function mergeExcelOptions(base, override) {
     const merged = { ...base };
@@ -89,6 +102,11 @@ class AbnerJsExcelPreview {
     initSpreadsheet() {
         this.xs = new Spreadsheet(this.wrapperMain, {
             mode: 'read',
+            resizable: this.options.resizable !== false,
+            autoFitMinColWidth: this.options.autoFitMinColWidth,
+            autoFitMaxColWidth: this.options.autoFitMaxColWidth,
+            autoFitMinRowHeight: this.options.autoFitMinRowHeight,
+            autoFitMaxRowHeight: this.options.autoFitMaxRowHeight,
             evalPaused: true,
             showToolbar: false,
             showContextmenu: this.options.showContextmenu || false,
@@ -104,7 +122,7 @@ class AbnerJsExcelPreview {
                 len: 26,
                 width: 80,
                 indexWidth: 60,
-                minWidth: 60,
+                minWidth: 24,
             },
             autoFocus: false
         }).loadData({});
@@ -167,12 +185,13 @@ class AbnerJsExcelPreview {
             const targetRenderId = that.renderId;
             const targetSheetIndex = that.sheetIndex;
             const targetTableVersion = that.tableRenderVersion;
+            const liveSheetData = that.xs && that.xs.sheet ? that.xs.sheet.data : null;
             renderImage(
                 that.ctx,
                 that.mediasSource,
                 that.workbookDataSource._worksheets[targetSheetIndex],
-                that.offset,
-                that.renderedOptions,
+                that.offset || (liveSheetData ? { scroll: liveSheetData.scroll } : null),
+                { ...that.renderedOptions, sheetData: liveSheetData },
                 () => !that.isDestroyed && targetRenderId === that.renderId && targetSheetIndex === that.sheetIndex && targetTableVersion === that.tableRenderVersion
             );
         }, 200, {
@@ -273,6 +292,26 @@ class AbnerJsExcelPreview {
             clearCache(this.ctx);
             this.renderImageDebounce && this.renderImageDebounce.cancel();
             this.loadDataInternal(workbookData);
+            if (this.xs && Array.isArray(this.xs.datas)) {
+                this.xs.datas.forEach(d => {
+                    if (d && d.settings) {
+                        d.settings.resizable = opts.resizable !== false;
+                        d.settings.autoFitMinColWidth = opts.autoFitMinColWidth;
+                        d.settings.autoFitMaxColWidth = opts.autoFitMaxColWidth;
+                        d.settings.autoFitMinRowHeight = opts.autoFitMinRowHeight;
+                        d.settings.autoFitMaxRowHeight = opts.autoFitMaxRowHeight;
+                    }
+                });
+            }
+            if (this.xs) {
+                const fitOpts = { ...buildAutoFitOptions(opts), allSheets: true };
+                if (opts.autoFit || opts.autoFitCol) {
+                    this.xs.autoFitAllCols(fitOpts);
+                }
+                if (opts.autoFit || opts.autoFitRow) {
+                    this.xs.autoFitAllRows(fitOpts);
+                }
+            }
             return true;
         }).catch(e => {
             if (!this.isDestroyed && currentId === this.renderId) {
@@ -325,9 +364,65 @@ class AbnerJsExcelPreview {
 
     setOptions(options = {}) {
         this.options = mergeExcelOptions(mergeExcelOptions(defaultOptions, this.options), options);
-        if (this.xs && this.xs.sheet && this.xs.sheet.contextMenu) {
-            this.xs.sheet.contextMenu.isHide = !this.options.showContextmenu;
+        if (this.xs) {
+            if (this.xs.sheet && this.xs.sheet.contextMenu) {
+                this.xs.sheet.contextMenu.isHide = !this.options.showContextmenu;
+            }
+            const allowResize = this.options.resizable !== false;
+            if (this.xs.options) {
+                this.xs.options.resizable = allowResize;
+            }
+            if (Array.isArray(this.xs.datas)) {
+                this.xs.datas.forEach(d => {
+                    if (d && d.settings) {
+                        d.settings.resizable = allowResize;
+                        d.settings.autoFitMinColWidth = this.options.autoFitMinColWidth;
+                        d.settings.autoFitMaxColWidth = this.options.autoFitMaxColWidth;
+                        d.settings.autoFitMinRowHeight = this.options.autoFitMinRowHeight;
+                        d.settings.autoFitMaxRowHeight = this.options.autoFitMaxRowHeight;
+                    }
+                });
+            }
+            if (!allowResize && this.xs.sheet) {
+                this.xs.sheet.rowResizer && this.xs.sheet.rowResizer.hide();
+                this.xs.sheet.colResizer && this.xs.sheet.colResizer.hide();
+            }
         }
+    }
+
+    autoFitCol(colIndex, fitOptions) {
+        if (!this.xs || typeof this.xs.autoFitCol !== 'function') {
+            return;
+        }
+        this.xs.autoFitCol(colIndex, buildAutoFitOptions(this.renderedOptions, fitOptions));
+    }
+
+    autoFitAllCols(fitOptions) {
+        if (!this.xs || typeof this.xs.autoFitAllCols !== 'function') {
+            return;
+        }
+        this.xs.autoFitAllCols(buildAutoFitOptions(this.renderedOptions, fitOptions));
+    }
+
+    autoFitRow(rowIndex, fitOptions) {
+        if (!this.xs || typeof this.xs.autoFitRow !== 'function') {
+            return;
+        }
+        this.xs.autoFitRow(rowIndex, buildAutoFitOptions(this.renderedOptions, fitOptions));
+    }
+
+    autoFitAllRows(fitOptions) {
+        if (!this.xs || typeof this.xs.autoFitAllRows !== 'function') {
+            return;
+        }
+        this.xs.autoFitAllRows(buildAutoFitOptions(this.renderedOptions, fitOptions));
+    }
+
+    autoFitAll(fitOptions) {
+        if (!this.xs || typeof this.xs.autoFitAll !== 'function') {
+            return;
+        }
+        this.xs.autoFitAll(buildAutoFitOptions(this.renderedOptions, fitOptions));
     }
 
     setRequestOptions(requestOptions = {}) {

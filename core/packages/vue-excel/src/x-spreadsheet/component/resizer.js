@@ -12,12 +12,14 @@ export default class Resizer {
         .on('dblclick.stop', evt => this.mousedblclickHandler(evt))
         .css('position', 'absolute').hide(),
       this.hoverEl = h('div', `${cssPrefix}-resizer-hover`)
-        .on('mousedown.stop', evt => this.mousedownHandler(evt)),
+        .on('mousedown.stop', evt => this.mousedownHandler(evt))
+        .on('dblclick.stop', evt => this.hoverDblclickHandler(evt)),
       this.lineEl = h('div', `${cssPrefix}-resizer-line`).hide(),
     ).hide();
     // cell rect
     this.cRect = null;
     this.finishedFn = null;
+    this.autoFitFn = null;
     this.minDistance = minDistance;
     this.unhideFn = () => {};
   }
@@ -75,9 +77,18 @@ export default class Resizer {
     if (this.unhideIndex != null) this.unhideFn(this.unhideIndex);
   }
 
+  hoverDblclickHandler() {
+    if (this.cRect && typeof this.autoFitFn === 'function') {
+      const targetRect = this.cRect;
+      this.hide();
+      this.autoFitFn(targetRect);
+    }
+  }
+
   mousedownHandler(evt) {
     if (!this.cRect) return;
     if (evt && evt.buttons !== undefined && evt.buttons !== 1) return;
+    if (evt && typeof evt.detail === 'number' && evt.detail >= 2) return;
     let startEvt = evt;
     const {
       el, lineEl, cRect, vertical, minDistance,
@@ -97,14 +108,19 @@ export default class Resizer {
     };
     const finish = () => {
       const wasMoving = this.moving;
-      cleanup();
-      if (wasMoving && this.finishedFn && distance !== baseDistance) {
-        if (distance < minDistance) distance = minDistance;
-        this.finishedFn(cRect, distance);
+      this._cancelMove = null;
+      startEvt = null;
+      lineEl.hide();
+      this.moving = false;
+      if (wasMoving) {
+        this.hide();
+        if (this.finishedFn && distance !== baseDistance) {
+          if (distance < minDistance) distance = minDistance;
+          this.finishedFn(cRect, distance);
+        }
       }
     };
     this._cancelMove = mouseMoveUp(window, (e) => {
-      this.moving = true;
       if (startEvt !== null && e.buttons === 1) {
         if (vertical) {
           if (startClientX !== null && typeof e.clientX === 'number') {
@@ -112,6 +128,10 @@ export default class Resizer {
           } else {
             rawDistance += Number(e.movementX) || 0;
           }
+          if (!this.moving && Math.abs(rawDistance - baseDistance) < 2) {
+            return;
+          }
+          this.moving = true;
           distance = Math.max(minDistance, rawDistance);
           el.css('left', `${cRect.left + distance - 5}px`);
         } else {
@@ -120,6 +140,10 @@ export default class Resizer {
           } else {
             rawDistance += Number(e.movementY) || 0;
           }
+          if (!this.moving && Math.abs(rawDistance - baseDistance) < 2) {
+            return;
+          }
+          this.moving = true;
           distance = Math.max(minDistance, rawDistance);
           el.css('top', `${cRect.top + distance - 5}px`);
         }
